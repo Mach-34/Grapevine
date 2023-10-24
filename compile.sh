@@ -1,6 +1,10 @@
 #!/bin/bash
 
-circom ./circuits/main.circom --r1cs --sym --c --output ./circuits --prime bn128
+if [ ! -d "./circuits/artifacts" ]; then
+  mkdir ./circuits/artifacts
+fi
+
+circom ./circuits/folded.circom --r1cs --sym --c --output ./circuits/artifacts --prime bn128
 cd circuits
 make
 cd ..
