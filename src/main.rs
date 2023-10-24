@@ -52,10 +52,10 @@ pub fn driver(
 
     private_inputs.push(private_input);
     // push second proof inputs
-    // private_input = HashMap::new();
-    // private_input.insert("secret".to_string(), json!(util::EMPTY_SECRET));
-    // private_input.insert("usernames".to_string(), json!([util::ZERO, util::ZERO]));
-    // private_inputs.push(private_input);
+    private_input = HashMap::new();
+    private_input.insert("secret".to_string(), json!(util::EMPTY_SECRET));
+    private_input.insert("usernames".to_string(), json!([util::ZERO, util::ZERO]));
+    private_inputs.push(private_input);
 
 
     println!("created private inputs");
@@ -67,6 +67,11 @@ pub fn driver(
     let public_params: PublicParams<G1, G2, _, _> = util::read_pp_file(
         "circuits/artifacts/public_params.json"
     );
+
+    // let public_params: PublicParams<G1, G2, _, _> = create_public_params(r1cs.clone());
+    // println!("Public Params creation took {:?}", p_start.elapsed());
+    // util::write_pp_file("circuits/artifacts/public_params.json", &public_params);
+
     println!("Public Params creation took {:?}", p_start.elapsed());
 
     println!(
@@ -104,7 +109,7 @@ pub fn driver(
     // verify the recursive SNARK
     println!("Verifying a RecursiveSNARK...");
     let start = Instant::now();
-    let res = recursive_snark.verify(&public_params, 1, &start_public_input, &z0_secondary);
+    let res = recursive_snark.verify(&public_params, 2, &start_public_input, &z0_secondary);
     println!(
         "RecursiveSNARK::verify: {:?}, took {:?}",
         res,

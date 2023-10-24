@@ -3,6 +3,7 @@ pragma circom 2.1.6;
 include "node_modules/circomlib/circuits/poseidon.circom";
 include "node_modules/circomlib/circuits/mux1.circom";
 include "node_modules/circomlib/circuits/comparators.circom";
+include "node_modules/circomlib/circuits/gates.circom";
 include "./templates/chaff.circom";
 
 template phrase_folding(num_felts) {  
@@ -52,10 +53,14 @@ template phrase_folding(num_felts) {
     username_hash_comparator.in[0] <== prev_username_hasher.out;
     username_hash_comparator.in[1] <== given_username_hash;
 
+    component username_comparator_or_chaff = OR();
+    username_comparator_or_chaff.a <== username_hash_comparator.out;
+    username_comparator_or_chaff.b <== is_chaff_step;
+
     // mux between computed username hash and constant true value
     // if degress of separation = 0 always return true
     component prev_username_mux = Mux1();
-    prev_username_mux.c[0] <== username_hash_comparator.out;
+    prev_username_mux.c[0] <== username_comparator_or_chaff.out;
     prev_username_mux.c[1] <== 1;
     prev_username_mux.s <== is_degree_zero.out;
 
