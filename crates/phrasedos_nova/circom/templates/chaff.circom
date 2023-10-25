@@ -30,7 +30,7 @@ template ChaffMux() {
 
     // mux the secret hash
     // if ! chaff step, grab muxed hash output
-    mux.c[1][0] <== computed_username_hash;
+    mux.c[1][0] <== computed_secret_hash;
     mux.c[1][1] <== given_secret_hash;
 
     // mux the username hash

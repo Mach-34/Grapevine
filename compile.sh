@@ -1,10 +1,13 @@
 #!/bin/bash
 
-if [ ! -d "./circuits/artifacts" ]; then
-  mkdir ./circuits/artifacts
+if [ ! -d "./crates/phrasedos_nova/circom/artifacts" ]; then
+  mkdir ./crates/phrasedos_nova/circom/artifacts
 fi
 
-circom ./circuits/folded.circom --r1cs --sym --wasm --output ./circuits/artifacts --prime bn128
+circom ./crates/phrasedos_nova/circom/folded.circom --r1cs --sym --wasm --output ./crates/phrasedos_nova/circom/artifacts --prime bn128
 # cd circuits/artifacts/folded_cpp
 # make
-# cd -
+# cd 
+
+cargo install --path ./crates/phrasedos_cli
+phrasedos params ./crates/phrasedos_nova/circom/artifacts/folded.r1cs ./crates/phrasedos_nova/circom/artifacts

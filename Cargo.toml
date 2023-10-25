@@ -2,9 +2,9 @@
 
 members = [
     "crates/phrasedos_cli",
-    # "crates/phrasedos_circuit"
+    "crates/phrasedos_nova"
 ]
-# default-members = ["crates/phrasedos_circuit"]
+default-members = ["crates/phrasedos_cli"]
 resolver = "2"
 
 [workspace.package]

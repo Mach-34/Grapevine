@@ -1,12 +1,14 @@
-# [package]
-# name = "phrasedos"
-# version = "0.1.0"
-# edition = "2021"
+[package]
+name = "phrasedos_nova"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
 
-# # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[lib]
+crate-type = ["cdylib", "rlib"]
 
-# [dependencies]
-# hex = "0.4.3"
-# nova-scotia = "0.5.0"
-# nova-snark = "0.23.0"
-# serde_json = "1.0.107"
+[dependencies]
+nova-scotia.workspace = true
+nova-snark.workspace = true
+serde_json.workspace = true
+hex = "0.4.3"

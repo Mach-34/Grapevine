@@ -925,6 +925,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "de3145af08024dea9fa9914f381a17b8fc6034dfb00f3a84013f7ff43f29ed4c"
 
 [[package]]
+name = "phrasedos_nova"
+version = "0.1.0"
+dependencies = [
+ "hex",
+ "nova-scotia",
+ "nova-snark",
+ "serde_json",
+]
+
+[[package]]
 name = "phrasedos_params_gen"
 version = "0.1.0"
 dependencies = [
