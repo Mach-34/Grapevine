@@ -25,7 +25,7 @@ Just like [The Word](https://github.com/mach-34/the-word), this project starts w
 
 Prototype:
 ```console
-phrasedos prove-secret \
+$ phrasedos prove-secret \
     {SECRET TO PROVE} \
     {YOUR USERNAME} \
     {DIRECTORY TO OUTPUT PROOF} \
@@ -51,7 +51,7 @@ Phrasedos uses nova folding to recursively verify degrees of separation from a p
 
 Prototype: 
 ```console
-phrasedos prove-separation \
+$ phrasedos prove-separation \
     {DEGREES OF SEPARATION} \
     {USERNAME TO PROVE 1 DEGREE OF SEPARATION FROM} \
     {YOUR USERNAME} \
@@ -64,7 +64,7 @@ phrasedos prove-separation \
 
 Example:
 ```console
-phrasedos prove-separation \
+$ phrasedos prove-separation \
     2 \
     "mach34" \
     "jp4g" \
