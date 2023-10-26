@@ -1,8 +1,9 @@
 use super::{
-    Params, EMPTY_SECRET, MAX_SECRET_CHARS, MAX_USERNAME_CHARS, SECRET_FIELD_LENGTH, ZERO,
+    NovaProof, Params, EMPTY_SECRET, MAX_SECRET_CHARS, MAX_USERNAME_CHARS, SECRET_FIELD_LENGTH,
+    ZERO,
 };
-
 use serde_json::{json, Value};
+use serde::{Serialize, de::DeserializeOwned};
 use std::{collections::HashMap, env::current_dir, error::Error};
 
 /**
@@ -123,4 +124,46 @@ pub fn read_public_params<G1, G2>(path: &str) -> Params {
         serde_json::from_str(&public_params_file).expect("Incorrect public params format");
 
     public_params
+}
+
+// /**
+//  * Read in a proof from the filesystem
+//  *
+//  * @param path - the relative path to the proof json file
+//  * @return - the proof object
+//  */
+// pub fn read_proof(path: String) -> NovaProof {
+//     // get path to file
+//     let root = current_dir().unwrap();
+//     let filepath = root.join(path);
+// }
+
+// /**
+//  * Write a proof to the filesystem
+//  *
+//  * @param proof - the proof object to write to the filesystem
+//  * @param path - the relative path to the directory to write the proof to
+//  */
+// pub fn write_proof(proof: &NovaProof, path: String) -> Result<(), std::io::Error> {
+//     // get fs uri to save proof to
+//     let root = current_dir().unwrap();
+//     let filepath = root.join(path).join("phrasedos.proof");
+
+//     // serialize the proof
+//     std::fs::write(filepath, proof.clone())
+// }
+
+//https://github.com/chainwayxyz/nova-cli/blob/main/src/utils.rs#L16
+pub fn json_to_obj<T: DeserializeOwned>(file_path: std::path::PathBuf) -> T {
+    let file = std::fs::File::open(file_path).expect("error");
+    let reader = std::io::BufReader::new(file);
+    let a: T = serde_json::from_reader(reader).expect("error");
+    return a;
+}
+
+//https://github.com/chainwayxyz/nova-cli/blob/main/src/utils.rs#L23
+pub fn obj_to_json<T: serde::Serialize>(file_path: std::path::PathBuf, obj: T) {
+    let file = std::fs::File::create(file_path).expect("error");
+    let writer = std::io::BufWriter::new(file);
+    serde_json::to_writer(writer, &obj).expect("write cbor error");
 }

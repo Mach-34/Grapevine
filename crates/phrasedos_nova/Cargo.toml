@@ -11,4 +11,5 @@ crate-type = ["cdylib", "rlib"]
 nova-scotia.workspace = true
 nova-snark.workspace = true
 serde_json.workspace = true
+serde.workspace = true
 hex = "0.4.3"

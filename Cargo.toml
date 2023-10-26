@@ -2,7 +2,8 @@
 
 members = [
     "crates/phrasedos_cli",
-    "crates/phrasedos_nova"
+    "crates/phrasedos_nova",
+    "crates/phrasedos_server"
 ]
 default-members = ["crates/phrasedos_cli"]
 resolver = "2"
@@ -13,6 +14,7 @@ edition = "2021"
 license = "MIT or Apache-2.0"
 
 [workspace.dependencies]
-nova-scotia = "0.5.0"
+nova-scotia = { git = "https://github.com/nalinbhardwaj/Nova-Scotia/" }
 nova-snark = "0.23.0"
 serde_json = "1.0.107"
+serde = "1.0.190"

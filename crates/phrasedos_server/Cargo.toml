@@ -1,0 +1,15 @@
+[package]
+name = "phrasedos_server"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "phrasedos-server"
+path = "src/main.rs"
+
+[dependencies]
+warp = "0.3.6"
+tokio = { version = "1.33.0", features = ["full"] }
+tracing-subscriber = "0.3.17"
+tracing = "0.1.40"
