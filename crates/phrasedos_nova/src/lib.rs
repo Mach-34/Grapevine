@@ -1,9 +1,9 @@
-mod nova;
-mod utils;
-use nova_scotia::{C1, C2, F, S, circom::circuit::CircomCircuit};
+pub mod nova;
+pub mod utils;
+use nova_scotia::{C1, C2, F, circom::circuit::CircomCircuit};
 use nova_snark::{
-    provider, provider::ipa_pc::EvaluationEngine, spartan::snark::{ProverKey, VerifierKey},
-    traits::circuit::TrivialTestCircuit, CompressedSNARK, PublicParams, RecursiveSNARK,
+    provider,
+    traits::circuit::TrivialTestCircuit, PublicParams, RecursiveSNARK,
 };
 pub type G1 = provider::bn256_grumpkin::bn256::Point;
 pub type G2 = provider::bn256_grumpkin::grumpkin::Point;

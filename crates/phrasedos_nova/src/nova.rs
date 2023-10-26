@@ -6,7 +6,7 @@ use super::{
 };
 use nova_scotia::{
     circom::{circuit::R1CS, reader::load_r1cs},
-    continue_recursive_circuit, create_recursive_circuit, FileLocation, S,
+    continue_recursive_circuit, create_recursive_circuit, FileLocation,
 };
 use nova_snark::errors::NovaError;
 use std::env::current_dir;
@@ -124,7 +124,7 @@ pub fn verify_nova_proof(
  * @param r1cs - the r1cs of the phrasedos circuit
  * @param public_params - the public params to use to compute the proof
  */
-pub fn contine_nova_proof(
+pub fn continue_nova_proof(
     usernames: &Vec<String>,
     proof: &mut NovaProof,
     previous_output: Vec<Fr>,
@@ -283,7 +283,7 @@ mod test {
 
         // PROVE DEGREE 2 //
         let degree = 2;
-        contine_nova_proof(
+        continue_nova_proof(
             &usernames[0..2].to_vec(),
             &mut proof,
             z0_last,
@@ -297,7 +297,7 @@ mod test {
 
         // PROVE DEGREE 3 //
         let degree = 3;
-        contine_nova_proof(
+        continue_nova_proof(
             &usernames[1..3].to_vec(),
             &mut proof,
             z0_last,
@@ -311,7 +311,7 @@ mod test {
 
         // PROVE DEGREE 4 //
         let degree = 4;
-        contine_nova_proof(
+        continue_nova_proof(
             &usernames[2..4].to_vec(),
             &mut proof,
             z0_last,
@@ -373,7 +373,7 @@ mod test {
         let z0_last = verify_nova_proof(&proof, &public_params, degree * 2).unwrap().0;
         // prove second degree
         let degree = 2;
-        contine_nova_proof(
+        continue_nova_proof(
             &usernames[0..2].to_vec(),
             &mut proof,
             z0_last,

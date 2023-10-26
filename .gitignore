@@ -1,4 +1,4 @@
 /target
 node_modules
-phrasedos_degree_1.json
+phrasedos_degree_*.json
 crates/phrasedos_server/static

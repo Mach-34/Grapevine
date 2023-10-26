@@ -8,6 +8,7 @@ license.workspace = true
 clap = { version = "4.4.7", features = ["derive"] }
 nova-scotia.workspace = true
 nova-snark.workspace = true
+phrasedos_nova.workspace = true
 serde = "1.0.190"
 serde_json.workspace = true
 

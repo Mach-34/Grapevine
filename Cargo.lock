@@ -1293,6 +1293,7 @@ dependencies = [
  "clap",
  "nova-scotia",
  "nova-snark",
+ "phrasedos_nova",
  "serde",
  "serde_json",
 ]

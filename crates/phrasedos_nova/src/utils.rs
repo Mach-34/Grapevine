@@ -1,9 +1,9 @@
 use super::{
-    NovaProof, Params, EMPTY_SECRET, MAX_SECRET_CHARS, MAX_USERNAME_CHARS, SECRET_FIELD_LENGTH,
+    Params, EMPTY_SECRET, MAX_SECRET_CHARS, MAX_USERNAME_CHARS, SECRET_FIELD_LENGTH,
     ZERO,
 };
 use serde_json::{json, Value};
-use serde::{Serialize, de::DeserializeOwned};
+use serde::{de::DeserializeOwned};
 use std::{collections::HashMap, env::current_dir, error::Error};
 
 /**
