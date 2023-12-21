@@ -1,11 +1,11 @@
 [workspace]
 
 members = [
-    "crates/phrasedos_cli",
-    "crates/phrasedos_nova",
-    "crates/phrasedos_server"
+    "crates/grapevine_cli",
+    "crates/grapevine_circuits",
+    "crates/grapevine_server"
 ]
-default-members = ["crates/phrasedos_cli"]
+default-members = ["crates/grapevine_cli"]
 resolver = "2"
 
 [workspace.package]
@@ -16,6 +16,7 @@ license = "MIT or Apache-2.0"
 [workspace.dependencies]
 nova-scotia = { git = "https://github.com/nalinbhardwaj/Nova-Scotia/" }
 nova-snark = "0.23.0"
-phrasedos_nova = { path = "crates/phrasedos_nova" }
+grapevine_circuits = { path = "crates/grapevine_circuits" }
 serde_json = "1.0.107"
 serde = "1.0.190"
+rand = "0.8.5"

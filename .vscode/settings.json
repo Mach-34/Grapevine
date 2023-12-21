@@ -1,6 +1,6 @@
 {
     "rust-analyzer.linkedProjects": [
         "./Cargo.toml",
-        "./crates/phrasedos_cli/Cargo.toml"
+        "./crates/grapevine_cli/Cargo.toml"
     ]
 }

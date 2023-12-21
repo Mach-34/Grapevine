@@ -1,0 +1,18 @@
+[package]
+name = "grapevine_cli"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+clap = { version = "4.4.7", features = ["derive"] }
+nova-scotia.workspace = true
+nova-snark.workspace = true
+grapevine_circuits.workspace = true
+serde = "1.0.190"
+serde_json.workspace = true
+rand = "0.8.5"
+
+[[bin]]
+name = "grapevine"
+path = "src/main.rs"

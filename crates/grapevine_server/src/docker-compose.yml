@@ -1,0 +1,11 @@
+version: '3'
+services:
+  mongodb:
+    restart: on-failure
+    image: mongo:6-jammy
+    ports:
+      - 27017:27017
+    volumes:
+     - ./db:/data/db
+# env_file:
+#   - ../.env
