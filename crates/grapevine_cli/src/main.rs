@@ -20,6 +20,7 @@ enum Commands {
     GetAccount,
     // Create a new Grapevine Account
     CreateAccount(CreateAccountArgs),
+    Health,
 }
 
 #[derive(Args)]
@@ -36,7 +37,8 @@ struct CreateAccountArgs {
 /**
  * CLI for Grapevine
  */
-pub fn main() {
+#[tokio::main]
+pub async fn main() {
     let cli = Cli::parse();
 
     match &cli.command {
@@ -45,6 +47,7 @@ pub fn main() {
         }
         Commands::GetAccount => controllers::get_account_info(),
         Commands::CreateAccount(cmd) => controllers::make_account(cmd.username.clone().unwrap()),
+        Commands::Health => controllers::health().await,
     }
 
     // match &cli.command {

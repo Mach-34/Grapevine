@@ -1,3 +1,4 @@
+use crate::account::GrapevineAccount;
 use babyjubjub_rs::PrivateKey;
 use grapevine_circuits::{
     nova::{continue_nova_proof, get_public_params, get_r1cs, nova_proof, verify_nova_proof},
@@ -10,7 +11,6 @@ use rand::random;
 use std::env::current_dir;
 use std::path::Path;
 use std::time::Instant;
-use crate::account::GrapevineAccount;
 /**
  * Generate nova public parameters file and save to fs for reuse
  *
@@ -63,7 +63,10 @@ pub fn get_account_info() {
     match grapevine_key_path.exists() {
         true => (),
         false => {
-            println!("No Grapevine account found at {}", grapevine_key_path.display());
+            println!(
+                "No Grapevine account found at {}",
+                grapevine_key_path.display()
+            );
             return;
         }
     };
@@ -72,7 +75,10 @@ pub fn get_account_info() {
     let account = serde_json::from_str::<GrapevineAccount>(&json).unwrap();
     println!("Username: {}", account.username());
     println!("Private Key: 0x{}", hex::encode(account.private_key_raw()));
-    println!("Auth Secret: 0x{}", hex::encode(account.auth_secret().to_bytes()));
+    println!(
+        "Auth Secret: 0x{}",
+        hex::encode(account.auth_secret().to_bytes())
+    );
 }
 
 pub fn make_account(username: String) {
@@ -88,7 +94,10 @@ pub fn make_account(username: String) {
     // check if grapevine.key exists
     match grapevine_key_path.exists() {
         true => {
-            println!("Error: Grapevine account already exists at {}", &grapevine_key_path.display());
+            println!(
+                "Error: Grapevine account already exists at {}",
+                &grapevine_key_path.display()
+            );
             return;
         }
         false => (),
@@ -99,8 +108,21 @@ pub fn make_account(username: String) {
     let json = serde_json::to_string(&account).unwrap();
     std::fs::create_dir(grapevine_dir_path.clone()).unwrap();
     std::fs::write(&grapevine_key_path, json).unwrap();
-    println!("Created Grapevine account at {}", grapevine_key_path.display());
+    println!(
+        "Created Grapevine account at {}",
+        grapevine_key_path.display()
+    );
     get_account_info();
+}
+
+pub async fn health() {
+    let text = reqwest::get("http://localhost:8000/health")
+        .await
+        .unwrap()
+        .text()
+        .await
+        .unwrap();
+    println!("Health: {}", text);
 }
 
 // pub fn make_or_get_key() -> Result<Account, std::env::VarError> {

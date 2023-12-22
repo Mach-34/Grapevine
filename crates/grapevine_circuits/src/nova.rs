@@ -98,7 +98,7 @@ pub fn nova_proof(
             &mut private_inputs,
             phrase_input,
             username_input,
-            auth_secret_input
+            auth_secret_input,
         );
     }
 
@@ -162,7 +162,7 @@ pub fn continue_nova_proof(
         &mut private_inputs,
         None,
         [Some(usernames[0].clone()), Some(usernames[1].clone())],
-        [Some(auth_secrets[0]), Some(auth_secrets[1])]
+        [Some(auth_secrets[0]), Some(auth_secrets[1])],
     );
 
     // compute the next round of the proof
@@ -192,7 +192,7 @@ pub fn continue_nova_proof(
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::utils::{json_to_obj, obj_to_json, random_fr};
+    use crate::utils::{compress_proof, decompress_proof, read_proof, write_proof, random_fr};
 
     #[test]
     fn test_degree_0() {
@@ -216,8 +216,9 @@ mod test {
             &public_params,
             &phrase,
             &usernames,
-            &auth_secrets
-        ).unwrap();
+            &auth_secrets,
+        )
+        .unwrap();
 
         let iterations = usernames.len() * 2;
         let verified = verify_nova_proof(&proof, &public_params, iterations).unwrap();
@@ -246,8 +247,9 @@ mod test {
             &public_params,
             &phrase,
             &usernames,
-            &auth_secrets
-        ).unwrap();
+            &auth_secrets,
+        )
+        .unwrap();
 
         let iterations = usernames.len() * 2;
         let verified = verify_nova_proof(&proof, &public_params, iterations).unwrap();
@@ -278,8 +280,9 @@ mod test {
             &public_params,
             &phrase,
             &usernames,
-            &auth_secrets
-        ).unwrap();
+            &auth_secrets,
+        )
+        .unwrap();
 
         let iterations = usernames.len() * 2;
         let verified = verify_nova_proof(&proof, &public_params, iterations).unwrap();
@@ -335,7 +338,8 @@ mod test {
             Some(wc_path.clone()),
             &r1cs,
             &public_params,
-        ).unwrap();
+        )
+        .unwrap();
         let res = verify_nova_proof(&proof, &public_params, degree * 2).unwrap();
         let z0_last = res.0;
         assert!(z0_last[0].eq(&Fr::from(degree as u64)));
@@ -350,7 +354,8 @@ mod test {
             Some(wc_path.clone()),
             &r1cs,
             &public_params,
-        ).unwrap();
+        )
+        .unwrap();
         let res = verify_nova_proof(&proof, &public_params, degree * 2).unwrap();
         let z0_last = res.0;
         assert!(z0_last[0].eq(&Fr::from(degree as u64)));
@@ -365,7 +370,8 @@ mod test {
             Some(wc_path.clone()),
             &r1cs,
             &public_params,
-        ).unwrap();
+        )
+        .unwrap();
         let res = verify_nova_proof(&proof, &public_params, degree * 2).unwrap();
         let z0_last = res.0;
         assert!(z0_last[0].eq(&Fr::from(degree as u64)));
@@ -375,9 +381,7 @@ mod test {
     fn test_continued_fs() {
         // test recursively proving degree 1 and 2 where proof 1 is saved to fs then read in for proof 2
         // define inputs
-        let phrase = String::from(
-            "Filesystem filesystem system of a file",
-        );
+        let phrase = String::from("Filesystem filesystem system of a file");
         let usernames = vec!["mach34", "jp4g", "ianb", "ct"]
             .iter()
             .map(|s| String::from(*s))
@@ -412,14 +416,16 @@ mod test {
         // safe to fs
         let proof_path = std::env::current_dir()
             .unwrap()
-            .join(format!("grapevine_degree_{}.json", degree));
-        obj_to_json(proof_path.clone(), proof);
+            .join(format!("grapevine_degree_{}.gz", degree));
+        write_proof(&proof, proof_path.clone());
 
         // PROVE DEGREE 2 //
         // read proof from fs
-        let mut proof = json_to_obj::<NovaProof>(proof_path.clone());
+        let mut proof = read_proof(proof_path.clone());
         // get z0_last
-        let z0_last = verify_nova_proof(&proof, &public_params, degree * 2).unwrap().0;
+        let z0_last = verify_nova_proof(&proof, &public_params, degree * 2)
+            .unwrap()
+            .0;
         // prove second degree
         let degree = 2;
         continue_nova_proof(
@@ -430,9 +436,50 @@ mod test {
             Some(wc_path.clone()),
             &r1cs,
             &public_params,
-        ).unwrap();
+        )
+        .unwrap();
         let res = verify_nova_proof(&proof, &public_params, degree * 2).unwrap();
         let z0_last = res.0;
         assert!(z0_last[0].eq(&Fr::from(degree as u64)));
+    }
+
+    #[test]
+    fn test_compression() {
+        // Compute a proof
+        let phrase: String = String::from("There's no place like home");
+        let usernames = vec!["mach34"]
+            .iter()
+            .map(|s| String::from(*s))
+            .collect::<Vec<String>>();
+        let auth_secrets = vec![random_fr()];
+        let params_path = String::from("circom/artifacts/public_params.json");
+        let r1cs_path = String::from("circom/artifacts/grapevine.r1cs");
+        let wc_path = String::from("circom/artifacts/grapevine_js/grapevine.wasm");
+        let r1cs = get_r1cs(Some(r1cs_path));
+        let public_params = get_public_params(Some(params_path));
+        let proof = nova_proof(
+            Some(wc_path),
+            &r1cs,
+            &public_params,
+            &phrase,
+            &usernames,
+            &auth_secrets,
+        )
+        .unwrap();
+
+        // compress the proof
+        let compressed_proof = compress_proof(&proof);
+
+        // compare proof sizes when compressed vs uncompressed
+        let serialized = serde_json::to_string(&proof).unwrap().as_bytes().to_vec();
+        println!("Uncompressed proof size: {}", serialized.len());
+        println!("Compressed proof size: {}", compressed_proof.len());
+        
+        // decompress the proof
+        let decompressed_proof = decompress_proof(&compressed_proof[..]);
+        
+        // verify the compressed then uncompressed proof
+        let iterations = usernames.len() * 2;
+        verify_nova_proof(&decompressed_proof, &public_params, iterations).unwrap();
     }
 }

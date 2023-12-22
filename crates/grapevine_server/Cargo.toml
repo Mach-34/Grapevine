@@ -9,8 +9,9 @@ name = "grapevine-server"
 path = "src/main.rs"
 
 [dependencies]
-warp = "0.3.6"
 tokio = { version = "1.33.0", features = ["full"] }
 tracing-subscriber = "0.3.17"
 tracing = "0.1.40"
 serde.workspace = true
+rocket = { version = "0.5.0", features = ["json"] }
+lazy_static = "1.4.0"

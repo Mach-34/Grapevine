@@ -1,10 +1,14 @@
-use crate::Fr;
 use super::{
-    Params, EMPTY_SECRET, MAX_SECRET_CHARS, MAX_USERNAME_CHARS, SECRET_FIELD_LENGTH,
-    ZERO,
+    Params, EMPTY_SECRET, MAX_SECRET_CHARS, MAX_USERNAME_CHARS, SECRET_FIELD_LENGTH, ZERO,
 };
-use serde_json::{json, Value};
+use crate::Fr;
+use crate::NovaProof;
+use flate2::read::GzDecoder;
+use flate2::write::GzEncoder;
+use flate2::Compression;
 use serde::de::DeserializeOwned;
+use serde_json::{json, Value};
+use std::io::{Read, Write};
 use std::{collections::HashMap, env::current_dir, error::Error};
 
 /**
@@ -96,7 +100,8 @@ pub fn build_step_inputs(
         .map(|auth_secret| match auth_secret {
             Some(auth_secret) => format!("0x{}", hex::encode(auth_secret.to_bytes())),
             None => String::from(ZERO),
-        }).collect::<Vec<String>>()
+        })
+        .collect::<Vec<String>>()
         .try_into()
         .unwrap();
 
@@ -138,26 +143,67 @@ pub fn read_public_params<G1, G2>(path: &str) -> Params {
     public_params
 }
 
-//https://github.com/chainwayxyz/nova-cli/blob/main/src/utils.rs#L16
-pub fn json_to_obj<T: DeserializeOwned>(file_path: std::path::PathBuf) -> T {
-    let file = std::fs::File::open(file_path).expect("error");
-    let reader = std::io::BufReader::new(file);
-    let a: T = serde_json::from_reader(reader).expect("error");
-    return a;
+/**
+ * Write a Nova Proof to the filesystem
+ * 
+ * @param proof - the Nova Proof to write to fs
+ * @path - the filepath to save the proof to - includes filename
+ */
+pub fn write_proof(proof: &NovaProof, path: std::path::PathBuf) {
+    // compress the proof
+    let compressed_proof = compress_proof(proof);
+    // write the proof to fs
+    std::fs::write(path, compressed_proof).expect("Unable to write proof");
 }
 
-//https://github.com/chainwayxyz/nova-cli/blob/main/src/utils.rs#L23
-pub fn obj_to_json<T: serde::Serialize>(file_path: std::path::PathBuf, obj: T) {
-    let file = std::fs::File::create(file_path).expect("error");
-    let writer = std::io::BufWriter::new(file);
-    serde_json::to_writer(writer, &obj).expect("write cbor error");
+/**
+ * Read a Nova Proof from the filesystem
+ * 
+ * @param path - the filepath to read the proof from
+ */
+pub fn read_proof(path: std::path::PathBuf) -> NovaProof {
+    // read the proof from fs
+    let compressed_proof = std::fs::read(path).expect("Unable to read proof");
+    // decompress the proof
+    decompress_proof(&compressed_proof[..])
 }
 
 /**
  * Generates a new stringified random bn254 field element
- * 
+ *
  * @return - a stringified random field element
  */
 pub fn random_fr() -> Fr {
     ff::Field::random(rand::rngs::OsRng)
+}
+
+/**
+ * Compress a Nova Proof with flate2 for transit to the server and storage
+ *
+ * @param proof - the Nova Proof to compress
+ * @return - the compressed proof
+ */
+pub fn compress_proof(proof: &NovaProof) -> Vec<u8> {
+    // serialize proof to json
+    let serialized = serde_json::to_string(&proof).unwrap();
+    // compress serialized proof
+    let mut encoder = GzEncoder::new(Vec::new(), Compression::default());
+    encoder.write_all(serialized.as_bytes()).unwrap();
+    // return compressed proof
+    encoder.finish().unwrap()
+}
+
+/**
+ * Decompress a Nova Proof with flate2 for transit to the server and storage
+ *
+ * @param proof - the compressed Nova Proof to decompress
+ * @return - the decompressed proof
+ */
+pub fn decompress_proof(proof: &[u8]) -> NovaProof {
+    // decompress the proof into the serialized json string
+    let mut decoder = GzDecoder::new(proof);
+    let mut serialized = String::new();
+    decoder.read_to_string(&mut serialized).unwrap();
+    // deserialize the proof
+    serde_json::from_str(&serialized).unwrap()
 }
