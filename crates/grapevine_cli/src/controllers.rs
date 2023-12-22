@@ -1,16 +1,21 @@
+use grapevine_circuits::{
+    nova::{continue_nova_proof, get_public_params, get_r1cs, nova_proof, verify_nova_proof},
+    utils::{json_to_obj, obj_to_json},
+    NovaProof, G1, G2, Fr
+};
 use nova_scotia::{circom::reader::load_r1cs, create_public_params, FileLocation};
 use nova_snark::PublicParams;
-use grapevine_circuits::{
-    nova::{
-        continue_nova_proof, get_public_params, get_r1cs, nova_proof,
-        verify_nova_proof,
-    },
-    utils::{json_to_obj, obj_to_json},
-    Fr, NovaProof, G1, G2,
-};
 use std::env::current_dir;
 use std::time::Instant;
-
+// use num_bigint::BigInt;
+use aes::cipher::{block_padding::Pkcs7, BlockDecryptMut, BlockEncryptMut, KeyIvInit};
+use ff::*;
+use num_bigint::{BigInt, RandBigInt, Sign, ToBigInt};
+use poseidon_rs::Poseidon;
+use sha256::digest;
+type Aes128CbcEnc = cbc::Encryptor<aes::Aes128>;
+type Aes128CbcDec = cbc::Decryptor<aes::Aes128>;
+use hex_literal::hex;
 /**
  * Generate nova public parameters file and save to fs for reuse
  *
@@ -72,46 +77,46 @@ pub fn degree_0_proof(
     println!("Username: {}", username);
     println!("Secret: {}", secret);
     println!("Proving...");
-    // start timer
-    let start: Instant = Instant::now();
+    // // start timer
+    // let start: Instant = Instant::now();
 
-    // load public params and r1cs
-    let r1cs = get_r1cs(Some(r1cs_path));
-    let public_params = get_public_params(Some(params_path));
+    // // load public params and r1cs
+    // let r1cs = get_r1cs(Some(r1cs_path));
+    // let public_params = get_public_params(Some(params_path));
 
-    // prove compute and chaff step for degree 1
-    let degrees = 1;
-    let proof = nova_proof(
-        Some(wc_path.clone()),
-        &r1cs,
-        &public_params,
-        &secret,
-        &vec![username],
-    )
-    .unwrap();
+    // // prove compute and chaff step for degree 1
+    // let degrees = 1;
+    // let proof = nova_proof(
+    //     Some(wc_path.clone()),
+    //     &r1cs,
+    //     &public_params,
+    //     &secret,
+    //     &vec![username],
+    // )
+    // .unwrap();
 
-    // verify correct execution of folded proof
-    let z0_last = verify_nova_proof(&proof, &public_params, degrees * 2)
-        .unwrap()
-        .0;
-    let expected_outcome = z0_last[0].eq(&Fr::from(degrees as u64));
-    match expected_outcome {
-        true => (),
-        false => panic!("Unexpected outcome"),
-    }
+    // // verify correct execution of folded proof
+    // let z0_last = verify_nova_proof(&proof, &public_params, degrees * 2)
+    //     .unwrap()
+    //     .0;
+    // let expected_outcome = z0_last[0].eq(&Fr::from(degrees as u64));
+    // match expected_outcome {
+    //     true => (),
+    //     false => panic!("Unexpected outcome"),
+    // }
 
-    // save proof to fs
-    let proof_path = std::env::current_dir()
-        .unwrap()
-        .join(out_dir)
-        .join("grapevine_degree_1.json");
-    obj_to_json(proof_path.clone(), proof);
+    // // save proof to fs
+    // let proof_path = std::env::current_dir()
+    //     .unwrap()
+    //     .join(out_dir)
+    //     .join("grapevine_degree_1.json");
+    // obj_to_json(proof_path.clone(), proof);
 
-    println!(
-        "Completed Grapevine proof with 1 degree of separation in {:?}",
-        start.elapsed()
-    );
-    println!("Saved proof to {}", proof_path.display());
+    // println!(
+    //     "Completed Grapevine proof with 1 degree of separation in {:?}",
+    //     start.elapsed()
+    // );
+    // println!("Saved proof to {}", proof_path.display());
 }
 
 /**
@@ -140,13 +145,13 @@ pub fn verify_proof(degrees: usize, proof_path: String, params_path: String) {
     let z0_last = verify_nova_proof(&proof, &public_params, degrees * 2)
         .unwrap()
         .0;
-    let expected_outcome = z0_last[0].eq(&Fr::from(degrees as u64));
-    match expected_outcome {
-        true => (),
-        false => panic!("Could not verify proof with given degrees"),
-    }
+    // let expected_outcome = z0_last[0].eq(&Fr::from(degrees as u64));
+    // match expected_outcome {
+    //     true => (),
+    //     false => panic!("Could not verify proof with given degrees"),
+    // }
 
-    println!("Successfully verified Grapevine proof of {} degree(s) of separation in {:?}", degrees, start.elapsed());
+    // println!("Successfully verified Grapevine proof of {} degree(s) of separation in {:?}", degrees, start.elapsed());
 }
 
 /**
@@ -171,63 +176,152 @@ pub fn degree_n_proof(
     r1cs_path: String,
     wc_path: String,
 ) {
-    println!(
-        "Grapevine: Generate new proof {} degrees of separation from a secret",
-        degrees
-    );
-    println!(
-        "Username to prove 1 degree of separation from: {}",
-        previous_username
-    );
-    println!("Your username: {}", username);
-    println!("Proving...");
-    // start timer
-    let start: Instant = Instant::now();
+    // println!(
+    //     "Grapevine: Generate new proof {} degrees of separation from a secret",
+    //     degrees
+    // );
+    // println!(
+    //     "Username to prove 1 degree of separation from: {}",
+    //     previous_username
+    // );
+    // println!("Your username: {}", username);
+    // println!("Proving...");
+    // // start timer
+    // let start: Instant = Instant::now();
 
-    // load public params and r1cs
-    let r1cs = get_r1cs(Some(r1cs_path));
-    let public_params = get_public_params(Some(params_path));
+    // // load public params and r1cs
+    // let r1cs = get_r1cs(Some(r1cs_path));
+    // let public_params = get_public_params(Some(params_path));
 
-    // load proof from filesystem
-    let proof_file = std::env::current_dir().unwrap().join(proof_path);
-    let mut proof = json_to_obj::<NovaProof>(proof_file.clone());
-    let z0_last = verify_nova_proof(&proof, &public_params, (degrees - 1) * 2)
-        .unwrap()
-        .0;
+    // // load proof from filesystem
+    // let proof_file = std::env::current_dir().unwrap().join(proof_path);
+    // let mut proof = json_to_obj::<NovaProof>(proof_file.clone());
+    // let z0_last = verify_nova_proof(&proof, &public_params, (degrees - 1) * 2)
+    //     .unwrap()
+    //     .0;
 
-    // prove compute and chaff step for degree N > 1
-    continue_nova_proof(
-        &vec![previous_username, username],
-        &mut proof,
-        z0_last,
-        Some(wc_path),
-        &r1cs.clone(),
-        &public_params,
-    )
-    .unwrap();
+    // // prove compute and chaff step for degree N > 1
+    // continue_nova_proof(
+    //     &vec![previous_username, username],
+    //     &mut proof,
+    //     z0_last,
+    //     Some(wc_path),
+    //     &r1cs.clone(),
+    //     &public_params,
+    // )
+    // .unwrap();
 
-    // verify correct execution
-    let z0_last = verify_nova_proof(&proof, &public_params, degrees * 2)
-        .unwrap()
-        .0;
-    let expected_outcome = z0_last[0].eq(&Fr::from(degrees as u64));
-    match expected_outcome {
-        true => (),
-        false => panic!("Could not compute proof with given degrees"),
+    // // verify correct execution
+    // let z0_last = verify_nova_proof(&proof, &public_params, degrees * 2)
+    //     .unwrap()
+    //     .0;
+    // let expected_outcome = z0_last[0].eq(&Fr::from(degrees as u64));
+    // match expected_outcome {
+    //     true => (),
+    //     false => panic!("Could not compute proof with given degrees"),
+    // }
+
+    // // save new proof to fs
+    // // safe to fs
+    // let new_proof_path = std::env::current_dir()
+    //     .unwrap()
+    //     .join(out_dir)
+    //     .join(format!("grapevine_degree_{}.json", degrees));
+    // obj_to_json(new_proof_path.clone(), proof);
+
+    // println!(
+    //     "Completed Grapevine proof with {} degree of separation in {:?}",
+    //     degrees,
+    //     start.elapsed()
+    // );
+    // println!("Saved proof to {}", new_proof_path.display());
+}
+
+pub fn ephemeral_key(key: String) {
+    // parse key
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn test_keygen() {
+        let sk = babyjubjub_rs::new_key();
+        let ephemeral_sk = babyjubjub_rs::new_key();
+        let ephemeral_pk = ephemeral_sk.public();
+
+        // compute shared key
+        let shared_secret = ephemeral_pk.mul_scalar(&sk.scalar_key());
+        let secret_buffer = [shared_secret.x, shared_secret.y]
+            .iter()
+            .map(|x| to_hex(x).as_bytes().to_vec())
+            .flatten()
+            .collect::<Vec<u8>>();
+        let hash = digest(&secret_buffer).as_bytes().to_vec();
+        let aes_key = hash[0..16].to_vec();
+        let aes_iv = hash[16..32].to_vec();
+        // aes encrypt
+        let plaintext = *b"testing 123";
+        println!("Plaintext: {:?}", plaintext);
+
+        let mut buf = [0u8; 16];
+        let pt_len = plaintext.len();
+        buf[..pt_len].copy_from_slice(&plaintext);
+        let ciphertext = Aes128CbcEnc::new(aes_key[..].into(), aes_iv[..].into())
+            .encrypt_padded_mut::<Pkcs7>(&mut buf, pt_len)
+            .unwrap();
+
+        println!("Ciphertext: {:?}", ciphertext);
+
+        // aes decrypt
+        let pt = Aes128CbcDec::new(aes_key[..].into(), aes_iv[..].into())
+            .decrypt_padded_mut::<Pkcs7>(&mut buf)
+            .unwrap();
+        println!("pt: {:?}", pt);
+
+        let text = String::from_utf8_lossy(pt);
+
+        println!("Original Text: {}", text);
     }
 
-    // save new proof to fs
-    // safe to fs
-    let new_proof_path = std::env::current_dir()
-        .unwrap()
-        .join(out_dir)
-        .join(format!("grapevine_degree_{}.json", degrees));
-    obj_to_json(new_proof_path.clone(), proof);
+    #[test]
+    fn test2() {
+        let key = [0x42; 16];
+        let iv = [0x24; 16];
+        let plaintext = *b"hello world! this is my plaintext.";
+        let ciphertext = hex!(
+            "c7fe247ef97b21f07cbdd26cb5d346bf"
+            "d27867cb00d9486723e159978fb9a5f9"
+            "14cfb228a710de4171e396e7b6cf859e"
+        );
 
-    println!(
-        "Completed Grapevine proof with {} degree of separation in {:?}",
-        degrees,
-        start.elapsed()
-    );
-    println!("Saved proof to {}", new_proof_path.display());
+        // encrypt/decrypt in-place
+        // buffer must be big enough for padded plaintext
+        let mut buf = [0u8; 48];
+        let pt_len = plaintext.len();
+        buf[..pt_len].copy_from_slice(&plaintext);
+        let ct = Aes128CbcEnc::new(&key.into(), &iv.into())
+            .encrypt_padded_mut::<Pkcs7>(&mut buf, pt_len)
+            .unwrap();
+        assert_eq!(ct, &ciphertext[..]);
+
+        let pt = Aes128CbcDec::new(&key.into(), &iv.into())
+            .decrypt_padded_mut::<Pkcs7>(&mut buf)
+            .unwrap();
+        assert_eq!(pt, &plaintext);
+
+        // encrypt/decrypt from buffer to buffer
+        let mut buf = [0u8; 48];
+        let ct = Aes128CbcEnc::new(&key.into(), &iv.into())
+            .encrypt_padded_b2b_mut::<Pkcs7>(&plaintext, &mut buf)
+            .unwrap();
+        assert_eq!(ct, &ciphertext[..]);
+
+        let mut buf = [0u8; 48];
+        let pt = Aes128CbcDec::new(&key.into(), &iv.into())
+            .decrypt_padded_b2b_mut::<Pkcs7>(&ct, &mut buf)
+            .unwrap();
+        assert_eq!(pt, &plaintext);
+    }
 }

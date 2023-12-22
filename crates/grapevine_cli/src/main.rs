@@ -1,5 +1,8 @@
-mod controllers;
 use clap::{Args, Parser, Subcommand};
+
+pub (crate) mod crypto;
+pub (crate) mod auth_secret;
+pub (crate) mod controllers;
 
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
@@ -19,6 +22,7 @@ enum Commands {
     ProveSeparation(ProveSeparationArgs),
     // Verify a proof of N degrees of separatoin
     Verify(VerifyArgs),
+    // ECDSA
 }
 
 #[derive(Args)]
@@ -54,6 +58,11 @@ struct VerifyArgs {
     degrees: Option<String>,
     proof_path: Option<String>,
     public_params_path: Option<String>,
+}
+
+#[derive(Args)]
+struct EcdsaArgs {
+    key: Option<String>
 }
 
 /**

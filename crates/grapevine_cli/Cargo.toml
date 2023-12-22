@@ -12,6 +12,15 @@ grapevine_circuits.workspace = true
 serde = "1.0.190"
 serde_json.workspace = true
 rand = "0.8.5"
+babyjubjub-rs = "0.0.10"
+num-bigint = "0.4.4"
+sha256 = "1.4.0"
+poseidon-rs = "0.0.10"
+ff = { package="ff_ce" , version= "0.11", features = ["derive"] }
+aes = "0.8.3"
+cbc = "0.1.2"
+hex = "0.4.3"
+hex-literal = "0.4.1"
 
 [[bin]]
 name = "grapevine"
