@@ -1,4 +1,4 @@
-use crate::crypto::gen_aes_key;
+use crate::utils::crypto::gen_aes_key;
 use aes::cipher::{block_padding::Pkcs7, BlockDecryptMut, BlockEncryptMut, KeyIvInit};
 use babyjubjub_rs::{Point, PrivateKey};
 use grapevine_circuits::Fr;

@@ -1,8 +1,8 @@
 use clap::{Args, Parser, Subcommand};
-
-pub (crate) mod crypto;
-pub (crate) mod auth_secret;
-pub (crate) mod controllers;
+pub mod utils;
+pub mod auth_secret;
+pub mod controllers;
+pub mod account;
 
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
@@ -16,13 +16,10 @@ struct Cli {
 enum Commands {
     // Generate public parameters
     Params(ParamsArgs),
-    // Folded proof of a secret (proof degree = 1)
-    ProveSecret(ProveSecretArgs),
-    // Folded proof of N degrees of separation from a secret (proof degree > 1)
-    ProveSeparation(ProveSeparationArgs),
-    // Verify a proof of N degrees of separatoin
-    Verify(VerifyArgs),
-    // ECDSA
+    // Check stored Grapevine Acocunt info
+    GetAccount,
+    // Create a new Grapevine Account
+    CreateAccount(CreateAccountArgs),
 }
 
 #[derive(Args)]
@@ -32,37 +29,8 @@ struct ParamsArgs {
 }
 
 #[derive(Args)]
-struct ProveSecretArgs {
-    secret: Option<String>,
+struct CreateAccountArgs {
     username: Option<String>,
-    output_dir: Option<String>,
-    public_params_path: Option<String>,
-    r1cs_path: Option<String>,
-    wc_path: Option<String>,
-}
-
-#[derive(Args)]
-struct ProveSeparationArgs {
-    degrees: Option<String>,
-    previous_username: Option<String>,
-    username: Option<String>,
-    proof_path: Option<String>,
-    output_dir: Option<String>,
-    public_params_path: Option<String>,
-    r1cs_path: Option<String>,
-    wc_path: Option<String>,
-}
-
-#[derive(Args)]
-struct VerifyArgs {
-    degrees: Option<String>,
-    proof_path: Option<String>,
-    public_params_path: Option<String>,
-}
-
-#[derive(Args)]
-struct EcdsaArgs {
-    key: Option<String>
 }
 
 /**
@@ -75,38 +43,46 @@ pub fn main() {
         Commands::Params(cmd) => {
             controllers::gen_params(cmd.r1cs.clone().unwrap(), cmd.output.clone().unwrap())
         }
-        Commands::ProveSecret(cmd) => controllers::degree_0_proof(
-            cmd.secret.clone().unwrap(),
-            cmd.username.clone().unwrap(),
-            cmd.output_dir.clone().unwrap(),
-            cmd.public_params_path.clone().unwrap(),
-            cmd.r1cs_path.clone().unwrap(),
-            cmd.wc_path.clone().unwrap(),
-        ),
-        Commands::ProveSeparation(cmd) => {
-            // parse degrees of separation
-            let degrees = cmd.degrees.clone().unwrap().parse::<usize>().unwrap();
-            // prove
-            controllers::degree_n_proof(
-                degrees,
-                cmd.previous_username.clone().unwrap(),
-                cmd.username.clone().unwrap(),
-                cmd.proof_path.clone().unwrap(),
-                cmd.output_dir.clone().unwrap(),
-                cmd.public_params_path.clone().unwrap(),
-                cmd.r1cs_path.clone().unwrap(),
-                cmd.wc_path.clone().unwrap(),
-            )
-        }
-        Commands::Verify(cmd) => {
-            // parse degrees of separation
-            let degrees = cmd.degrees.clone().unwrap().parse::<usize>().unwrap();
-            // verify
-            controllers::verify_proof(
-                degrees,
-                cmd.proof_path.clone().unwrap(),
-                cmd.public_params_path.clone().unwrap(),
-            );
-        }
+        Commands::GetAccount => controllers::get_account_info(),
+        Commands::CreateAccount(cmd) => controllers::make_account(cmd.username.clone().unwrap()),
     }
+
+    // match &cli.command {
+    //     Commands::Params(cmd) => {
+    //         controllers::gen_params(cmd.r1cs.clone().unwrap(), cmd.output.clone().unwrap())
+    //     }]
+    //     Commands::ProveSecret(cmd) => controllers::degree_0_proof(
+    //         cmd.secret.clone().unwrap(),
+    //         cmd.username.clone().unwrap(),
+    //         cmd.output_dir.clone().unwrap(),
+    //         cmd.public_params_path.clone().unwrap(),
+    //         cmd.r1cs_path.clone().unwrap(),
+    //         cmd.wc_path.clone().unwrap(),
+    //     ),
+    //     Commands::ProveSeparation(cmd) => {
+    //         // parse degrees of separation
+    //         let degrees = cmd.degrees.clone().unwrap().parse::<usize>().unwrap();
+    //         // prove
+    //         controllers::degree_n_proof(
+    //             degrees,
+    //             cmd.previous_username.clone().unwrap(),
+    //             cmd.username.clone().unwrap(),
+    //             cmd.proof_path.clone().unwrap(),
+    //             cmd.output_dir.clone().unwrap(),
+    //             cmd.public_params_path.clone().unwrap(),
+    //             cmd.r1cs_path.clone().unwrap(),
+    //             cmd.wc_path.clone().unwrap(),
+    //         )
+    //     }
+    //     Commands::Verify(cmd) => {
+    //         // parse degrees of separation
+    //         let degrees = cmd.degrees.clone().unwrap().parse::<usize>().unwrap();
+    //         // verify
+    //         controllers::verify_proof(
+    //             degrees,
+    //             cmd.proof_path.clone().unwrap(),
+    //             cmd.public_params_path.clone().unwrap(),
+    //         );
+    //     }
+    // }
 }
