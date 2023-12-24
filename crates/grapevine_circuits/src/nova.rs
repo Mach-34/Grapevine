@@ -1,9 +1,9 @@
 use super::{
     start_input,
     utils::{build_step_inputs, read_public_params},
-    z0_secondary, Fq, Fr, NovaProof, Params, DEFAULT_PUBLIC_PARAMS_PATH, DEFAULT_R1CS_PATH,
-    DEFAULT_WC_PATH, G1, G2,
+    z0_secondary, DEFAULT_PUBLIC_PARAMS_PATH, DEFAULT_R1CS_PATH, DEFAULT_WC_PATH,
 };
+use grapevine_common::{Fq, Fr, NovaProof, Params, G1, G2};
 use nova_scotia::{
     circom::{circuit::R1CS, reader::load_r1cs},
     continue_recursive_circuit, create_recursive_circuit, FileLocation,
@@ -192,7 +192,7 @@ pub fn continue_nova_proof(
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::utils::{compress_proof, decompress_proof, read_proof, write_proof, random_fr};
+    use crate::utils::{compress_proof, decompress_proof, random_fr, read_proof, write_proof};
 
     #[test]
     fn test_degree_0() {
@@ -474,10 +474,10 @@ mod test {
         let serialized = serde_json::to_string(&proof).unwrap().as_bytes().to_vec();
         println!("Uncompressed proof size: {}", serialized.len());
         println!("Compressed proof size: {}", compressed_proof.len());
-        
+
         // decompress the proof
         let decompressed_proof = decompress_proof(&compressed_proof[..]);
-        
+
         // verify the compressed then uncompressed proof
         let iterations = usernames.len() * 2;
         verify_nova_proof(&decompressed_proof, &public_params, iterations).unwrap();

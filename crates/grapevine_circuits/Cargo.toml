@@ -8,11 +8,12 @@ license.workspace = true
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
+grapevine_common.workspace = true
 nova-scotia.workspace = true
 nova-snark.workspace = true
 serde_json.workspace = true
 rand.workspace = true
 serde.workspace = true
-hex = "0.4.3"
-ff = "0.13.0"
+ff.workspace = true
+hex.workspace = true
 flate2 = "1.0.28"

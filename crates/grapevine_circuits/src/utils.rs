@@ -1,64 +1,12 @@
-use super::{
-    Params, EMPTY_SECRET, MAX_SECRET_CHARS, MAX_USERNAME_CHARS, SECRET_FIELD_LENGTH, ZERO,
-};
-use crate::Fr;
-use crate::NovaProof;
+use super::{EMPTY_SECRET, SECRET_FIELD_LENGTH, ZERO};
 use flate2::read::GzDecoder;
 use flate2::write::GzEncoder;
 use flate2::Compression;
-use serde::de::DeserializeOwned;
+use grapevine_common::utils::{convert_phrase_to_felts, convert_username_to_felt};
+use grapevine_common::{Fr, NovaProof, Params};
 use serde_json::{json, Value};
 use std::io::{Read, Write};
-use std::{collections::HashMap, env::current_dir, error::Error};
-
-/**
- * Converts a given word to array of 6 field elements
- * @dev split into 31-byte strings to fit in finite field and pad with 0's where necessary
- *
- * @param phrase - the string entered by user to compute hash for (will be length checked)
- * @return - array of 6 Fr elements
- */
-pub fn convert_phrase_to_felts(
-    phrase: &String,
-) -> Result<[String; SECRET_FIELD_LENGTH], Box<dyn Error>> {
-    // check
-    if phrase.len() > MAX_SECRET_CHARS {
-        return Err("Phrase must be <= 180 characters".into());
-    }
-
-    let mut chunks: [String; SECRET_FIELD_LENGTH] = Default::default();
-    for i in 0..SECRET_FIELD_LENGTH {
-        let start = i * 31;
-        let end = (i + 1) * 31;
-        let mut chunk: [u8; 32] = [0; 32];
-        if start >= phrase.len() {
-        } else if end > phrase.len() {
-            chunk[1..(phrase.len() - start + 1)].copy_from_slice(&phrase.as_bytes()[start..]);
-        } else {
-            chunk[1..32].copy_from_slice(&phrase.as_bytes()[start..end]);
-        }
-        chunk.reverse();
-        chunks[i] = format!("0x{}", hex::encode(chunk));
-    }
-
-    Ok(chunks)
-}
-
-/**
- * Converts a given username to a field element
- *
- * @param username - the username to convert to utf8 and into field element
- * @return - the username serialied into the field element
- */
-pub fn convert_username_to_felt(username: &String) -> Result<String, Box<dyn Error>> {
-    if username.len() > MAX_USERNAME_CHARS {
-        return Err("Phrase must be <= 180 characters".into());
-    }
-    let mut bytes: [u8; 32] = [0; 32];
-    bytes[1..(username.len() + 1)].copy_from_slice(&username.as_bytes()[..]);
-    bytes.reverse();
-    Ok(format!("0x{}", hex::encode(bytes)))
-}
+use std::{collections::HashMap, env::current_dir};
 
 /**
  * Given an input hashmap vec and some inputs, build the inputs for a compute
@@ -145,7 +93,7 @@ pub fn read_public_params<G1, G2>(path: &str) -> Params {
 
 /**
  * Write a Nova Proof to the filesystem
- * 
+ *
  * @param proof - the Nova Proof to write to fs
  * @path - the filepath to save the proof to - includes filename
  */
@@ -158,7 +106,7 @@ pub fn write_proof(proof: &NovaProof, path: std::path::PathBuf) {
 
 /**
  * Read a Nova Proof from the filesystem
- * 
+ *
  * @param path - the filepath to read the proof from
  */
 pub fn read_proof(path: std::path::PathBuf) -> NovaProof {
@@ -166,15 +114,6 @@ pub fn read_proof(path: std::path::PathBuf) -> NovaProof {
     let compressed_proof = std::fs::read(path).expect("Unable to read proof");
     // decompress the proof
     decompress_proof(&compressed_proof[..])
-}
-
-/**
- * Generates a new stringified random bn254 field element
- *
- * @return - a stringified random field element
- */
-pub fn random_fr() -> Fr {
-    ff::Field::random(rand::rngs::OsRng)
 }
 
 /**

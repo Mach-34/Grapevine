@@ -1,8 +1,9 @@
-use babyjubjub_rs::{PrivateKey, Point};
-use grapevine_circuits::{utils::random_fr, Fr};
+use babyjubjub_rs::{Point, PrivateKey};
+use grapevine_common::auth_secret::{AuthSecret, AuthSecretEncrypted, AuthSecretEncryptedUser};
+use grapevine_common::utils::random_fr;
+use grapevine_common::Fr;
 use num_bigint::{RandBigInt, ToBigInt};
 use serde::{Deserialize, Serialize};
-use crate::auth_secret::{AuthSecretEncrypted, AuthSecret};
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct GrapevineAccount {
@@ -45,11 +46,7 @@ impl GrapevineAccount {
     }
 
     pub fn encrypt_auth_secret(&self, recipient: Point) -> AuthSecretEncrypted {
-        AuthSecretEncrypted::new(
-            self.username.clone(),
-            self.auth_secret.clone(),
-            recipient,
-        )
+        AuthSecretEncrypted::new(self.username.clone(), self.auth_secret.clone(), recipient)
     }
 
     pub fn decrypt_auth_secret(&self, message: AuthSecretEncrypted) -> AuthSecret {
@@ -77,12 +74,10 @@ mod test {
     #[test]
     fn test_serialize() {
         let username = String::from("JP4G");
-        let account = Account::new(username);
-        println!("Key Before: 0x{}", hex::encode(account.private_key));
+        let account = GrapevineAccount::new(username);
         let json = serde_json::to_string(&account).unwrap();
-        // println!("Serialized: {:?}", json);
-        let deserialized = serde_json::from_str::<Account>(&json).unwrap();
+        let deserialized = serde_json::from_str::<GrapevineAccount>(&json).unwrap();
         let deserialized_key = hex::encode(deserialized.private_key);
-        println!("Deserialized key: 0x{}", deserialized_key);
+        assert_eq!(deserialized_key, hex::encode(account.private_key));
     }
 }

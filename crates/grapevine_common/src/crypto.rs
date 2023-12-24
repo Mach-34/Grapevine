@@ -1,16 +1,6 @@
 use babyjubjub_rs::{Point, PrivateKey};
-use ff::to_hex;
-use num_bigint::BigInt;
+use crate::compat::ff_ce_to_le_bytes;
 use sha256::digest;
-
-/**
- * Generates a new Baby Jubjub keypair
- *
- * @returns - the scalar representing the bjj private key
- */
-pub fn gen_bjj_key() -> BigInt {
-    return babyjubjub_rs::new_key().scalar_key();
-}
 
 /**
  * Computes an AES-CBC-128 Key from a Baby Jub Jub shared secret
@@ -25,7 +15,7 @@ pub fn gen_aes_key(sk: PrivateKey, pk: Point) -> ([u8; 16], [u8; 16]) {
     // serialize for hash digest
     let secret_buffer = [shared_secret.x, shared_secret.y]
         .iter()
-        .map(|x| to_hex(x).as_bytes().to_vec())
+        .map(|el| ff_ce_to_le_bytes(el))
         .flatten()
         .collect::<Vec<u8>>();
     // compute sha256 hash of shared secret

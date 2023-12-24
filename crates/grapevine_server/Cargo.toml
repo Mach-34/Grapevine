@@ -9,9 +9,16 @@ name = "grapevine-server"
 path = "src/main.rs"
 
 [dependencies]
-tokio = { version = "1.33.0", features = ["full"] }
+grapevine_common.workspace = true
+babyjubjub-rs.workspace = true
+tokio.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+num-bigint.workspace = true
+uuid.workspace = true
+jsonwebtoken.workspace = true
 tracing-subscriber = "0.3.17"
 tracing = "0.1.40"
-serde.workspace = true
 rocket = { version = "0.5.0", features = ["json"] }
-lazy_static = "1.4.0"
+mongodb = "2.8.0"
+

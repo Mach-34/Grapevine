@@ -5,26 +5,22 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
-clap = { version = "4.4.7", features = ["derive"] }
 nova-scotia.workspace = true
 nova-snark.workspace = true
 grapevine_circuits.workspace = true
-serde = "1.0.190"
+grapevine_common.workspace = true
+# ff.workspace = true
+ff.workspace = true
+ff_ce.workspace = true
+hex.workspace = true
+serde.workspace = true
 serde_json.workspace = true
-rand = "0.8.5"
-babyjubjub-rs = "0.0.10"
-num-bigint = "0.4.4"
-sha256 = "1.4.0"
-poseidon-rs = "0.0.10"
-ff = { package="ff_ce" , version= "0.11", features = ["derive"] }
-aes = "0.8.3"
-cbc = "0.1.2"
-hex = "0.4.3"
-hex-literal = "0.4.1"
+rand.workspace = true
+tokio.workspace = true
+num-bigint.workspace = true
+babyjubjub-rs.workspace = true
+clap = { version = "4.4.7", features = ["derive"] }
 reqwest = "0.11.23"
-tokio = { version = "1.33.0", features = ["full"] }
+poseidon-rs = "0.0.10"
+jsonwebtoken = "9.2.0"
 
-
-[[bin]]
-name = "grapevine"
-path = "src/main.rs"
