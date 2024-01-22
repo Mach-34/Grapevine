@@ -12,64 +12,64 @@ use rocket::response::status;
 use rocket::serde::json::Json;
 use rocket::State;
 
-#[post("/user/create", data = "<user_req>")]
-pub async fn create_user(
-    db: &State<MongoDB>,
-    user_req: Json<CreateUserRequest>,
-) -> Result<Json<ObjectId>, Status> {
-    // check the username is not too long
-    let username = user_req.0.username;
-    match &username.len() <= &MAX_USERNAME_CHARS {
-        true => (),
-        false => {
-            return Err((
-                GrapevineServerError::UsernameTooLong(username.clone()),
-                Status::BadRequest,
-            ))
-        }
-    };
-    // check the username is ascii
-    match username.is_ascii() {
-        true => (),
-        false => {
-            return Err((
-                GrapevineServerError::UsernameNotAscii(username.clone()),
-                Status::BadRequest,
-            ))
-        }
-    };
-    // deserialize the pubkey and signature & convert username to verifiable message format
-    let pubkey = babyjubjub_rs::decompress_point(user_req.0.pubkey).unwrap();
-    let signature = babyjubjub_rs::decompress_signature(&user_req.0.signature).unwrap();
-    let msg = BigInt::from_bytes_le(Sign::Plus, &convert_username_to_fr(&username).unwrap()[..]);
+// #[post("/user/create", data = "<user_req>")]
+// pub async fn create_user(
+//     db: &State<MongoDB>,
+//     user_req: Json<CreateUserRequest>,
+// ) -> Result<Json<ObjectId>, Status> {
+//     // check the username is not too long
+//     let username = user_req.0.username;
+//     match &username.len() <= &MAX_USERNAME_CHARS {
+//         true => (),
+//         false => {
+//             return Err((
+//                 GrapevineServerError::UsernameTooLong(username.clone()),
+//                 Status::BadRequest,
+//             ))
+//         }
+//     };
+//     // check the username is ascii
+//     match username.is_ascii() {
+//         true => (),
+//         false => {
+//             return Err((
+//                 GrapevineServerError::UsernameNotAscii(username.clone()),
+//                 Status::BadRequest,
+//             ))
+//         }
+//     };
+//     // deserialize the pubkey and signature & convert username to verifiable message format
+//     let pubkey = babyjubjub_rs::decompress_point(user_req.0.pubkey).unwrap();
+//     let signature = babyjubjub_rs::decompress_signature(&user_req.0.signature).unwrap();
+//     let msg = BigInt::from_bytes_le(Sign::Plus, &convert_username_to_fr(&username).unwrap()[..]);
 
-    // verify the signature over the username by the pubkey
-    match babyjubjub_rs::verify(pubkey, signature, msg) {
-        true => (),
-        false => {
-            return Err(status::Custom(
-                Status::BadRequest,
-                GrapevineServerError::Signature(
-                    "Could not create new user: error verifying signature by pubkey over username"
-                        .to_string(),
-                ),
-            ))
-        }
-    };
+//     // verify the signature over the username by the pubkey
+//     match babyjubjub_rs::verify(pubkey, signature, msg) {
+//         true => (),
+//         false => {
+//             return Err(status::Custom(
+//                 Status::BadRequest,
+//                 GrapevineServerError::Signature(
+//                     "Could not create new user: error verifying signature by pubkey over username"
+//                         .to_string(),
+//                 ),
+//             ))
+//         }
+//     };
 
-    // attempt to create a new user in the db
-    let user = User {
-        id: None,
-        username: username.clone(),
-        pubkey: user_req.0.pubkey.clone(),
-        auth_secret: user_req.0.auth_secret.clone(),
-    };
-    let res = db.create_user(user).await;
-    match res {
-        Ok(id) => Ok(Json(id)),
-        Err(e) => Err((e, Status::BadRequest)),
-    }
-}
+//     // attempt to create a new user in the db
+//     let user = User {
+//         id: None,
+//         username: username.clone(),
+//         pubkey: user_req.0.pubkey.clone(),
+//         auth_secret: user_req.0.auth_secret.clone(),
+//     };
+//     let res = db.create_user(user).await;
+//     match res {
+//         Ok(id) => Ok(Json(id)),
+//         Err(e) => Err((e, Status::BadRequest)),
+//     }
+// }
 
 
 // /**
