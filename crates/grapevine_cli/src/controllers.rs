@@ -1,7 +1,7 @@
-// use crate::account::GrapevineAccount;
-// use babyjubjub_rs::PrivateKey;
+use crate::account::GrapevineAccount;
+use babyjubjub_rs::PrivateKey;
 // use grapevine_common::{Fr, NovaProof, G1, G2};
-// use grapevine_common::utils::random_fr;
+use grapevine_common::utils::random_fr;
 // use grapevine_circuits::{
 //     nova::{continue_nova_proof, get_public_params, get_r1cs, nova_proof, verify_nova_proof},
 // };
@@ -9,7 +9,7 @@
 // use nova_snark::PublicParams;
 // use rand::random;
 // use std::env::current_dir;
-// use std::path::Path;
+use std::path::Path;
 // use std::time::Instant;
 // /**
 //  * Generate nova public parameters file and save to fs for reuse
@@ -50,106 +50,106 @@
 //     println!("Saved public parameters to {}", &output_file.display());
 // }
 
-// pub fn get_account_info() {
-//     // get grapevine path
-//     let grapevine_dir_path = match std::env::var("HOME") {
-//         Ok(home) => Path::new(&home).join(".grapevine"),
-//         Err(_) => {
-//             println!("Error: no home directory found");
-//             return;
-//         }
-//     };
-//     let grapevine_key_path = grapevine_dir_path.join("grapevine.key");
-//     match grapevine_key_path.exists() {
-//         true => (),
-//         false => {
-//             println!(
-//                 "No Grapevine account found at {}",
-//                 grapevine_key_path.display()
-//             );
-//             return;
-//         }
-//     };
-//     // read from the saved account file
-//     let json = std::fs::read_to_string(grapevine_key_path).unwrap();
-//     let account = serde_json::from_str::<GrapevineAccount>(&json).unwrap();
-//     println!("Username: {}", account.username());
-//     println!("Private Key: 0x{}", hex::encode(account.private_key_raw()));
-//     println!(
-//         "Auth Secret: 0x{}",
-//         hex::encode(account.auth_secret().to_bytes())
-//     );
-// }
+pub fn get_account_info() {
+    // get grapevine path
+    let grapevine_dir_path = match std::env::var("HOME") {
+        Ok(home) => Path::new(&home).join(".grapevine"),
+        Err(_) => {
+            println!("Error: no home directory found");
+            return;
+        }
+    };
+    let grapevine_key_path = grapevine_dir_path.join("grapevine.key");
+    match grapevine_key_path.exists() {
+        true => (),
+        false => {
+            println!(
+                "No Grapevine account found at {}",
+                grapevine_key_path.display()
+            );
+            return;
+        }
+    };
+    // read from the saved account file
+    let json = std::fs::read_to_string(grapevine_key_path).unwrap();
+    let account = serde_json::from_str::<GrapevineAccount>(&json).unwrap();
+    println!("Username: {}", account.username());
+    println!("Private Key: 0x{}", hex::encode(account.private_key_raw()));
+    println!(
+        "Auth Secret: 0x{}",
+        hex::encode(account.auth_secret().to_bytes())
+    );
+}
 
-// pub fn make_account(username: String) {
-//     // get grapevine path
-//     let grapevine_dir_path = match std::env::var("HOME") {
-//         Ok(home) => Path::new(&home).join(".grapevine"),
-//         Err(e) => {
-//             println!("Error: no home directory found");
-//             return;
-//         }
-//     };
-//     let grapevine_key_path = grapevine_dir_path.join("grapevine.key");
-//     // check if grapevine.key exists
-//     match grapevine_key_path.exists() {
-//         true => {
-//             println!(
-//                 "Error: Grapevine account already exists at {}",
-//                 &grapevine_key_path.display()
-//             );
-//             return;
-//         }
-//         false => (),
-//     };
-//     // create account
-//     let account = GrapevineAccount::new(username);
-//     // save account to fs
-//     let json = serde_json::to_string(&account).unwrap();
-//     std::fs::create_dir(grapevine_dir_path.clone()).unwrap();
-//     std::fs::write(&grapevine_key_path, json).unwrap();
-//     println!(
-//         "Created Grapevine account at {}",
-//         grapevine_key_path.display()
-//     );
-//     get_account_info();
-// }
+pub fn make_account(username: String) {
+    // get grapevine path
+    let grapevine_dir_path = match std::env::var("HOME") {
+        Ok(home) => Path::new(&home).join(".grapevine"),
+        Err(e) => {
+            println!("Error: no home directory found");
+            return;
+        }
+    };
+    let grapevine_key_path = grapevine_dir_path.join("grapevine.key");
+    // check if grapevine.key exists
+    match grapevine_key_path.exists() {
+        true => {
+            println!(
+                "Error: Grapevine account already exists at {}",
+                &grapevine_key_path.display()
+            );
+            return;
+        }
+        false => (),
+    };
+    // create account
+    let account = GrapevineAccount::new(username);
+    // save account to fs
+    let json = serde_json::to_string(&account).unwrap();
+    std::fs::create_dir(grapevine_dir_path.clone()).unwrap();
+    std::fs::write(&grapevine_key_path, json).unwrap();
+    println!(
+        "Created Grapevine account at {}",
+        grapevine_key_path.display()
+    );
+    get_account_info();
+}
 
-// pub async fn health() {
-//     let text = reqwest::get("http://localhost:8000/health")
-//         .await
-//         .unwrap()
-//         .text()
-//         .await
-//         .unwrap();
-//     println!("Health: {}", text);
-// }
+pub async fn health() {
+    let text = reqwest::get("http://localhost:8000/health")
+        .await
+        .unwrap()
+        .text()
+        .await
+        .unwrap();
+    println!("Health: {}", text);
+}
 
-// // pub fn make_or_get_key() -> Result<Account, std::env::VarError> {
-// //     // check whether .grapevine exists
-// //     let grapevine_path = match std::env::var("HOME") {
-// //         Ok(home) => Path::new(&home).join(".grapevine"),
-// //         Err(e) => return Err(e),
-// //     };
-// //     // if does not exist, create the dir
-// //     if !grapevine_path.exists() {
-// //         println!("Creating .grapevine directory...");
-// //         std::fs::create_dir(grapevine_path.clone()).unwrap();
-// //     }
-// //     // check if key exists
-// //     let key_path = grapevine_path.join("grapevine.key");
-// //     if !key_path.exists() {
-// //         println!("Generating new key...");
-// //         let key = random_fr();
-// //         let key_bytes = key.to_bytes();
-// //         std::fs::write(key_path.clone(), key_bytes).unwrap();
-// //         println!("Saved key to {}", key_path.display());
-// //     }
-// //     // get key from fs
-// //     let key_bytes = std::fs::read(key_path.clone()).unwrap();
-// //     let key = PrivateKey::import(key_bytes).unwrap();
-// //     return Ok(key);
-// // }
+pub fn make_or_get_key() -> Result<PrivateKey, std::env::VarError> {
+    // check whether .grapevine exists
+    let grapevine_path = match std::env::var("HOME") {
+        Ok(home) => Path::new(&home).join(".grapevine"),
+        Err(e) => return Err(e),
+    };
+    // if does not exist, create the dir
+    if !grapevine_path.exists() {
+        println!("Creating .grapevine directory...");
+        std::fs::create_dir(grapevine_path.clone()).unwrap();
+    }
+    // check if key exists
+    let key_path = grapevine_path.join("grapevine.key");
+    if !key_path.exists() {
+        println!("Generating new key...");
+        let key = random_fr();
+        let key_bytes = key.to_bytes();
+        std::fs::write(key_path.clone(), key_bytes).unwrap();
+        println!("Saved key to {}", key_path.display());
+    }
+    // get key from fs
+    let key_bytes = std::fs::read(key_path.clone()).unwrap();
+    let key = PrivateKey::import(key_bytes).unwrap();
+    return Ok(key);
+}
 
 // #[cfg(test)]
 // mod test {
