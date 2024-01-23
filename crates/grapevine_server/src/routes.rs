@@ -1,5 +1,5 @@
 use crate::models::user::User;
-use crate::mongo::MongoDB;
+// use crate::mongo::MongoDB;
 use grapevine_common::auth_secret::AuthSecretEncrypted;
 use grapevine_common::errors::GrapevineServerError;
 use grapevine_common::http::requests::CreateUserRequest;
@@ -70,7 +70,6 @@ use rocket::State;
 //         Err(e) => Err((e, Status::BadRequest)),
 //     }
 // }
-
 
 // /**
 //  * Issues a new session key for a given username

@@ -1,23 +1,40 @@
-use crate::models::user::User;
+use crate::models::{nonce::Nonce, user::User};
 use crate::{DATABASE, MONGODB_URI};
+use grapevine_common::errors::GrapevineServerError;
 use mongodb::bson::{doc, oid::ObjectId};
 use mongodb::options::{ClientOptions, FindOneOptions, ServerApi, ServerApiVersion};
 use mongodb::{Client, Collection};
-use grapevine_common::errors::GrapevineServerError;
 
-pub struct MongoDB {
+pub struct GrapvineMongo {
+    nonces: Collection<Nonce>,
     users: Collection<User>,
 }
 
-impl MongoDB {
+impl GrapvineMongo {
     pub async fn init() -> Self {
         let mut client_options = ClientOptions::parse(MONGODB_URI).await.unwrap();
         let server_api = ServerApi::builder().version(ServerApiVersion::V1).build();
         client_options.server_api = Some(server_api);
         let client = Client::with_options(client_options).unwrap();
         let db = client.database(DATABASE);
+        let nonces = db.collection("nonces");
         let users = db.collection("users");
-        Self { users }
+        Self { nonces, users }
+    }
+
+    pub async fn increment_nonce(&self, pubkey: &str) {
+        let filter = doc! { "pubkey": pubkey };
+        let update = doc! { "$inc": { "nonce": 1 } };
+        self.nonces.update_one(filter, update, None);
+    }
+
+    pub async fn get_nonce(&self, pubkey: &str) -> u128 {
+        let filter = doc! { "pubkey": pubkey };
+        let nonce = self.nonces.find_one(filter, None).await.unwrap();
+        match nonce {
+            Some(nonce) => nonce.nonce,
+            None => 1,
+        }
     }
 
     pub async fn get_user(&self, username: String) -> Option<User> {
