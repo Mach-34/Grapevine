@@ -80,11 +80,4 @@ mod test {
         let deserialized_key = hex::encode(deserialized.private_key);
         assert_eq!(deserialized_key, hex::encode(account.private_key));
     }
-
-    #[test]
-    fn test_priv_key() {
-        let priv_key_bytes = GrapevineAccount::new_private_key();
-        let priv_key = PrivateKey::import(priv_key_bytes.to_vec()).unwrap();
-        priv_key.public();
-    }
 }

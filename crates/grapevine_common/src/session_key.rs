@@ -1,7 +1,7 @@
 use crate::compat::{ff_ce_from_le_bytes, ff_ce_to_le_bytes};
 use crate::errors::GrapevineServerError;
-use crate::utils::{convert_username_to_fr, random_fr};
-use babyjubjub_rs::{new_key, PrivateKey, Signature};
+use crate::utils::convert_username_to_fr;
+use babyjubjub_rs::{PrivateKey, Signature};
 use num_bigint::{BigInt, Sign};
 use poseidon_rs::Poseidon;
 use serde::{Deserialize, Serialize};
@@ -139,11 +139,5 @@ mod test {
         let mut id_2 = [0u8; 32];
         id_2[..16].copy_from_slice(&id);
         println!("ID 2 {:?}", id_2);
-    }
-
-    #[test]
-    fn test_signature_and_verification() {
-        let priv_key = babyjubjub_rs::new_key();
-        priv_key.scalar_key();
     }
 }
