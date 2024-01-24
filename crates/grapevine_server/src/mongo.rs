@@ -1,4 +1,4 @@
-use crate::models::{nonce::Nonce, user::User};
+use crate::models::user::User;
 use crate::{DATABASE, MONGODB_URI};
 use grapevine_common::errors::GrapevineServerError;
 use mongodb::bson::{doc, oid::ObjectId};
@@ -6,7 +6,6 @@ use mongodb::options::{ClientOptions, FindOneOptions, ServerApi, ServerApiVersio
 use mongodb::{Client, Collection};
 
 pub struct GrapvineMongo {
-    nonces: Collection<Nonce>,
     users: Collection<User>,
 }
 
@@ -17,23 +16,26 @@ impl GrapvineMongo {
         client_options.server_api = Some(server_api);
         let client = Client::with_options(client_options).unwrap();
         let db = client.database(DATABASE);
-        let nonces = db.collection("nonces");
         let users = db.collection("users");
-        Self { nonces, users }
+        Self { users }
     }
 
-    pub async fn increment_nonce(&self, pubkey: &str) {
-        let filter = doc! { "pubkey": pubkey };
+    pub async fn increment_nonce(&self, username: &str) {
+        let filter = doc! { "username": username };
         let update = doc! { "$inc": { "nonce": 1 } };
-        self.nonces.update_one(filter, update, None);
+        self.users
+            .update_one(filter, update, None)
+            .await
+            .expect("Error incrementing nonce");
     }
 
-    pub async fn get_nonce(&self, pubkey: &str) -> u128 {
-        let filter = doc! { "pubkey": pubkey };
-        let nonce = self.nonces.find_one(filter, None).await.unwrap();
-        match nonce {
-            Some(nonce) => nonce.nonce,
-            None => 1,
+    pub async fn get_nonce(&self, username: &str) -> u64 {
+        // Verify user existence
+        let filter = doc! { "username": username };
+        let user = self.users.find_one(filter, None).await.unwrap();
+        match user {
+            Some(user) => user.nonce,
+            None => 0,
         }
     }
 

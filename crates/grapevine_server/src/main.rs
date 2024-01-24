@@ -7,8 +7,10 @@ use grapevine_common::session_key::{Server, SessionKey};
 use grapevine_common::utils::convert_username_to_fr;
 use jsonwebtoken::errors::Error;
 use jsonwebtoken::{encode, Algorithm, EncodingKey, Header};
+use models::user;
 use mongo::GrapvineMongo;
 // 👈 New!
+use crate::guards::NonceGuard;
 use mongodb::{
     bson::{doc, oid::ObjectId},
     options::{ClientOptions, FindOneOptions, ServerApi, ServerApiVersion},
@@ -25,6 +27,7 @@ use std::collections::HashMap;
 use std::sync::Mutex;
 use uuid::Uuid;
 
+mod guards;
 mod models;
 mod mongo;
 mod routes;
@@ -91,47 +94,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .unwrap();
 
     Ok(())
-}
-
-struct NonceGuard {
-    // pubkey: String,
-    // TODO: Replace with signature
-    nonce: u128,
-}
-
-#[rocket::async_trait]
-impl<'r> FromRequest<'r> for NonceGuard {
-    type Error = ();
-
-    async fn from_request(request: &'r Request<'_>) -> request::Outcome<Self, Self::Error> {
-        let mongo_request = request.guard::<&State<GrapvineMongo>>().await;
-        let mongo = mongo_request.unwrap();
-        // println!("Nonce: {}", nonce.unwrap().nonce);
-        let auth_string = request.headers().get_one("Authorization");
-        if auth_string.is_some() {
-            let split: Vec<&str> = auth_string.unwrap().split("-").collect();
-            if split.len() == 2 {
-                // Public key
-                let pubkey = split[0];
-                // TODO: Switch nonce to signature
-                // Nonce
-                let nonce: u128 = split[1].parse().expect("Not a valid number.");
-                let mongo_nonce = mongo.get_nonce(pubkey).await;
-                match mongo_nonce == nonce {
-                    true => Success(NonceGuard { nonce }),
-                    // Mismatched nonce or public key
-                    false => Failure((Status::BadRequest, ())),
-                }
-            } else {
-                // Improperly formatted authorization header
-                Failure((Status::BadRequest, ()))
-            }
-        } else {
-            // Authorization header is missing
-            // TODO: Add verbose messaging
-            Failure((Status::Unauthorized, ()))
-        }
-    }
 }
 
 #[get("/action")]
