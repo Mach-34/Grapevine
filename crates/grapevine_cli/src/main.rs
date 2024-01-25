@@ -1,6 +1,13 @@
+#![feature(build_hasher_simple_hash_one)]
 use clap::{Args, Parser, Subcommand};
-pub mod controllers;
-pub mod account;
+
+mod controllers;
+mod account;
+mod artifacts;
+mod utils;
+mod errors;
+
+pub const SERVER_URL: &str = "http://localhost:8000";
 
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
@@ -12,13 +19,12 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
-    // Generate public parameters
-    // Params(ParamsArgs),
-    // // Check stored Grapevine Acocunt info
-    // GetAccount,
-    // // Create a new Grapevine Account
-    CreateAccount(CreateAccountArgs),
+    // dummy health check command
     Health,
+    // Create a new Grapevine Account
+    RegisterAccount(RegisterAccountArgs),
+    // Add yourself as a connection to another Grapevine Account
+    AddConnection(AddConnectionArgs),
 }
 
 // #[derive(Args)]
@@ -28,7 +34,12 @@ enum Commands {
 // }
 
 #[derive(Args)]
-struct CreateAccountArgs {
+struct RegisterAccountArgs {
+    username: Option<String>,
+}
+
+#[derive(Args)]
+struct AddConnectionArgs {
     username: Option<String>,
 }
 
@@ -39,13 +50,13 @@ struct CreateAccountArgs {
 pub async fn main() {
     let cli = Cli::parse();
 
-    match &cli.command {
+    _ = match &cli.command {
         // Commands::Params(cmd) => {
         //     controllers::gen_params(cmd.r1cs.clone().unwrap(), cmd.output.clone().unwrap())
         // }
-        // Commands::GetAccount => controllers::get_account_info(),
-        Commands::CreateAccount(cmd) => controllers::make_account(cmd.username.clone().unwrap()),
         Commands::Health => controllers::health().await,
+        Commands::RegisterAccount(cmd) => controllers::register(cmd.username.clone().unwrap()).await,
+        Commands::AddConnection(cmd) => controllers::add_connection(cmd.username.clone().unwrap()).await,
     }
 
     // match &cli.command {

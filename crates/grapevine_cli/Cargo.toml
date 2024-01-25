@@ -20,7 +20,10 @@ tokio.workspace = true
 num-bigint.workspace = true
 babyjubjub-rs.workspace = true
 clap = { version = "4.4.7", features = ["derive"] }
-reqwest = "0.11.23"
+reqwest = { version = "0.11.23", features = ["json"] }
 poseidon-rs = "0.0.10"
 jsonwebtoken = "9.2.0"
 
+[[bin]]
+name = "grapevine"
+path = "src/main.rs"

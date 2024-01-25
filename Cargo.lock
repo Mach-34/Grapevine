@@ -41,9 +41,9 @@ dependencies = [
 
 [[package]]
 name = "ahash"
-version = "0.8.7"
+version = "0.8.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "77c3a9648d43b9cd48db467b3f87fdd6e146bcc88ab0180006cef2179fe11d01"
+checksum = "91429305e9f0a25f6205c5b8e0d2db09e0708a7a6df0f42212bb56c32c8ac97a"
 dependencies = [
  "cfg-if",
  "getrandom",
@@ -1048,6 +1048,7 @@ checksum = "645c6916888f6cb6350d2550b80fb63e734897a8498abe35cfb732b6487804b0"
 dependencies = [
  "futures-channel",
  "futures-core",
+ "futures-executor",
  "futures-io",
  "futures-sink",
  "futures-task",
@@ -1228,17 +1229,20 @@ name = "grapevine_common"
 version = "0.1.0"
 dependencies = [
  "aes",
+ "ahash",
  "babyjubjub-rs",
  "cbc",
  "ff",
  "ff_ce",
  "hex",
+ "mongodb",
  "nova-scotia",
  "nova-snark",
  "num-bigint 0.4.4",
  "poseidon-rs 0.0.8",
  "rand 0.8.5",
  "serde",
+ "serde_bytes",
  "serde_json",
  "sha256",
  "uuid",
@@ -1249,6 +1253,7 @@ name = "grapevine_server"
 version = "0.1.0"
 dependencies = [
  "babyjubjub-rs",
+ "futures",
  "grapevine_common",
  "jsonwebtoken",
  "mongodb",

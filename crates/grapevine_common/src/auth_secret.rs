@@ -15,10 +15,7 @@ pub struct AuthSecretEncrypted {
     pub username: String,
     pub recipient: [u8; 32],
     pub ephemeral_key: [u8; 32],
-    #[serde(
-        serialize_with = "serialize_byte_buf",
-        deserialize_with = "deserialize_byte_buf"
-    )]
+    #[serde(with = "serde_bytes")]
     pub ciphertext: [u8; 48],
 }
 
@@ -82,7 +79,7 @@ impl AuthSecretEncryptedUser for AuthSecretEncrypted {
         let (aes_key, aes_iv) = gen_aes_key(recipient, ephm_pk);
         // decrypt the auth secret
         let mut buf = self.ciphertext;
-        let pt: [u8; 32] = Aes128CbcDec::new(aes_key[..].into(), aes_iv[..].into())
+        let mut pt: [u8; 32] = Aes128CbcDec::new(aes_key[..].into(), aes_iv[..].into())
             .decrypt_padded_mut::<Pkcs7>(&mut buf)
             .unwrap()
             .try_into()
@@ -113,6 +110,8 @@ mod test {
         let decrypted_auth_secret = encrypted_auth_secret.decrypt(recipient_sk);
         // check that the auth secret is the same
         assert!(decrypted_auth_secret.auth_secret.eq(&auth_secret));
+        println!("auth_secret_1 {:?}", auth_secret);
+        println!("auth_secret_2 {:?}", decrypted_auth_secret.auth_secret);
     }
 
     #[test]

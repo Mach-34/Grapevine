@@ -1,8 +1,11 @@
-use babyjubjub_rs::{Point, PrivateKey};
+use std::path::PathBuf;
+
+use babyjubjub_rs::{Point, PrivateKey, Signature};
 use grapevine_common::auth_secret::{AuthSecret, AuthSecretEncrypted, AuthSecretEncryptedUser};
-use grapevine_common::utils::random_fr;
+use grapevine_common::compat::ff_ce_from_le_bytes;
+use grapevine_common::utils::{convert_username_to_fr, random_fr};
 use grapevine_common::Fr;
-use num_bigint::{RandBigInt, ToBigInt};
+use num_bigint::{BigInt, RandBigInt, Sign, ToBigInt};
 use serde::{Deserialize, Serialize};
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
@@ -29,8 +32,22 @@ impl GrapevineAccount {
         }
     }
 
+    /**
+     * Reads an account saved to the filesystem
+     */
+    pub fn from_fs(path: PathBuf) -> Result<GrapevineAccount, serde_json::Error> {
+        let account = std::fs::read_to_string(path).unwrap();
+        serde_json::from_str(&account)
+    }
+
     pub fn username(&self) -> &String {
         &self.username
+    }
+
+    pub fn pubkey(&self) -> Point {
+        PrivateKey::import(self.private_key.to_vec())
+            .unwrap()
+            .public()
     }
 
     pub fn private_key_raw(&self) -> &[u8; 32] {
@@ -63,6 +80,14 @@ impl GrapevineAccount {
         let sk_raw = rng.gen_biguint(1024).to_bigint().unwrap();
         let (_, sk_raw_bytes) = sk_raw.to_bytes_be();
         sk_raw_bytes[..32].try_into().unwrap()
+    }
+
+    pub fn sign_username(&self) -> Signature {
+        let message = BigInt::from_bytes_le(
+            Sign::Plus,
+            &convert_username_to_fr(&self.username).unwrap()[..],
+        );
+        self.private_key().sign(message).unwrap()
     }
 }
 

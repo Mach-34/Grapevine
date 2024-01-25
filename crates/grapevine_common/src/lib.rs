@@ -9,6 +9,7 @@ pub mod http;
 pub mod serde;
 pub mod session_key;
 pub mod utils;
+pub mod models;
 
 pub type G1 = provider::bn256_grumpkin::bn256::Point;
 pub type G2 = provider::bn256_grumpkin::grumpkin::Point;

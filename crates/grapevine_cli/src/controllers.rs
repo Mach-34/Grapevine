@@ -1,7 +1,12 @@
 use crate::account::GrapevineAccount;
-use babyjubjub_rs::PrivateKey;
+use crate::errors::GrapevineCLIError;
+use crate::utils::artifacts_guard;
+use babyjubjub_rs::{decompress_point, PrivateKey};
 // use grapevine_common::{Fr, NovaProof, G1, G2};
+use grapevine_common::http::requests::CreateUserRequest;
 use grapevine_common::utils::random_fr;
+use grapevine_common::models::user::User;
+use ff::PrimeField;
 // use grapevine_circuits::{
 //     nova::{continue_nova_proof, get_public_params, get_r1cs, nova_proof, verify_nova_proof},
 // };
@@ -10,47 +15,71 @@ use grapevine_common::utils::random_fr;
 // use rand::random;
 // use std::env::current_dir;
 use std::path::Path;
-// use std::time::Instant;
-// /**
-//  * Generate nova public parameters file and save to fs for reuse
-//  *
-//  * @param r1cs_path - relative path to the r1cs file to use to compute public params
-//  * @param output_path - relative path to save public params output json
-//  */
-// pub fn gen_params(r1cs_path: String, output_path: String) {
-//     // get file paths
-//     let root = current_dir().unwrap();
-//     let r1cs_file = root.join(r1cs_path);
-//     let output_file = root.join(output_path).join("public_params.json");
-//     println!("Grapevine: Generate public parameters from R1CS");
-//     println!("Using R1CS file: {}", &r1cs_file.display());
-//     println!("Saving artifact to {}", &output_file.display());
-//     println!("Generating parameters (may take ~5 minutes)...");
 
-//     // start timer
-//     let start: Instant = Instant::now();
+/**
+ * Register a new user on Grapevine
+ *
+ * @param username - the username to register
+ */
+pub async fn register(username: String) -> Result<(), GrapevineCLIError> {
+    // make account
+    let account = make_or_get_account(username.clone())?;
+    // sign the username
+    let signature = account.sign_username();
+    // encrypt auth secret with own pubkey for recovery
+    let auth_secret_encrypted = account.encrypt_auth_secret(account.pubkey());
+    // build request body
+    let body = CreateUserRequest {
+        username: username.clone(),
+        pubkey: account.pubkey().compress(),
+        auth_secret: auth_secret_encrypted,
+        signature: signature.compress(),
+    };
+    // send create user request
+    let url = format!("{}/user/create", crate::SERVER_URL);
+    let client = reqwest::Client::new();
+    let res = client.post(&url).json(&body).send().await.unwrap();
+    // handle response from server
+    match res.status() {
+        reqwest::StatusCode::CREATED => {
+            println!("Registered user {}", username);
+            Ok(())
+        }
+        reqwest::StatusCode::BAD_REQUEST => {
+            println!("Error: username {} already exists", username);
+            Ok(())
+        }
+        _ => {
+            let text = res.status().to_string();
+            println!("Error: {}", text);
+            Err(GrapevineCLIError::ServerError(text))
+        }
+    }
+}
 
-//     // load r1cs from fs
-//     let r1cs = load_r1cs::<G1, G2>(&FileLocation::PathBuf(r1cs_file));
-
-//     // compute public parameters
-//     let public_params: PublicParams<G1, G2, _, _> = create_public_params(r1cs.clone());
-
-//     // log elapsed time to compute parameters
-//     println!(
-//         "Computation completed- took {:?}. Saving...",
-//         start.elapsed()
-//     );
-
-//     // save public params to fs
-//     let params_json = serde_json::to_string(&public_params).unwrap();
-//     std::fs::write(&output_file, &params_json).unwrap();
-
-//     // output completion message
-//     println!("Saved public parameters to {}", &output_file.display());
-// }
+/**
+ * Add a connection to another user by providing them your auth secret
+ *
+ * @param username - the username of the user to add a connection to
+ */
+pub async fn add_connection(username: String) -> Result<(), GrapevineCLIError> {
+    // get own account
+    let account = get_account()?;
+    // download own auth secret
+    // @todo: maybe custom route to get own auth secret and other's pubkey?
+    let url = format!("{}/user/{}", crate::SERVER_URL, account.username());
+    let data: User = reqwest::get(&url).await.unwrap().json::<User>().await.unwrap();
+    let secret = account.decrypt_auth_secret(data.auth_secret);
+    // // get connection's pubkey
+    // let url = format!("{}/user/{}", crate::SERVER_URL, username);
+    // let data: User = reqwest::get(&url).await.unwrap().json::<User>().await.unwrap();
+    // let recipient = decompress_point(data.pubkey).unwrap();
+    // let encrypted_auth_secret = account.encrypt_auth_secret(recipient);
+    Ok(())
+}
 
 pub fn get_account_info() {
+    // @TODO: pass info in
     // get grapevine path
     let grapevine_dir_path = match std::env::var("HOME") {
         Ok(home) => Path::new(&home).join(".grapevine"),
@@ -81,41 +110,50 @@ pub fn get_account_info() {
     );
 }
 
-pub fn make_account(username: String) {
+pub fn make_or_get_account(username: String) -> Result<GrapevineAccount, GrapevineCLIError> {
     // get grapevine path
     let grapevine_dir_path = match std::env::var("HOME") {
         Ok(home) => Path::new(&home).join(".grapevine"),
         Err(e) => {
-            println!("Error: no home directory found");
-            return;
+            return Err(GrapevineCLIError::FsError(String::from(
+                "Couldn't find home directory??",
+            )))
         }
     };
-    let grapevine_key_path = grapevine_dir_path.join("grapevine.key");
-    // check if grapevine.key exists
-    match grapevine_key_path.exists() {
-        true => {
+    // if ~/.grapevine doesn't exist, create it
+    if !grapevine_dir_path.exists() {
+        std::fs::create_dir(grapevine_dir_path.clone()).unwrap();
+    };
+    let grapevine_account_path = grapevine_dir_path.join("grapevine.key");
+    // check if grapevine.key exists and pull
+    let account = match grapevine_account_path.exists() {
+        true => match GrapevineAccount::from_fs(grapevine_account_path) {
+            Ok(account) => account,
+            Err(e) => {
+                return Err(GrapevineCLIError::FsError(String::from(
+                    "Error reading existing Grapevine account from filesystem",
+                )))
+            }
+        },
+        false => {
+            let account = GrapevineAccount::new(username);
+            let json = serde_json::to_string(&account).unwrap();
+            std::fs::write(&grapevine_account_path, json).unwrap();
             println!(
-                "Error: Grapevine account already exists at {}",
-                &grapevine_key_path.display()
+                "Created Grapevine account at {}",
+                grapevine_account_path.display()
             );
-            return;
+            account
         }
-        false => (),
     };
-    // create account
-    let account = GrapevineAccount::new(username);
-    // save account to fs
-    let json = serde_json::to_string(&account).unwrap();
-    std::fs::create_dir(grapevine_dir_path.clone()).unwrap();
-    std::fs::write(&grapevine_key_path, json).unwrap();
-    println!(
-        "Created Grapevine account at {}",
-        grapevine_key_path.display()
-    );
     get_account_info();
+    Ok(account)
 }
 
-pub async fn health() {
+pub async fn health() -> Result<(), GrapevineCLIError> {
+    // ensure artifacts exist
+    artifacts_guard().await.unwrap();
+    // get health status
     let text = reqwest::get("http://localhost:8000/health")
         .await
         .unwrap()
@@ -123,6 +161,33 @@ pub async fn health() {
         .await
         .unwrap();
     println!("Health: {}", text);
+    return Ok(());
+}
+
+/**
+ * Attempts to get Grapevine account from fs and fails if it cannot
+ *
+ * @returns - the Grapevine account
+ */
+pub fn get_account() -> Result<GrapevineAccount, GrapevineCLIError> {
+    // get grapevine path
+    let grapevine_account_path = Path::new(&std::env::var("HOME").unwrap())
+        .join(".grapevine")
+        .join("grapevine.key");
+    // if ~/.grapevine doesn't exist, create it
+    match grapevine_account_path.exists() {
+        true => match GrapevineAccount::from_fs(grapevine_account_path) {
+            Ok(account) => Ok(account),
+            Err(e) => Err(GrapevineCLIError::FsError(String::from(
+                "Error reading existing Grapevine account from filesystem",
+            ))),
+        },
+        false => {
+            return Err(GrapevineCLIError::FsError(String::from(
+                "No Grapevine account found",
+            )));
+        }
+    }
 }
 
 pub fn make_or_get_key() -> Result<PrivateKey, std::env::VarError> {

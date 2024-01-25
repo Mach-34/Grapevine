@@ -1,16 +1,16 @@
 #[macro_use]
 extern crate rocket;
-use crate::models::user::User;
 use grapevine_common::auth_secret::AuthSecretEncrypted;
 use grapevine_common::errors::GrapevineServerError;
 use grapevine_common::session_key::{Server, SessionKey};
 use grapevine_common::utils::convert_username_to_fr;
 use jsonwebtoken::errors::Error;
 use jsonwebtoken::{encode, Algorithm, EncodingKey, Header};
-use models::user;
-use mongo::GrapvineMongo;
+use mongo::GrapevineDB;
+use routes::{create_user, get_user};
 // 👈 New!
 use crate::guards::NonceGuard;
+use babyjubjub_rs::{decompress_point, decompress_signature, verify, Point, Signature};
 use mongodb::{
     bson::{doc, oid::ObjectId},
     options::{ClientOptions, FindOneOptions, ServerApi, ServerApiVersion},
@@ -18,17 +18,14 @@ use mongodb::{
 };
 use num_bigint::{BigInt, Sign};
 use rocket::data::FromData;
+use rocket::fs::{relative, FileServer};
 use rocket::http::Status;
 use rocket::outcome::Outcome::{Error as Failure, Success};
 use rocket::request::{self as request, FromRequest};
 use rocket::serde::{json::Json, Deserialize, Serialize};
 use rocket::{Data, Request, Response, State};
-use std::collections::HashMap;
-use std::sync::Mutex;
-use uuid::Uuid;
 
 mod guards;
-mod models;
 mod mongo;
 mod routes;
 
@@ -59,36 +56,19 @@ const JWT_SECRET: &str = "grapevine_secret";
 //     )
 // }
 
-/**
- * Attempts to create a new user
- *
- * @param username - the username for the new user
- * @param pubkey - the public key used to authenticate API access for the user
- * @param signature - the signature over the username by pubkey
- * @param auth_secret - the encrypted auth secret used by this user (encrypted with given pubkey)
- */
-pub fn create_user(
-    username: String,
-    pubkey: [u8; 32],
-    signature: [u8; 64],
-    auth_secret: AuthSecretEncrypted,
-) -> Result<(), GrapevineServerError> {
-    // check if the username exists already in the database
-    Ok(())
-}
-
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // connect to mongodb
 
-    let mongo = GrapvineMongo::init().await;
+    let mongo = GrapevineDB::init().await;
     // Initialize logger
     tracing_subscriber::fmt::init();
 
     // Define warp filter to serve files from static dir
     rocket::build()
         .manage(mongo)
-        .mount("/", routes![action, health])
+        .mount("/", routes![action, health, create_user, get_user])
+        .mount("/static", FileServer::from(relative!("static")))
         .launch()
         .await
         .unwrap();

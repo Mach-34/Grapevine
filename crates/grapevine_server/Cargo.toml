@@ -17,8 +17,9 @@ serde_json.workspace = true
 num-bigint.workspace = true
 uuid.workspace = true
 jsonwebtoken.workspace = true
+mongodb.workspace = true
 tracing-subscriber = "0.3.17"
 tracing = "0.1.40"
 rocket = { version = "0.5.0", features = ["json"] }
-mongodb = "2.8.0"
+futures = "0.3.30"
 

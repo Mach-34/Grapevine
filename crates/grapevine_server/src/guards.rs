@@ -1,4 +1,4 @@
-use crate::mongo::GrapvineMongo;
+use crate::mongo::GrapevineDB;
 use rocket::{
     http::Status,
     outcome::Outcome::{Error as Failure, Success},
@@ -17,7 +17,7 @@ impl<'r> FromRequest<'r> for NonceGuard {
     type Error = ();
 
     async fn from_request(request: &'r Request<'_>) -> Outcome<Self, Self::Error> {
-        let mongo_request = request.guard::<&State<GrapvineMongo>>().await;
+        let mongo_request = request.guard::<&State<GrapevineDB>>().await;
         let mongo = mongo_request.unwrap();
         let auth_string = request.headers().get_one("Authorization");
         if auth_string.is_some() {
