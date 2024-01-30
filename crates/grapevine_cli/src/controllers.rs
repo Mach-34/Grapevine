@@ -3,10 +3,10 @@ use crate::errors::GrapevineCLIError;
 use crate::utils::artifacts_guard;
 use babyjubjub_rs::{decompress_point, PrivateKey};
 // use grapevine_common::{Fr, NovaProof, G1, G2};
-use grapevine_common::http::requests::CreateUserRequest;
-use grapevine_common::utils::random_fr;
-use grapevine_common::models::user::User;
 use ff::PrimeField;
+use grapevine_common::http::requests::CreateUserRequest;
+use grapevine_common::models::user::User;
+use grapevine_common::utils::random_fr;
 // use grapevine_circuits::{
 //     nova::{continue_nova_proof, get_public_params, get_r1cs, nova_proof, verify_nova_proof},
 // };
@@ -68,8 +68,13 @@ pub async fn add_connection(username: String) -> Result<(), GrapevineCLIError> {
     // download own auth secret
     // @todo: maybe custom route to get own auth secret and other's pubkey?
     let url = format!("{}/user/{}", crate::SERVER_URL, account.username());
-    let data: User = reqwest::get(&url).await.unwrap().json::<User>().await.unwrap();
-    let secret = account.decrypt_auth_secret(data.auth_secret);
+    let data: User = reqwest::get(&url)
+        .await
+        .unwrap()
+        .json::<User>()
+        .await
+        .unwrap();
+    // let secret = account.decrypt_auth_secret(data.auth_secret);
     // // get connection's pubkey
     // let url = format!("{}/user/{}", crate::SERVER_URL, username);
     // let data: User = reqwest::get(&url).await.unwrap().json::<User>().await.unwrap();

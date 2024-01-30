@@ -192,7 +192,8 @@ pub fn continue_nova_proof(
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::utils::{compress_proof, decompress_proof, random_fr, read_proof, write_proof};
+    use crate::utils::{compress_proof, decompress_proof, read_proof, write_proof};
+    use grapevine_common::utils::random_fr;
 
     #[test]
     fn test_degree_0() {

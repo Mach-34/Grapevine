@@ -1,11 +1,11 @@
-#![feature(build_hasher_simple_hash_one)]
+// #![feature(build_hasher_simple_hash_one)]
 use clap::{Args, Parser, Subcommand};
 
-mod controllers;
 mod account;
 mod artifacts;
-mod utils;
+mod controllers;
 mod errors;
+mod utils;
 
 pub const SERVER_URL: &str = "http://localhost:8000";
 
@@ -55,8 +55,12 @@ pub async fn main() {
         //     controllers::gen_params(cmd.r1cs.clone().unwrap(), cmd.output.clone().unwrap())
         // }
         Commands::Health => controllers::health().await,
-        Commands::RegisterAccount(cmd) => controllers::register(cmd.username.clone().unwrap()).await,
-        Commands::AddConnection(cmd) => controllers::add_connection(cmd.username.clone().unwrap()).await,
+        Commands::RegisterAccount(cmd) => {
+            controllers::register(cmd.username.clone().unwrap()).await
+        }
+        Commands::AddConnection(cmd) => {
+            controllers::add_connection(cmd.username.clone().unwrap()).await
+        }
     }
 
     // match &cli.command {

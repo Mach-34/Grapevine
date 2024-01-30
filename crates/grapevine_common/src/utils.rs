@@ -51,7 +51,7 @@ pub fn convert_phrase_to_fr(
  */
 pub fn convert_username_to_fr(username: &String) -> Result<[u8; 32], Box<dyn Error>> {
     if username.len() > MAX_USERNAME_CHARS {
-        return Err("Phrase must be <= 180 characters".into());
+        return Err("Username must be <= 30 characters".into());
     }
     let mut bytes: [u8; 32] = [0; 32];
     bytes[1..(username.len() + 1)].copy_from_slice(&username.as_bytes()[..]);
