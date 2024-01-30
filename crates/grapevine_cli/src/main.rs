@@ -1,4 +1,3 @@
-// #![feature(build_hasher_simple_hash_one)]
 use clap::{Args, Parser, Subcommand};
 
 mod account;
