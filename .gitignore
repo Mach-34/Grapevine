@@ -2,6 +2,4 @@
 node_modules
 phrasedos_degree_*
 grapevine_degree_*
-crates/phrasedos_server/static
-crates/grapevine_server/static
 crates/grapevine_server/db
