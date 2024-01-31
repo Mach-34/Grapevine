@@ -1,11 +1,20 @@
-use grapevine_common::models::user::User;
 use crate::mongo::GrapevineDB;
+use crate::utils::use_public_params;
 use babyjubjub_rs::{decompress_point, decompress_signature, verify};
+use grapevine_circuits::{nova::verify_nova_proof, utils::decompress_proof};
 use grapevine_common::auth_secret::AuthSecretEncrypted;
 use grapevine_common::errors::GrapevineServerError;
-use grapevine_common::http::requests::CreateUserRequest;
+use grapevine_common::http::requests::{CreateUserRequest, DegreeProofRequest};
 use grapevine_common::utils::convert_username_to_fr;
 use grapevine_common::MAX_USERNAME_CHARS;
+use grapevine_common::{
+    http::requests::{NewPhraseRequest, NewRelationshipRequest},
+    models::{
+        proof::{DegreeProof, ProvingData},
+        relationship::Relationship,
+        user::User,
+    },
+};
 use mongodb::bson::oid::ObjectId;
 use num_bigint::{BigInt, Sign};
 use rocket::http::Status;
@@ -13,6 +22,7 @@ use rocket::response::status;
 use rocket::serde::json::Json;
 use rocket::State;
 use std::io::{self, Write};
+use std::str::FromStr;
 
 /**
  * Attempts to create a new user
@@ -58,7 +68,10 @@ pub async fn create_user(
         // ));
     };
     // check that the username or pubkey are not already used
-    match db.check_creation_params(&request.username, &request.pubkey).await {
+    match db
+        .check_creation_params(&request.username, &request.pubkey)
+        .await
+    {
         Ok(found) => {
             let error_msg = match found {
                 [true, true] => "Both Username and Pubkey already exist",
@@ -76,12 +89,135 @@ pub async fn create_user(
     // create the new user in the database
     let user = User {
         id: None,
-        nonce: 0,
-        username: request.username.clone(),
-        pubkey: request.pubkey.clone(),
-        connections: None,
+        nonce: Some(0),
+        username: Some(request.username.clone()),
+        pubkey: Some(request.pubkey.clone()),
+        relationships: Some(vec![]),
+        degree_proofs: Some(vec![]),
     };
-    match db.create_user(user, request.auth_secret.clone()).await {
+    match db.create_user(user).await {
+        Ok(_) => Ok(Status::Created),
+        Err(e) => Err(Status::NotImplemented),
+    }
+}
+
+#[post("/phrase/create", format = "json", data = "<request>")]
+pub async fn create_phrase(
+    request: Json<NewPhraseRequest>,
+    db: &State<GrapevineDB>,
+) -> Result<Status, Status> {
+    let decompressed_proof = decompress_proof(&request.proof);
+    // verify the proof
+    let public_params = use_public_params().unwrap();
+    println!("Try Verify");
+    let verify_res = verify_nova_proof(&decompressed_proof, &public_params, 2);
+    let (phrase_hash, auth_hash) = match verify_res {
+        Ok(res) => {
+            let phrase_hash = res.0[1];
+            let auth_hash = res.0[2];
+            // todo: use request guard to check username against proven username
+            (phrase_hash.to_bytes(), auth_hash.to_bytes())
+        }
+        Err(e) => {
+            println!("Proof verification failed: {:?}", e);
+            return Err(Status::BadRequest);
+        }
+    };
+    // get user doc
+    let user = db.get_user(request.username.clone()).await.unwrap();
+    println!("User: {:?}", user);
+    // @TODO: handle user does not exist
+    // build DegreeProof model
+    let proof_doc = DegreeProof {
+        id: None,
+        phrase_hash: Some(phrase_hash),
+        auth_hash: Some(auth_hash),
+        user: Some(user.id.unwrap()),
+        degree: Some(1),
+        proof: Some(request.proof.clone()),
+        preceding: None,
+        proceeding: Some(vec![]),
+    };
+
+    match db.add_proof(&user.id.unwrap(), &proof_doc).await {
+        Ok(_) => Ok(Status::Created),
+        Err(e) => Err(Status::NotImplemented),
+    }
+}
+
+#[post("/phrase/continue", format = "json", data = "<request>")]
+pub async fn degree_proof(
+    request: Json<DegreeProofRequest>,
+    db: &State<GrapevineDB>,
+) -> Result<Status, Status> {
+    let decompressed_proof = decompress_proof(&request.proof);
+    // verify the proof
+    let public_params = use_public_params().unwrap();
+    println!("Try Verify");
+    let verify_res = verify_nova_proof(&decompressed_proof, &public_params, (request.degree * 2) as usize);
+    let (phrase_hash, auth_hash) = match verify_res {
+        Ok(res) => {
+            let phrase_hash = res.0[1];
+            let auth_hash = res.0[2];
+            (phrase_hash.to_bytes(), auth_hash.to_bytes())
+        }
+        Err(e) => {
+            println!("Proof verification failed: {:?}", e);
+            return Err(Status::BadRequest);
+        }
+    };
+    // get user doc
+    let user = db.get_user(request.username.clone()).await.unwrap();
+    println!("User: {:?}", user);
+    // @TODO: needs to delete a previous proof by same user on same phrase hash if exists, including removing from last proof's previous field
+    // build DegreeProof model
+    let proof_doc = DegreeProof {
+        id: None,
+        phrase_hash: Some(phrase_hash),
+        auth_hash: Some(auth_hash),
+        user: Some(user.id.unwrap()),
+        degree: Some(request.degree),
+        proof: Some(request.proof.clone()),
+        preceding: Some(request.previous),
+        proceeding: Some(vec![]),
+    };
+
+    // add proof to db and update references
+    match db.add_proof(&user.id.unwrap(), &proof_doc).await {
+        Ok(_) => Ok(Status::Created),
+        Err(e) => Err(Status::NotImplemented),
+    }
+}
+
+#[post("/user/relationship", format = "json", data = "<request>")]
+pub async fn add_relationship(
+    request: Json<NewRelationshipRequest>,
+    db: &State<GrapevineDB>,
+) -> Result<Status, Status> {
+    // ensure from != to
+    if &request.from == &request.to {
+        return Err(Status::BadRequest);
+    }
+    // ensure user exists
+    let sender = match db.get_user(request.from.clone()).await {
+        Some(user) => user.id.unwrap(),
+        None => return Err(Status::NotFound),
+    };
+    // would be nice to have a zk proof of correct encryption to recipient...
+    let recipient = match db.get_user(request.to.clone()).await {
+        Some(user) => user.id.unwrap(),
+        None => return Err(Status::NotFound),
+    };
+    // add relationship doc and push to recipient array
+    let relationship_doc = Relationship {
+        id: None,
+        sender: Some(sender),
+        recipient: Some(recipient),
+        ephemeral_key: Some(request.ephemeral_key.clone()),
+        ciphertext: Some(request.ciphertext.clone()),
+    };
+
+    match db.add_relationship(&relationship_doc).await {
         Ok(_) => Ok(Status::Created),
         Err(e) => Err(Status::NotImplemented),
     }
@@ -91,6 +227,46 @@ pub async fn create_user(
 pub async fn get_user(username: String, db: &State<GrapevineDB>) -> Result<Json<User>, Status> {
     match db.get_user(username).await {
         Some(user) => Ok(Json(user)),
+        None => Err(Status::NotFound),
+    }
+}
+
+#[get("/user/<username>/pubkey")]
+pub async fn get_pubkey(username: String, db: &State<GrapevineDB>) -> Result<String, Status> {
+    println!("Get pubkey for: {:?}", username);
+    match db.get_pubkey(username).await {
+        Some(pubkey) => Ok(hex::encode(pubkey)),
+        None => Err(Status::NotFound),
+    }
+}
+
+// #[get("/proof/username/<oid>")]
+// pub async fn get_proof(oid: String, db: &State<GrapevineDB>) -> Result<Json<DegreeProof>, Status> {
+//     let oid = ObjectId::from_str(&oid).unwrap();
+//     match db.get_proof(&oid).await {
+//         Some(proof) => Ok(Json(proof)),
+//         None => Err(Status::NotFound),
+//     }
+// }
+
+#[get("/proof/<username>/available")]
+pub async fn get_available_proofs(
+    username: String,
+    db: &State<GrapevineDB>,
+) -> Result<Json<Vec<ObjectId>>, Status> {
+    Ok(Json(db.find_available_degrees(username).await))
+}
+
+// returns auth secret and proof data
+#[get("/proof/<oid>/params/<username>")]
+pub async fn get_proof_with_params(
+    oid: String,
+    username: String,
+    db: &State<GrapevineDB>,
+) -> Result<Json<ProvingData>, Status> {
+    let oid = ObjectId::from_str(&oid).unwrap();
+    match db.get_proof_and_data(username, oid).await {
+        Some(data) => Ok(Json(data)),
         None => Err(Status::NotFound),
     }
 }

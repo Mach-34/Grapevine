@@ -10,6 +10,8 @@ path = "src/main.rs"
 
 [dependencies]
 grapevine_common.workspace = true
+grapevine_circuits.workspace = true
+nova-scotia.workspace = true
 babyjubjub-rs.workspace = true
 tokio.workspace = true
 serde.workspace = true
@@ -18,8 +20,8 @@ num-bigint.workspace = true
 uuid.workspace = true
 jsonwebtoken.workspace = true
 mongodb.workspace = true
+hex.workspace = true
 tracing-subscriber = "0.3.17"
 tracing = "0.1.40"
 rocket = { version = "0.5.0", features = ["json"] }
 futures = "0.3.30"
-

@@ -1,11 +1,9 @@
-#![feature(build_hasher_simple_hash_one)]
 use clap::{Args, Parser, Subcommand};
 
-mod controllers;
 mod account;
-mod artifacts;
-mod utils;
+mod controllers;
 mod errors;
+mod utils;
 
 pub const SERVER_URL: &str = "http://localhost:8000";
 
@@ -24,14 +22,14 @@ enum Commands {
     // Create a new Grapevine Account
     RegisterAccount(RegisterAccountArgs),
     // Add yourself as a connection to another Grapevine Account
-    AddConnection(AddConnectionArgs),
+    AddRelationship(AddRelationshipArgs),
+    // Create a new phrase (degree 1 proof)
+    CreatePhrase(CreatePhrase),
+    // Prove a degree of separation
+    ProveSeparation(ProveSeparationArgs),
+    // View the OID's of proofs the user can build from
+    AvailableProofs,
 }
-
-// #[derive(Args)]
-// struct ParamsArgs {
-//     r1cs: Option<String>,
-//     output: Option<String>,
-// }
 
 #[derive(Args)]
 struct RegisterAccountArgs {
@@ -39,7 +37,17 @@ struct RegisterAccountArgs {
 }
 
 #[derive(Args)]
-struct AddConnectionArgs {
+struct AddRelationshipArgs {
+    username: Option<String>,
+}
+
+#[derive(Args)]
+struct CreatePhrase {
+    phrase: Option<String>,
+}
+
+#[derive(Args)]
+struct ProveSeparationArgs {
     username: Option<String>,
 }
 
@@ -55,46 +63,18 @@ pub async fn main() {
         //     controllers::gen_params(cmd.r1cs.clone().unwrap(), cmd.output.clone().unwrap())
         // }
         Commands::Health => controllers::health().await,
-        Commands::RegisterAccount(cmd) => controllers::register(cmd.username.clone().unwrap()).await,
-        Commands::AddConnection(cmd) => controllers::add_connection(cmd.username.clone().unwrap()).await,
+        Commands::RegisterAccount(cmd) => {
+            controllers::register(cmd.username.clone().unwrap()).await
+        }
+        Commands::AddRelationship(cmd) => {
+            controllers::add_relationship(cmd.username.clone().unwrap()).await
+        }
+        Commands::CreatePhrase(cmd) => {
+            controllers::create_new_phrase(cmd.phrase.clone().unwrap()).await
+        }
+        Commands::ProveSeparation(cmd) => {
+            controllers::prove_separation_degree(cmd.username.clone().unwrap()).await
+        }
+        Commands::AvailableProofs => controllers::get_available_proofs().await,
     }
-
-    // match &cli.command {
-    //     Commands::Params(cmd) => {
-    //         controllers::gen_params(cmd.r1cs.clone().unwrap(), cmd.output.clone().unwrap())
-    //     }]
-    //     Commands::ProveSecret(cmd) => controllers::degree_0_proof(
-    //         cmd.secret.clone().unwrap(),
-    //         cmd.username.clone().unwrap(),
-    //         cmd.output_dir.clone().unwrap(),
-    //         cmd.public_params_path.clone().unwrap(),
-    //         cmd.r1cs_path.clone().unwrap(),
-    //         cmd.wc_path.clone().unwrap(),
-    //     ),
-    //     Commands::ProveSeparation(cmd) => {
-    //         // parse degrees of separation
-    //         let degrees = cmd.degrees.clone().unwrap().parse::<usize>().unwrap();
-    //         // prove
-    //         controllers::degree_n_proof(
-    //             degrees,
-    //             cmd.previous_username.clone().unwrap(),
-    //             cmd.username.clone().unwrap(),
-    //             cmd.proof_path.clone().unwrap(),
-    //             cmd.output_dir.clone().unwrap(),
-    //             cmd.public_params_path.clone().unwrap(),
-    //             cmd.r1cs_path.clone().unwrap(),
-    //             cmd.wc_path.clone().unwrap(),
-    //         )
-    //     }
-    //     Commands::Verify(cmd) => {
-    //         // parse degrees of separation
-    //         let degrees = cmd.degrees.clone().unwrap().parse::<usize>().unwrap();
-    //         // verify
-    //         controllers::verify_proof(
-    //             degrees,
-    //             cmd.proof_path.clone().unwrap(),
-    //             cmd.public_params_path.clone().unwrap(),
-    //         );
-    //     }
-    // }
 }

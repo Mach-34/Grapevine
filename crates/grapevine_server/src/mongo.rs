@@ -2,14 +2,18 @@ use crate::{DATABASE, MONGODB_URI};
 use futures::stream::StreamExt;
 use grapevine_common::auth_secret::AuthSecretEncrypted;
 use grapevine_common::errors::GrapevineServerError;
-use grapevine_common::models::user::{Connection, User};
+use grapevine_common::models::proof::ProvingData;
+use grapevine_common::models::{proof::DegreeProof, relationship::Relationship, user::User};
 use mongodb::bson::{self, doc, oid::ObjectId, Binary};
-use mongodb::options::{ClientOptions, FindOneOptions, ServerApi, ServerApiVersion, AggregateOptions};
+use mongodb::options::{
+    AggregateOptions, ClientOptions, FindOneOptions, FindOptions, ServerApi, ServerApiVersion,
+};
 use mongodb::{Client, Collection};
 
 pub struct GrapevineDB {
     users: Collection<User>,
-    auth_secrets: Collection<AuthSecretEncrypted>,
+    relationships: Collection<Relationship>,
+    degree_proofs: Collection<DegreeProof>,
 }
 
 impl GrapevineDB {
@@ -20,8 +24,13 @@ impl GrapevineDB {
         let client = Client::with_options(client_options).unwrap();
         let db = client.database(DATABASE);
         let users = db.collection("users");
-        let auth_secrets = db.collection("auth_secrets");
-        Self { users, auth_secrets }
+        let relationships = db.collection("relationships");
+        let degree_proofs = db.collection("degree_proofs");
+        Self {
+            users,
+            relationships,
+            degree_proofs,
+        }
     }
 
     pub async fn increment_nonce(&self, username: &str) {
@@ -36,9 +45,15 @@ impl GrapevineDB {
     pub async fn get_nonce(&self, username: &str) -> u64 {
         // Verify user existence
         let filter = doc! { "username": username };
-        let user = self.users.find_one(filter, None).await.unwrap();
+        let projection = doc! { "nonce": 1 };
+        let find_options = FindOneOptions::builder().projection(projection).build();
+        let user = self
+            .users
+            .find_one(filter, Some(find_options))
+            .await
+            .unwrap();
         match user {
-            Some(user) => user.nonce,
+            Some(user) => user.nonce.unwrap(),
             None => 0,
         }
     }
@@ -67,17 +82,19 @@ impl GrapevineDB {
                 { "pubkey": pubkey_binary }
             ]
         };
-        let mut cursor = self.users.find(query, None).await.unwrap();
+        let projection = doc! { "username": 1 };
+        let find_options = FindOptions::builder().projection(projection).build();
+        let mut cursor = self.users.find(query, Some(find_options)).await.unwrap();
         let mut found = [false; 2];
         while let Some(result) = cursor.next().await {
             match result {
                 Ok(user) => {
                     // Check if the username matches
-                    if &user.username == username {
+                    if &user.username.unwrap() == username {
                         found[0] = true;
                     }
                     // Check if the pubkey matches
-                    if &user.pubkey == pubkey {
+                    if &user.pubkey.unwrap() == pubkey {
                         found[1] = true;
                     }
                 }
@@ -90,11 +107,52 @@ impl GrapevineDB {
 
     pub async fn get_user(&self, username: String) -> Option<User> {
         let filter = doc! { "username": username };
-        let projection = doc! { "connections": 0 };
-        let find_options = FindOneOptions::builder()
-            .projection(projection)
-            .build();
-        self.users.find_one(filter, Some(find_options)).await.unwrap()
+        let projection = doc! { "degree_proofs": 0 };
+        let find_options = FindOneOptions::builder().projection(projection).build();
+        self.users
+            .find_one(filter, Some(find_options))
+            .await
+            .unwrap()
+    }
+
+    pub async fn get_pubkey(&self, username: String) -> Option<[u8; 32]> {
+        let filter = doc! { "username": username };
+        let projection = doc! { "pubkey": 1 };
+        let find_options = FindOneOptions::builder().projection(projection).build();
+        let user = self
+            .users
+            .find_one(filter, Some(find_options))
+            .await
+            .unwrap();
+        match user {
+            Some(user) => {
+                println!("User: {:?}", user);
+                println!("user: {:?}", user.pubkey.unwrap());
+                Some(user.pubkey.unwrap())
+            }
+            None => None,
+        }
+    }
+
+    pub async fn add_relationship(
+        &self,
+        relationship: &Relationship,
+    ) -> Result<ObjectId, GrapevineServerError> {
+        // create new relationship document
+        let relationship_oid = self
+            .relationships
+            .insert_one(relationship, None)
+            .await
+            .unwrap()
+            .inserted_id
+            .as_object_id()
+            .unwrap();
+        // push the relationship to the user's list of relationships
+        let query = doc! { "_id": relationship.recipient };
+        let update =
+            doc! { "$push": { "relationships": bson::to_bson(&relationship_oid).unwrap()} };
+        self.users.update_one(query, update, None).await.unwrap();
+        Ok(relationship_oid)
     }
 
     /**
@@ -105,15 +163,18 @@ impl GrapevineDB {
      * @param auth_secret - the encrypted auth secret used by this user
      * @returns - an error if the user already exists, or Ok otherwise
      */
-    pub async fn create_user(&self, user: User, auth_secret: AuthSecretEncrypted) -> Result<ObjectId, GrapevineServerError> {
+    pub async fn create_user(&self, user: User) -> Result<ObjectId, GrapevineServerError> {
         // check if the username exists already in the database
         let query = doc! { "username": &user.username };
         let options = FindOneOptions::builder()
             .projection(doc! {"_id": 1})
             .build();
-        // let x = user.clone().username;
         match self.users.find_one(query, options).await.unwrap() {
-            Some(_) => return Err(GrapevineServerError::UserExists(user.username.clone())),
+            Some(_) => {
+                return Err(GrapevineServerError::UserExists(
+                    user.username.clone().unwrap(),
+                ))
+            }
             None => (),
         };
 
@@ -127,52 +188,190 @@ impl GrapevineDB {
             .as_object_id()
             .unwrap();
 
-        // add the encrypted note to the user's
-        println!("XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX");
-        _ = self.add_encrypted_auth_secret(&user.username, &auth_secret).await.unwrap();
-
         Ok(uuid)
     }
 
-    pub async fn add_encrypted_auth_secret(
+    pub async fn add_proof(
         &self,
-        recipient: &String,
-        auth_secret: &AuthSecretEncrypted,
+        user: &ObjectId,
+        proof: &DegreeProof,
     ) -> Result<ObjectId, GrapevineServerError> {
-        //todo: optionally pass in oid to not make query to check if user exists
-        // ensure the recipient exists in the database
-        println!("XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX");
-        let query = doc! { "username": recipient };
-        let options = FindOneOptions::builder()
-            .projection(doc! {"_id": 1})
-            .build();
-        let uuid = match self.users.find_one(query, options).await.unwrap() {
-            Some(user) => user.id.unwrap(),
-            None => return Err(GrapevineServerError::UserDoesNotExist(recipient.clone())),
-        };
-        println!("XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX, {:?}", uuid);
-
-        // create the encrypted auth secret
-        let auth_secret_id = self
-            .auth_secrets
-            .insert_one(auth_secret, None)
+        // create new proof document
+        let proof_oid = self
+            .degree_proofs
+            .insert_one(proof, None)
             .await
             .unwrap()
             .inserted_id
             .as_object_id()
             .unwrap();
-        println!("XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX");
-        // add the encrypted auth secret to the user's list of encrypted auth secrets
-        let connections = Connection {
-            user: uuid,
-            auth_secret: auth_secret_id,
-        };
-        
-        let query = doc! { "id": uuid }; 
-        let update = doc! { "$push": { "connections": bson::to_bson(&connections).unwrap()} };
+        // reference this proof in previous proof if not first proof in chain
+        if proof.preceding.is_some() {
+            let query = doc! { "_id": proof.preceding.unwrap() };
+            let update = doc! { "$push": { "proceeding": bson::to_bson(&proof_oid).unwrap()} };
+            self.degree_proofs.update_one(query, update, None).await.unwrap();
+        }
+        // push the proof to the user's list of proofs
+        let query = doc! { "_id": user };
+        let update = doc! { "$push": { "degree_proofs": bson::to_bson(&proof_oid).unwrap()} };
         self.users.update_one(query, update, None).await.unwrap();
-        println!("yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy");
-
-        Ok(auth_secret_id)
+        Ok(proof_oid)
     }
+
+    pub async fn get_proof(&self, proof_oid: &ObjectId) -> Option<DegreeProof> {
+        self.degree_proofs
+            .find_one(doc! { "_id": proof_oid }, None)
+            .await
+            .unwrap()
+    }
+
+    /**
+     * Given a user, find available degrees of separation proofs they can build from
+     *   - find degree chains they are not a part of
+     *   - find lower degree proofs they can build from
+     */
+    pub async fn find_available_degrees(&self, username: String) -> Vec<ObjectId> {
+        // find degree chains they are not a part of
+        let pipeline = vec![
+            // stage 1: find the user doc from username
+            doc! {"$match": {"username": username }},
+            // stage 2: lookup degree proofs the user has already amde
+            doc! {
+                "$lookup": {
+                    "from": "degreeProofs",
+                    "localField": "degree_proofs",
+                    "foreignField": "_id",
+                    "as": "userDegreeProofs"
+                }
+            },
+            // stage 3: Lookup relationships and degree proofs from relationships
+            doc! {
+                "$lookup": {
+                    "from": "relationships",
+                    "localField": "relationships",
+                    "foreignField": "_id",
+                    "as": "userRelationships"
+                }
+            },
+            doc! { "$unwind": "$userRelationships" },
+            doc! {
+                "$lookup": {
+                    "from": "degreeProofs",
+                    "localField": "userRelationships.recipient",
+                    "foreignField": "user",
+                    "as": "relationshipDegreeProofs"
+                }
+            },
+            doc! { "$unwind": "$relationshipDegreeProofs" },
+            // stage 4: group degree proofs by phrase_hash and sort by degree (min)
+            doc! {
+                "$group": {
+                    "_id": "$relationshipDegreeProofs.phrase_hash",
+                    "lowestDegreeProof": { "$min": "$relationshipDegreeProofs.degree" },
+                    "degreeProofId": { "$first": "$relationshipDegreeProofs._id" }
+                }
+            },
+            // Stage 5: Compare and construct the result set
+            doc! {
+                "$project": {
+                    "_id": 1,
+                    "isLowerDegree": {"$lt": ["$lowestDegreeProof", "$$userDegreeProofs.degree"]}
+                }
+            },
+            doc! {"$match": { "isLowerDegree": true }},
+        ];
+        // get the OID's of degree proofs the user can build from
+        let mut proofs: Vec<ObjectId> = vec![];
+        let mut cursor = self.users.aggregate(pipeline, None).await.unwrap();
+        while let Some(result) = cursor.next().await {
+            match result {
+                Ok(document) => {
+                    let oid = document
+                        .get("_id")
+                        .and_then(|id| id.as_object_id())
+                        .unwrap();
+                    proofs.push(oid);
+                }
+                Err(e) => println!("Error: {}", e),
+            }
+        }
+
+        proofs
+    }
+
+    // (username, ephemeral_key, ciphertext)
+    // todo: modify auth secret to work with this
+
+    /**
+     * Get a proof from the server with all info needed to prove a degree of separation as a given user
+     *
+     * @param username - the username of the user proving a degree of separation
+     * @param oid - the id of the proof to get
+     */
+    pub async fn get_proof_and_data(
+        &self,
+        username: String,
+        proof: ObjectId,
+    ) -> Option<ProvingData> {
+        // @todo: aggregation pipeline
+        // get the proof
+        let filter = doc! { "_id": proof };
+        let projection = doc! { "user": 1, "degree": 1, "proof": 1 };
+        let find_options = FindOneOptions::builder().projection(projection).build();
+        println!("getting proof {:?}", proof);
+        let proof = self
+            .degree_proofs
+            .find_one(filter, Some(find_options))
+            .await
+            .unwrap()
+            .unwrap();
+        // get the username of the user who made the proof
+        let proof_creator = proof.user.unwrap();
+        let filter = doc! { "_id": proof_creator };
+        let projection = doc! { "username": 1 };
+        let find_options = FindOneOptions::builder().projection(projection).build();
+        println!("proof creator: {:?}", proof_creator);
+        let proof_creator_username = self
+            .users
+            .find_one(filter, Some(find_options))
+            .await
+            .unwrap()
+            .unwrap()
+            .username
+            .unwrap();
+        println!("got proof creator");
+        // get the oid of message sender
+        let filter = doc! { "username": username };
+        let projection = doc! { "_id": 1 };
+        let find_options = FindOneOptions::builder().projection(projection).build();
+        let caller = self
+            .users
+            .find_one(filter, Some(find_options))
+            .await
+            .unwrap()
+            .unwrap()
+            .id
+            .unwrap();
+        println!("got caller");
+        // look up relationship with sender and recipient
+        let filter = doc! { "sender": proof_creator, "recipient": caller };
+        let projection = doc! { "ephemeral_key": 1, "ciphertext": 1 };
+        let find_options = FindOneOptions::builder().projection(projection).build();
+        let relationship = self
+            .relationships
+            .find_one(filter, Some(find_options))
+            .await
+            .unwrap()
+            .unwrap();
+        println!("got relationship");
+        // return the proof data
+        Some(ProvingData {
+            degree: proof.degree.unwrap(),
+            proof: proof.proof.unwrap(),
+            username: proof_creator_username,
+            ephemeral_key: relationship.ephemeral_key.unwrap(),
+            ciphertext: relationship.ciphertext.unwrap(),
+        })
+    }
+    
 }

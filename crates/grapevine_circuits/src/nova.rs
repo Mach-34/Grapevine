@@ -9,7 +9,7 @@ use nova_scotia::{
     continue_recursive_circuit, create_recursive_circuit, FileLocation,
 };
 use nova_snark::errors::NovaError;
-use std::env::current_dir;
+use std::{env::current_dir, path::PathBuf};
 
 /**
  * Get public params for the grapevine circuit
@@ -53,21 +53,13 @@ pub fn get_r1cs(path: Option<String>) -> R1CS<Fr> {
  * @param auth_secrets - the auth secrets to use to make it impossible to prove degree of separation without previous user giving the secret
  */
 pub fn nova_proof(
-    wc_path: Option<String>,
+    wc_path: PathBuf,
     r1cs: &R1CS<Fr>,
     public_params: &Params,
     phrase: &String,
     usernames: &Vec<String>,
     auth_secrets: &Vec<Fr>,
 ) -> Result<NovaProof, std::io::Error> {
-    // @TODO: make this friendly with portable paths by maybe include_str! or smth
-    // Either get filepaths from option or use defaults
-    let root = current_dir().unwrap();
-    let wc_file = match wc_path {
-        Some(path) => root.join(path),
-        None => root.join(DEFAULT_WC_PATH),
-    };
-
     // marshall private inputs into circom inputs
     let mut private_inputs = Vec::new();
     for i in 0..usernames.len() {
@@ -104,7 +96,7 @@ pub fn nova_proof(
 
     // generate the a recursive Nova proof of the grapevine circuit
     create_recursive_circuit(
-        FileLocation::PathBuf(wc_file),
+        FileLocation::PathBuf(wc_path),
         r1cs.clone(),
         private_inputs,
         start_input().to_vec(),
@@ -145,16 +137,12 @@ pub fn continue_nova_proof(
     auth_secrets: &Vec<Fr>,
     proof: &mut NovaProof,
     previous_output: Vec<Fr>,
-    wc_path: Option<String>,
+    wc_path: PathBuf,
     r1cs: &R1CS<Fr>,
     public_params: &Params,
 ) -> Result<(), std::io::Error> {
     // get WC file location
     let root = current_dir().unwrap();
-    let wc_file = match wc_path {
-        Some(path) => root.join(path),
-        None => root.join(DEFAULT_WC_PATH),
-    };
 
     // compute the private inputs for this degree's compute/ chaff step
     let mut private_inputs = Vec::new();
@@ -169,7 +157,7 @@ pub fn continue_nova_proof(
     continue_recursive_circuit(
         proof,
         previous_output,
-        FileLocation::PathBuf(wc_file),
+        FileLocation::PathBuf(wc_path),
         r1cs.clone(),
         private_inputs,
         start_input().to_vec(),
@@ -192,7 +180,8 @@ pub fn continue_nova_proof(
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::utils::{compress_proof, decompress_proof, random_fr, read_proof, write_proof};
+    use crate::utils::{compress_proof, decompress_proof, read_proof, write_proof};
+    use grapevine_common::utils::random_fr;
 
     #[test]
     fn test_degree_0() {
@@ -203,15 +192,16 @@ mod test {
             .map(|s| String::from(*s))
             .collect::<Vec<String>>();
         let auth_secrets = vec![random_fr()];
-
         let params_path = String::from("circom/artifacts/public_params.json");
         let r1cs_path = String::from("circom/artifacts/grapevine.r1cs");
-        let wc_path = String::from("circom/artifacts/grapevine_js/grapevine.wasm");
+        let wc_path = current_dir()
+            .unwrap()
+            .join("circom/artifacts/grapevine_js/grapevine.wasm");
         let r1cs = get_r1cs(Some(r1cs_path));
         let public_params = get_public_params(Some(params_path));
 
         let proof = nova_proof(
-            Some(wc_path),
+            wc_path,
             &r1cs,
             &public_params,
             &phrase,
@@ -237,12 +227,14 @@ mod test {
 
         let params_path = String::from("circom/artifacts/public_params.json");
         let r1cs_path = String::from("circom/artifacts/grapevine.r1cs");
-        let wc_path = String::from("circom/artifacts/grapevine_js/grapevine.wasm");
+        let wc_path = current_dir()
+            .unwrap()
+            .join("circom/artifacts/grapevine_js/grapevine.wasm");
         let r1cs = get_r1cs(Some(r1cs_path));
         let public_params = get_public_params(Some(params_path));
 
         let proof = nova_proof(
-            Some(wc_path),
+            wc_path,
             &r1cs,
             &public_params,
             &phrase,
@@ -270,12 +262,14 @@ mod test {
 
         let params_path = String::from("circom/artifacts/public_params.json");
         let r1cs_path = String::from("circom/artifacts/grapevine.r1cs");
-        let wc_path = String::from("circom/artifacts/grapevine_js/grapevine.wasm");
+        let wc_path = current_dir()
+            .unwrap()
+            .join("circom/artifacts/grapevine_js/grapevine.wasm");
         let r1cs = get_r1cs(Some(r1cs_path));
         let public_params = get_public_params(Some(params_path));
 
         let proof = nova_proof(
-            Some(wc_path),
+            wc_path,
             &r1cs,
             &public_params,
             &phrase,
@@ -306,7 +300,9 @@ mod test {
         // define paths
         let params_path = String::from("circom/artifacts/public_params.json");
         let r1cs_path = String::from("circom/artifacts/grapevine.r1cs");
-        let wc_path = String::from("circom/artifacts/grapevine_js/grapevine.wasm");
+        let wc_path = current_dir()
+            .unwrap()
+            .join("circom/artifacts/grapevine_js/grapevine.wasm");
 
         // load public params and r1cs
         let r1cs = get_r1cs(Some(r1cs_path));
@@ -315,7 +311,7 @@ mod test {
         // PROVE DEGREE 1 //
         let degree = 1;
         let mut proof = nova_proof(
-            Some(wc_path.clone()),
+            wc_path.clone(),
             &r1cs,
             &public_params,
             &phrase,
@@ -335,7 +331,7 @@ mod test {
             &auth_secrets[0..2].to_vec(),
             &mut proof,
             z0_last,
-            Some(wc_path.clone()),
+            wc_path.clone(),
             &r1cs,
             &public_params,
         )
@@ -351,7 +347,7 @@ mod test {
             &auth_secrets[1..3].to_vec(),
             &mut proof,
             z0_last,
-            Some(wc_path.clone()),
+            wc_path.clone(),
             &r1cs,
             &public_params,
         )
@@ -367,7 +363,7 @@ mod test {
             &auth_secrets[2..4].to_vec(),
             &mut proof,
             z0_last,
-            Some(wc_path.clone()),
+            wc_path.clone(),
             &r1cs,
             &public_params,
         )
@@ -391,7 +387,9 @@ mod test {
         // define paths
         let params_path = String::from("circom/artifacts/public_params.json");
         let r1cs_path = String::from("circom/artifacts/grapevine.r1cs");
-        let wc_path = String::from("circom/artifacts/grapevine_js/grapevine.wasm");
+        let wc_path = current_dir()
+            .unwrap()
+            .join("circom/artifacts/grapevine_js/grapevine.wasm");
 
         // load public params and r1cs
         let r1cs = get_r1cs(Some(r1cs_path));
@@ -400,7 +398,7 @@ mod test {
         // PROVE DEGREE 1 //
         let degree = 1;
         let proof = nova_proof(
-            Some(wc_path.clone()),
+            wc_path.clone(),
             &r1cs,
             &public_params,
             &phrase,
@@ -433,7 +431,7 @@ mod test {
             &auth_secrets[0..2].to_vec(),
             &mut proof,
             z0_last,
-            Some(wc_path.clone()),
+            wc_path.clone(),
             &r1cs,
             &public_params,
         )
@@ -454,11 +452,13 @@ mod test {
         let auth_secrets = vec![random_fr()];
         let params_path = String::from("circom/artifacts/public_params.json");
         let r1cs_path = String::from("circom/artifacts/grapevine.r1cs");
-        let wc_path = String::from("circom/artifacts/grapevine_js/grapevine.wasm");
+        let wc_path = current_dir()
+            .unwrap()
+            .join("circom/artifacts/grapevine_js/grapevine.wasm");
         let r1cs = get_r1cs(Some(r1cs_path));
         let public_params = get_public_params(Some(params_path));
         let proof = nova_proof(
-            Some(wc_path),
+            wc_path,
             &r1cs,
             &public_params,
             &phrase,

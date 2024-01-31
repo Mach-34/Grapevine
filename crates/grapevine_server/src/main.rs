@@ -2,12 +2,16 @@
 extern crate rocket;
 use grapevine_common::auth_secret::AuthSecretEncrypted;
 use grapevine_common::errors::GrapevineServerError;
+use grapevine_common::http::requests::TestProofCompressionRequest;
 use grapevine_common::session_key::{Server, SessionKey};
 use grapevine_common::utils::convert_username_to_fr;
 use jsonwebtoken::errors::Error;
 use jsonwebtoken::{encode, Algorithm, EncodingKey, Header};
 use mongo::GrapevineDB;
-use routes::{create_user, get_user};
+use routes::{
+    add_relationship, create_phrase, create_user, get_available_proofs, get_pubkey,
+    get_user, get_proof_with_params
+};
 // 👈 New!
 use crate::guards::NonceGuard;
 use babyjubjub_rs::{decompress_point, decompress_signature, verify, Point, Signature};
@@ -17,9 +21,7 @@ use mongodb::{
     Client, Collection,
 };
 use num_bigint::{BigInt, Sign};
-use rocket::data::FromData;
 use rocket::fs::{relative, FileServer};
-use rocket::http::Status;
 use rocket::outcome::Outcome::{Error as Failure, Success};
 use rocket::request::{self as request, FromRequest};
 use rocket::serde::{json::Json, Deserialize, Serialize};
@@ -28,33 +30,10 @@ use rocket::{Data, Request, Response, State};
 mod guards;
 mod mongo;
 mod routes;
+mod utils;
 
 const MONGODB_URI: &str = "mongodb://localhost:27017";
 const DATABASE: &str = "grapevine";
-const JWT_SECRET: &str = "grapevine_secret";
-
-// pub fn create_jwt(id: i32) -> Result<String, Error> {
-//     let secret = env::var("JWT_SECRET").expect("JWT_SECRET must be set."); // 👈 New!
-
-//     let expiration = Utc::now()
-//         .checked_add_signed(chrono::Duration::seconds(60))
-//         .expect("Invalid timestamp")
-//         .timestamp();
-
-//     let claims = Claims {
-//         subject_id: id,
-//         exp: expiration as usize,
-//     };
-
-//     let header = Header::new(Algorithm::HS512);
-
-//     // 👇 New!
-//     encode(
-//         &header,
-//         &claims,
-//         &EncodingKey::from_secret(secret.as_bytes()),
-//     )
-// }
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -64,15 +43,27 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Initialize logger
     tracing_subscriber::fmt::init();
 
-    // Define warp filter to serve files from static dir
+    // TODO: Route formatting/ segmenting logic
     rocket::build()
         .manage(mongo)
-        .mount("/", routes![action, health, create_user, get_user])
+        .mount(
+            "/",
+            routes![
+                action,
+                health,
+                create_user,
+                get_user,
+                create_phrase,
+                get_pubkey,
+                add_relationship,
+                get_available_proofs,
+                get_proof_with_params,
+            ],
+        )
         .mount("/static", FileServer::from(relative!("static")))
         .launch()
         .await
         .unwrap();
-
     Ok(())
 }
 
