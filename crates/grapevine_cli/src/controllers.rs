@@ -2,6 +2,7 @@ use crate::account::GrapevineAccount;
 use crate::errors::GrapevineCLIError;
 use crate::utils::artifacts_guard;
 use babyjubjub_rs::{decompress_point, PrivateKey};
+use grapevine_circuits::nova::{get_public_params, get_r1cs, nova_proof};
 // use grapevine_common::{Fr, NovaProof, G1, G2};
 use ff::PrimeField;
 use grapevine_common::http::requests::CreateUserRequest;
@@ -219,6 +220,31 @@ pub fn make_or_get_key() -> Result<PrivateKey, std::env::VarError> {
     let key_bytes = std::fs::read(key_path.clone()).unwrap();
     let key = PrivateKey::import(key_bytes).unwrap();
     return Ok(key);
+}
+
+pub fn test_proof_compression() -> Result<(), GrapevineCLIError> {
+    let phrase: String = String::from("No one quite like you!");
+    let usernames = vec!["pigturtle"]
+        .iter()
+        .map(|s| String::from(*s))
+        .collect::<Vec<String>>();
+    let auth_secrets = vec![random_fr()];
+    let params_path = String::from("../../grapevine_circuits/circom/artifacts/public_params.json");
+    let r1cs_path = String::from("../../grapevine_circuits/circom/artifacts/grapevine.r1cs");
+    let wc_path =
+        String::from("../../grapevine_circuits/circom/artifacts/grapevine_js/grapevine.wasm");
+    let r1cs = get_r1cs(Some(r1cs_path));
+    let public_params = get_public_params(Some(params_path));
+    let proof = nova_proof(
+        Some(wc_path),
+        &r1cs,
+        &public_params,
+        &phrase,
+        &usernames,
+        &auth_secrets,
+    )
+    .unwrap();
+    Ok(())
 }
 
 // #[cfg(test)]

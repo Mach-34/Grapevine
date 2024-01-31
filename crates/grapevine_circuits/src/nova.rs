@@ -34,6 +34,7 @@ pub fn get_public_params(path: Option<String>) -> Params {
  */
 pub fn get_r1cs(path: Option<String>) -> R1CS<Fr> {
     let root = current_dir().unwrap();
+    // println!("Path: {:?}", current_dir());
     let r1cs_file = match path {
         Some(p) => root.join(p),
         None => root.join(DEFAULT_R1CS_PATH),

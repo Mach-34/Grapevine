@@ -24,6 +24,7 @@ enum Commands {
     RegisterAccount(RegisterAccountArgs),
     // Add yourself as a connection to another Grapevine Account
     AddConnection(AddConnectionArgs),
+    TestProofCompression,
 }
 
 // #[derive(Args)]
@@ -60,6 +61,7 @@ pub async fn main() {
         Commands::AddConnection(cmd) => {
             controllers::add_connection(cmd.username.clone().unwrap()).await
         }
+        Commands::TestProofCompression => controllers::test_proof_compression(),
     }
 
     // match &cli.command {

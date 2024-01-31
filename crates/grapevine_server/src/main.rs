@@ -17,9 +17,7 @@ use mongodb::{
     Client, Collection,
 };
 use num_bigint::{BigInt, Sign};
-use rocket::data::FromData;
 use rocket::fs::{relative, FileServer};
-use rocket::http::Status;
 use rocket::outcome::Outcome::{Error as Failure, Success};
 use rocket::request::{self as request, FromRequest};
 use rocket::serde::{json::Json, Deserialize, Serialize};
@@ -67,8 +65,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Define warp filter to serve files from static dir
     rocket::build()
         .manage(mongo)
-        .mount("/", routes![action, health, create_user, get_user])
-        .mount("/static", FileServer::from(relative!("static")))
+        .mount(
+            "/",
+            routes![action, health, create_user, get_user, test_proof],
+        )
+        // .mount("/static", FileServer::from(relative!("static")))
         .launch()
         .await
         .unwrap();
@@ -79,6 +80,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 #[get("/action")]
 async fn action(_guard: NonceGuard) -> &'static str {
     "Succesfully verified nonce"
+}
+
+#[derive(Deserialize)]
+struct ProofData {
+    proof: Vec<u8>,
+}
+
+#[post("/test-proof-compression", format = "json", data = "<body>")]
+async fn test_proof(body: Json<ProofData>) {
+    println!("Body: {:?}", body.proof);
 }
 
 #[get("/health")]
