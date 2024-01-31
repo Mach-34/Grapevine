@@ -61,7 +61,7 @@ pub async fn main() {
         Commands::AddConnection(cmd) => {
             controllers::add_connection(cmd.username.clone().unwrap()).await
         }
-        Commands::TestProofCompression => controllers::test_proof_compression(),
+        Commands::TestProofCompression => controllers::test_proof_compression().await,
     }
 
     // match &cli.command {

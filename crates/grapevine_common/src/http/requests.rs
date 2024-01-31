@@ -1,6 +1,6 @@
+use crate::auth_secret::AuthSecretEncrypted;
 use crate::serde::{deserialize_byte_buf, serialize_byte_buf};
 use serde::{Deserialize, Serialize};
-use crate::auth_secret::AuthSecretEncrypted;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct CreateUserRequest {
@@ -12,4 +12,10 @@ pub struct CreateUserRequest {
     )]
     pub signature: [u8; 64],
     pub auth_secret: AuthSecretEncrypted,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct TestProofCompressionRequest {
+    pub proof: Vec<u8>,
+    pub username: String,
 }

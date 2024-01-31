@@ -2,6 +2,7 @@
 extern crate rocket;
 use grapevine_common::auth_secret::AuthSecretEncrypted;
 use grapevine_common::errors::GrapevineServerError;
+use grapevine_common::http::requests::TestProofCompressionRequest;
 use grapevine_common::session_key::{Server, SessionKey};
 use grapevine_common::utils::convert_username_to_fr;
 use jsonwebtoken::errors::Error;
@@ -69,7 +70,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             "/",
             routes![action, health, create_user, get_user, test_proof],
         )
-        // .mount("/static", FileServer::from(relative!("static")))
+        .mount("/static", FileServer::from(relative!("static")))
         .launch()
         .await
         .unwrap();
@@ -82,14 +83,9 @@ async fn action(_guard: NonceGuard) -> &'static str {
     "Succesfully verified nonce"
 }
 
-#[derive(Deserialize)]
-struct ProofData {
-    proof: Vec<u8>,
-}
-
 #[post("/test-proof-compression", format = "json", data = "<body>")]
-async fn test_proof(body: Json<ProofData>) {
-    println!("Body: {:?}", body.proof);
+async fn test_proof(body: Json<TestProofCompressionRequest>) {
+    println!("Proof: {:?}", body.proof);
 }
 
 #[get("/health")]

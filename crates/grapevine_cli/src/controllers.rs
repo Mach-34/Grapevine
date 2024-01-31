@@ -5,7 +5,8 @@ use babyjubjub_rs::{decompress_point, PrivateKey};
 use grapevine_circuits::nova::{get_public_params, get_r1cs, nova_proof};
 // use grapevine_common::{Fr, NovaProof, G1, G2};
 use ff::PrimeField;
-use grapevine_common::http::requests::CreateUserRequest;
+use grapevine_circuits::utils::compress_proof;
+use grapevine_common::http::requests::{CreateUserRequest, TestProofCompressionRequest};
 use grapevine_common::models::user::User;
 use grapevine_common::utils::random_fr;
 // use grapevine_circuits::{
@@ -222,17 +223,17 @@ pub fn make_or_get_key() -> Result<PrivateKey, std::env::VarError> {
     return Ok(key);
 }
 
-pub fn test_proof_compression() -> Result<(), GrapevineCLIError> {
+pub async fn test_proof_compression() -> Result<(), GrapevineCLIError> {
     let phrase: String = String::from("No one quite like you!");
     let usernames = vec!["pigturtle"]
         .iter()
         .map(|s| String::from(*s))
         .collect::<Vec<String>>();
     let auth_secrets = vec![random_fr()];
-    let params_path = String::from("../../grapevine_circuits/circom/artifacts/public_params.json");
-    let r1cs_path = String::from("../../grapevine_circuits/circom/artifacts/grapevine.r1cs");
+    let params_path = String::from("crates/grapevine_circuits/circom/artifacts/public_params.json");
+    let r1cs_path = String::from("crates/grapevine_circuits/circom/artifacts/grapevine.r1cs");
     let wc_path =
-        String::from("../../grapevine_circuits/circom/artifacts/grapevine_js/grapevine.wasm");
+        String::from("crates/grapevine_circuits/circom/artifacts/grapevine_js/grapevine.wasm");
     let r1cs = get_r1cs(Some(r1cs_path));
     let public_params = get_public_params(Some(params_path));
     let proof = nova_proof(
@@ -244,6 +245,14 @@ pub fn test_proof_compression() -> Result<(), GrapevineCLIError> {
         &auth_secrets,
     )
     .unwrap();
+    let compressed = compress_proof(&proof);
+    let body = TestProofCompressionRequest {
+        proof: compressed,
+        username: String::from("pigturtle"),
+    };
+    let url = format!("{}/test-proof-compression", crate::SERVER_URL);
+    let client = reqwest::Client::new();
+    client.post(&url).json(&body).send().await.unwrap();
     Ok(())
 }
 
