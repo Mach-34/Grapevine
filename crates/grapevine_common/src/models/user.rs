@@ -1,20 +1,15 @@
-use crate::auth_secret::AuthSecretEncrypted;
 use mongodb::bson::oid::ObjectId;
 use serde::{Deserialize, Serialize};
 
+// All fields optional to allow projections
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct User {
     #[serde(rename = "_id", skip_serializing_if = "Option::is_none")]
     pub id: Option<ObjectId>,
-    pub nonce: u64,
-    pub username: String,
+    pub nonce: Option<u64>,
+    pub username: Option<String>,
     #[serde(with = "serde_bytes")]
-    pub pubkey: [u8; 32],
-    pub connections: Option<Vec<Connection>>,
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct Connection {
-    pub user: ObjectId,
-    pub auth_secret: ObjectId,
+    pub pubkey: Option<[u8; 32]>,
+    pub relationships: Option<Vec<ObjectId>>, // references to connections (includes reference to connected user + their auth secret)
+    pub degree_proofs: Option<Vec<ObjectId>>, // references to degree proofs by this user
 }

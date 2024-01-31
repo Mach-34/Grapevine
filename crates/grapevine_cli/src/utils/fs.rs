@@ -1,12 +1,42 @@
+use grapevine_common::{Fr, Params, G1, G2};
+use nova_scotia::circom::circuit::R1CS;
+use nova_scotia::circom::reader::load_r1cs;
+use nova_scotia::FileLocation;
 use std::env::{var, VarError};
-use std::path::{Path, PathBuf};
 use std::fs::write;
+use std::path::{Path, PathBuf};
+
 use crate::SERVER_URL;
+
+pub fn use_public_params() -> Result<Params, Box<dyn std::error::Error>> {
+    // get the path to grapevine (will create if it does not exist)
+    let filepath = get_storage_path().unwrap().join("public_params.json");
+    // read in params file
+    let public_params_file = std::fs::read_to_string(filepath).expect("Unable to read file");
+
+    // parse file into params struct
+    let public_params: Params =
+        serde_json::from_str(&public_params_file).expect("Incorrect public params format");
+
+    Ok(public_params)
+}
+
+pub fn use_r1cs() -> Result<R1CS<Fr>, Box<dyn std::error::Error>> {
+    // get the path to grapevine (will create if it does not exist)
+    let filepath = get_storage_path().unwrap().join("grapevine.r1cs");
+    // read in params file
+    Ok(load_r1cs::<G1, G2>(&FileLocation::PathBuf(filepath)))
+}
+
+pub fn use_wasm() -> Result<PathBuf, Box<dyn std::error::Error>> {
+    // get the path to grapevine (will create if it does not exist)
+    Ok(get_storage_path().unwrap().join("grapevine.wasm"))
+}
 
 /**
  * Gets the path to the ~/.grapevine directory
  * If the directory does not exist, create it
- * 
+ *
  * @returns {PathBuf} path to ~/.grapevine if successful
  */
 pub fn get_storage_path() -> Result<PathBuf, VarError> {
@@ -25,7 +55,7 @@ pub fn get_storage_path() -> Result<PathBuf, VarError> {
 
 /**
  * Checks whether r1cs, wasm, witcalc exist in ~/.grapevine
- * 
+ *
  * @returns {bool} true if all artifacts exist, false otherwise
  */
 pub fn check_artifacts_exist() -> bool {
@@ -36,15 +66,15 @@ pub fn check_artifacts_exist() -> bool {
     let wasm_path = storage_dir.join("grapevine.wasm");
     let public_params_path = storage_dir.join("public_params.json");
     // check if all artifacts exist
-    return r1cs_path.exists() && wasm_path.exists() && public_params_path.exists()
+    return r1cs_path.exists() && wasm_path.exists() && public_params_path.exists();
 }
 
 /**
  * Retrieves proving artifacts (r1cs, wasm witcalc, nova public params) and saves them to .grapevine
- * 
+ *
  * @returns - result of whether or not artifacts were downloaded successfully
  */
-pub async fn get_artifacts() -> Result<(), Box<dyn std::error::Error>>{
+pub async fn get_artifacts() -> Result<(), Box<dyn std::error::Error>> {
     let artifacts = ["grapevine.r1cs", "grapevine.wasm", "public_params.json"];
     for artifact in artifacts {
         println!("Downloading {}...", artifact);
@@ -58,7 +88,7 @@ pub async fn get_artifacts() -> Result<(), Box<dyn std::error::Error>>{
 
 /**
  * Downloads an arbitrary file from a URI and saves it to a specified path
- * 
+ *
  * @param uri - URI of the file to download
  * @param path - path to save the file to
  * @returns - result of whether or not file downloaded successfully
