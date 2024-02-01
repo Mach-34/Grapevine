@@ -1,17 +1,17 @@
 use rocket::{catcher::Catcher, request::Request};
 
 #[derive(Responder)]
-enum CustomResponder {
-    #[response(status = 200)]
-    Ok(String),
+pub enum CustomResponder {
+    // #[response(status = 200)]
+    // Ok(String),
     #[response(status = 400)]
     BadRequest(String),
     #[response(status = 401)]
     Unauthorized(String),
-    #[response(status = 401)]
+    #[response(status = 404)]
     NotFound(String),
-    #[response(status = 500)]
-    UnknownError(String),
+    // #[response(status = 500)]
+    // UnknownError(String),
 }
 
 pub struct ErrorMessage(pub Option<String>);
@@ -39,7 +39,7 @@ pub fn unauthorized(req: &Request) -> CustomResponder {
 #[catch(404)]
 pub fn not_found(req: &Request) -> CustomResponder {
     match req.local_cache(|| ErrorMessage(None)) {
-        ErrorMessage(Some(msg)) => CustomResponder::BadRequest(msg.to_string()),
-        ErrorMessage(None) => CustomResponder::Unauthorized("Asset not found".to_string()),
+        ErrorMessage(Some(msg)) => CustomResponder::NotFound(msg.to_string()),
+        ErrorMessage(None) => CustomResponder::NotFound("Asset not found".to_string()),
     }
 }

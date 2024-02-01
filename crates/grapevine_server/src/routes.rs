@@ -18,10 +18,11 @@ use grapevine_common::{
 use mongodb::bson::oid::ObjectId;
 use num_bigint::{BigInt, Sign};
 use rocket::http::Status;
-use rocket::response::status;
+use rocket::response::status::{self, NotFound};
 use rocket::serde::json::Json;
-use rocket::State;
+use rocket::{request, response, Request, State};
 use std::io::{self, Write};
+use std::ops::Not;
 use std::str::FromStr;
 
 /**
@@ -154,7 +155,11 @@ pub async fn degree_proof(
     // verify the proof
     let public_params = use_public_params().unwrap();
     println!("Try Verify");
-    let verify_res = verify_nova_proof(&decompressed_proof, &public_params, (request.degree * 2) as usize);
+    let verify_res = verify_nova_proof(
+        &decompressed_proof,
+        &public_params,
+        (request.degree * 2) as usize,
+    );
     let (phrase_hash, auth_hash) = match verify_res {
         Ok(res) => {
             let phrase_hash = res.0[1];
@@ -224,19 +229,24 @@ pub async fn add_relationship(
 }
 
 #[get("/user/<username>")]
-pub async fn get_user(username: String, db: &State<GrapevineDB>) -> Result<Json<User>, Status> {
+pub async fn get_user(
+    username: String,
+    db: &State<GrapevineDB>,
+) -> Result<Json<User>, NotFound<String>> {
     match db.get_user(username).await {
         Some(user) => Ok(Json(user)),
-        None => Err(Status::NotFound),
+        None => Err(NotFound("User not does not exist.".to_string())),
     }
 }
 
 #[get("/user/<username>/pubkey")]
-pub async fn get_pubkey(username: String, db: &State<GrapevineDB>) -> Result<String, Status> {
-    println!("Get pubkey for: {:?}", username);
+pub async fn get_pubkey(
+    username: String,
+    db: &State<GrapevineDB>,
+) -> Result<String, NotFound<String>> {
     match db.get_pubkey(username).await {
         Some(pubkey) => Ok(hex::encode(pubkey)),
-        None => Err(Status::NotFound),
+        None => Err(NotFound("User not does not exist.".to_string())),
     }
 }
 

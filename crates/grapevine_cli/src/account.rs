@@ -13,6 +13,7 @@ pub struct GrapevineAccount {
     username: String,
     auth_secret: Fr,
     private_key: [u8; 32],
+    nonce: u64,
 }
 
 impl GrapevineAccount {
@@ -29,6 +30,7 @@ impl GrapevineAccount {
             username,
             auth_secret,
             private_key,
+            nonce: 0,
         }
     }
 

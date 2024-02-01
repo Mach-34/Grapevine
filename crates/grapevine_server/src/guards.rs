@@ -4,6 +4,7 @@ use rocket::{
     http::Status,
     outcome::Outcome::{Error as Failure, Success},
     request::{FromRequest, Outcome, Request},
+    response::status::BadRequest,
     State,
 };
 use serde_json::json;
