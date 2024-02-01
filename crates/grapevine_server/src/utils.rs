@@ -10,6 +10,7 @@ use std::path::PathBuf;
 pub fn use_public_params() -> Result<Params, Box<dyn std::error::Error>> {
     // get the path to grapevine (will create if it does not exist)
     let filepath = current_dir().unwrap().join("static/public_params.json");
+    println!("Filepath: {}", filepath.display());
     // read in params file
     let public_params_file = std::fs::read_to_string(filepath).expect("Unable to read file");
 

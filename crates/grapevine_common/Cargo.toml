@@ -8,6 +8,7 @@ license.workspace = true
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
+bson.workspace = true
 babyjubjub-rs.workspace = true
 hex.workspace = true
 ff.workspace = true
@@ -19,7 +20,6 @@ serde.workspace = true
 poseidon-rs.workspace = true
 uuid.workspace = true
 num-bigint.workspace = true
-mongodb.workspace = true
 
 serde_bytes = "0.11.14"
 sha256 = "1.4.0"

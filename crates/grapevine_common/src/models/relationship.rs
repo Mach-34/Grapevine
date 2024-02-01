@@ -1,5 +1,5 @@
 use crate::auth_secret::AuthSecretEncrypted;
-use mongodb::bson::oid::ObjectId;
+use bson::oid::ObjectId;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize, Clone)]

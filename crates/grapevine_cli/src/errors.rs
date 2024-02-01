@@ -11,7 +11,6 @@ pub enum GrapevineCLIError {
     PhraseCreationProofFailed(String),
     DegreeProofFailed,
     DegreeProofVerificationFailed,
-    // DegreeProofFailed,
 }
 
 impl std::fmt::Display for GrapevineCLIError {

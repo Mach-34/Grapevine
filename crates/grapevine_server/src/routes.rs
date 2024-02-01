@@ -20,7 +20,9 @@ use num_bigint::{BigInt, Sign};
 use rocket::http::Status;
 use rocket::response::status;
 use rocket::serde::json::Json;
-use rocket::State;
+use rocket::{State, Data};
+use rocket::data::{FromData, ToByteUnit};
+use rocket::tokio::io::AsyncReadExt;
 use std::io::{self, Write};
 use std::str::FromStr;
 
@@ -101,11 +103,22 @@ pub async fn create_user(
     }
 }
 
-#[post("/phrase/create", format = "json", data = "<request>")]
+#[post("/phrase/create", data = "<data>")]
 pub async fn create_phrase(
-    request: Json<NewPhraseRequest>,
+    data: Data<'_>,
     db: &State<GrapevineDB>,
 ) -> Result<Status, Status> {
+    // stream in data
+    // todo: implement FromData trait on NewPhraseRequest
+    let mut buffer = Vec::new();
+    let mut stream = data.open(2.mebibytes()); // Adjust size limit as needed
+    if let Err(e) = stream.read_to_end(&mut buffer).await {
+        return Err(Status::BadRequest);
+    }
+    let request = match bincode::deserialize::<NewPhraseRequest>(&buffer) {
+        Ok(req) => req,
+        Err(e) => return Err(Status::BadRequest),
+    };
     let decompressed_proof = decompress_proof(&request.proof);
     // verify the proof
     let public_params = use_public_params().unwrap();
@@ -145,15 +158,25 @@ pub async fn create_phrase(
     }
 }
 
-#[post("/phrase/continue", format = "json", data = "<request>")]
+#[post("/phrase/continue", data = "<data>")]
 pub async fn degree_proof(
-    request: Json<DegreeProofRequest>,
+    data: Data<'_>,
     db: &State<GrapevineDB>,
 ) -> Result<Status, Status> {
+    // stream in data
+    // todo: implement FromData trait on NewPhraseRequest
+    let mut buffer = Vec::new();
+    let mut stream = data.open(2.mebibytes()); // Adjust size limit as needed
+    if let Err(e) = stream.read_to_end(&mut buffer).await {
+        return Err(Status::BadRequest);
+    }
+    let request = match bincode::deserialize::<DegreeProofRequest>(&buffer) {
+        Ok(req) => req,
+        Err(e) => return Err(Status::BadRequest),
+    };
     let decompressed_proof = decompress_proof(&request.proof);
     // verify the proof
     let public_params = use_public_params().unwrap();
-    println!("Try Verify");
     let verify_res = verify_nova_proof(&decompressed_proof, &public_params, (request.degree * 2) as usize);
     let (phrase_hash, auth_hash) = match verify_res {
         Ok(res) => {
@@ -168,7 +191,6 @@ pub async fn degree_proof(
     };
     // get user doc
     let user = db.get_user(request.username.clone()).await.unwrap();
-    println!("User: {:?}", user);
     // @TODO: needs to delete a previous proof by same user on same phrase hash if exists, including removing from last proof's previous field
     // build DegreeProof model
     let proof_doc = DegreeProof {
@@ -178,7 +200,7 @@ pub async fn degree_proof(
         user: Some(user.id.unwrap()),
         degree: Some(request.degree),
         proof: Some(request.proof.clone()),
-        preceding: Some(request.previous),
+        preceding: Some(ObjectId::from_str(&request.previous).unwrap()),
         proceeding: Some(vec![]),
     };
 
