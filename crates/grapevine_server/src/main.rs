@@ -1,5 +1,6 @@
 #[macro_use]
 extern crate rocket;
+use catchers::{bad_request, not_found, unauthorized};
 use grapevine_common::auth_secret::AuthSecretEncrypted;
 use grapevine_common::errors::GrapevineServerError;
 use grapevine_common::http::requests::TestProofCompressionRequest;
@@ -9,8 +10,8 @@ use jsonwebtoken::errors::Error;
 use jsonwebtoken::{encode, Algorithm, EncodingKey, Header};
 use mongo::GrapevineDB;
 use routes::{
-    add_relationship, create_phrase, create_user, get_available_proofs, get_pubkey,
-    get_user, get_proof_with_params
+    add_relationship, create_phrase, create_user, get_available_proofs, get_proof_with_params,
+    get_pubkey, get_user,
 };
 // 👈 New!
 use crate::guards::NonceGuard;
@@ -27,6 +28,7 @@ use rocket::request::{self as request, FromRequest};
 use rocket::serde::{json::Json, Deserialize, Serialize};
 use rocket::{Data, Request, Response, State};
 
+mod catchers;
 mod guards;
 mod mongo;
 mod routes;
@@ -61,6 +63,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             ],
         )
         .mount("/static", FileServer::from(relative!("static")))
+        .register("/", catchers![bad_request, not_found, unauthorized])
         .launch()
         .await
         .unwrap();

@@ -8,7 +8,8 @@ pub struct User {
     pub id: Option<ObjectId>,
     pub nonce: Option<u64>,
     pub username: Option<String>,
-    #[serde(with = "serde_bytes")]
+    // TODO: Uncomment
+    // #[serde(with = "serde_bytes")]
     pub pubkey: Option<[u8; 32]>,
     pub relationships: Option<Vec<ObjectId>>, // references to connections (includes reference to connected user + their auth secret)
     pub degree_proofs: Option<Vec<ObjectId>>, // references to degree proofs by this user

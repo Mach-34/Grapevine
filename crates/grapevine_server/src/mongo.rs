@@ -209,7 +209,10 @@ impl GrapevineDB {
         if proof.preceding.is_some() {
             let query = doc! { "_id": proof.preceding.unwrap() };
             let update = doc! { "$push": { "proceeding": bson::to_bson(&proof_oid).unwrap()} };
-            self.degree_proofs.update_one(query, update, None).await.unwrap();
+            self.degree_proofs
+                .update_one(query, update, None)
+                .await
+                .unwrap();
         }
         // push the proof to the user's list of proofs
         let query = doc! { "_id": user };
@@ -373,5 +376,4 @@ impl GrapevineDB {
             ciphertext: relationship.ciphertext.unwrap(),
         })
     }
-    
 }

@@ -1,3 +1,4 @@
+use crate::catchers::ErrorMessage;
 use crate::mongo::GrapevineDB;
 use rocket::{
     http::Status,
@@ -5,6 +6,7 @@ use rocket::{
     request::{FromRequest, Outcome, Request},
     State,
 };
+use serde_json::json;
 
 pub struct NonceGuard {
     // pubkey: String,
@@ -21,17 +23,19 @@ impl<'r> FromRequest<'r> for NonceGuard {
         let mongo = mongo_request.unwrap();
         let auth_string = request.headers().get_one("Authorization");
         if auth_string.is_some() {
-            let split: Vec<&str> = auth_string.unwrap().split("-").collect();
-            if split.len() == 2 {
-                let username = split[0];
+            let split_auth: Vec<&str> = auth_string.unwrap().split("-").collect();
+            if split_auth.len() == 2 {
+                let username = split_auth[0];
                 // #### TODO: Switch nonce to signature ####
-                let nonce: u64 = split[1].parse().expect("Not a valid number.");
+                let nonce: u64 = split_auth[1].parse().expect("Not a valid number.");
                 let mongo_nonce = mongo.get_nonce(username).await;
 
                 // #### TODO: Put signature verifiaction here ####
 
                 if mongo_nonce == 0 {
                     // User does not exist
+                    let err_msg = format!("User '{}' not found", username);
+                    request.local_cache(|| ErrorMessage(Some(err_msg)));
                     Failure((Status::NotFound, ()))
                 } else {
                     // #### TODO: Switch with verified signature ####
@@ -41,18 +45,29 @@ impl<'r> FromRequest<'r> for NonceGuard {
                             mongo.increment_nonce(username).await;
                             return Success(NonceGuard { nonce });
                         }
-                        // Mismatched nonce or public key
-                        false => Failure((Status::BadRequest, ())),
+
+                        // Incorrect nonce
+                        false => {
+                            let err_msg = format!(
+                                "Incorrect nonce provided. Expected {} and received {}",
+                                mongo_nonce, nonce
+                            );
+                            request.local_cache(|| ErrorMessage(Some(err_msg)));
+                            return Failure((Status::BadRequest, ()));
+                        }
                     }
                 }
             } else {
                 // Improperly formatted authorization header
+                let err_msg = String::from("Malformed authorization header");
+                request.local_cache(|| ErrorMessage(Some(err_msg)));
                 Failure((Status::BadRequest, ()))
             }
         } else {
             // Authorization header is missing
-            // TODO: Add verbose messaging
-            Failure((Status::BadRequest, ()))
+            let err_msg = String::from("Missing authorization header");
+            request.local_cache(|| ErrorMessage(Some(err_msg)));
+            Failure((Status::Unauthorized, ()))
         }
     }
 }
