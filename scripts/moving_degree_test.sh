@@ -81,6 +81,8 @@ printf "\n"
 ## Get all proofs as the user (show degree 3 and old proof removed)
 grapevine my-proofs
 printf "\n"
+mv grapevine.key the_user.key
+
 
 ## Make connection to alice
 mv alice.key grapevine.key
@@ -95,6 +97,7 @@ printf "\n"
 ## Get all proofs as the user (show degree 3 and old proof removed)
 grapevine my-proofs
 printf "\n"
+mv grapevine.key the_user.key
 
 ## CLEANUP
 # rm alice.key bob.key
