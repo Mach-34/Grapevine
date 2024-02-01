@@ -13,6 +13,7 @@ use grapevine_common::auth_secret::{AuthSecret, AuthSecretEncrypted};
 use grapevine_common::http::requests::{
     CreateUserRequest, DegreeProofRequest, NewPhraseRequest, NewRelationshipRequest, TestProofCompressionRequest
 };
+use grapevine_common::http::responses::DegreeData;
 use grapevine_common::models::proof::ProvingData;
 use grapevine_common::models::user::User;
 use grapevine_common::utils::random_fr;
@@ -158,7 +159,6 @@ pub async fn create_new_phrase(phrase: String) -> Result<(), GrapevineCLIError> 
     // println!("Auth hash: {:?}", auth_has);
     // compress the proof
     let compressed = compress_proof(&proof);
-    println!("Compressed: {}", compressed.len());
 
     // build request body
     let body = NewPhraseRequest {
@@ -280,6 +280,22 @@ pub async fn prove_separation_degree(oid: String) -> Result<(), GrapevineCLIErro
     }
 }
 
+pub async fn prove_all_available() -> Result<(), GrapevineCLIError> {
+    // get account
+    let account = get_account()?;
+    // get available proofs
+    let url = format!("{}/proof/{}/available", crate::SERVER_URL, account.username());
+    let res= reqwest::get(&url).await.unwrap().json::<Vec<String>>().await.unwrap();
+    // prove each available proof
+    println!("Found {} available proofs", res.len());
+    for oid in res {
+        println!("Proving {}", oid);
+        prove_separation_degree(oid).await.unwrap();
+    }
+    println!("Finished updating available proofs");
+    Ok(())
+}
+
 pub async fn get_available_proofs() -> Result<(), GrapevineCLIError> {
     // get account
     let account = get_account()?;
@@ -289,7 +305,7 @@ pub async fn get_available_proofs() -> Result<(), GrapevineCLIError> {
     let res = reqwest::get(&url)
         .await
         .unwrap()
-        .json::<Vec<ObjectId>>()
+        .json::<Vec<String>>()
         .await;
     // handle result
     match res {
@@ -304,6 +320,43 @@ pub async fn get_available_proofs() -> Result<(), GrapevineCLIError> {
             )))
         }
     }
+}
+
+pub async fn get_my_proofs() -> Result<(), GrapevineCLIError> {
+    // get account
+    let account = get_account()?;
+    // send request
+    let url = format!("{}/user/{}/degrees", crate::SERVER_URL, account.username());
+    let res = reqwest::get(&url)
+        .await
+        .unwrap()
+        .json::<Vec<DegreeData>>()
+        .await;
+    // handle result
+    let degree_data = match res {
+        Ok(proofs) => proofs,
+        Err(e) => {
+            println!("Failed to get proofs");
+            return Err(GrapevineCLIError::ServerError(String::from(
+                "Couldn't get available proofs",
+            )))
+        }
+    };
+    println!("Proofs of {}'s degrees of separation from phrases/ users:", account.username());
+    for degree in degree_data {
+        println!("=-=-=-=-=-=-=-=-=-=-=-=-=");
+        println!("Phrase hash: 0x{}", hex::encode(degree.phrase_hash));
+        if degree.relation.is_none() {
+            println!("Phrase created by this user");
+        } else {
+            println!("Degrees of separation from origin: {}", degree.degree);
+            println!("Originator: {}", degree.originator);
+            println!("Your relation: {}", degree.relation.unwrap());
+        }
+    }
+    println!("=-=-=-=-=-=-=-=-=-=-=-=-=");
+
+    Ok(())
 }
 
 pub fn account_details() -> Result<(), GrapevineCLIError>{

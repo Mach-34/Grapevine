@@ -1,31 +1,15 @@
 #[macro_use]
 extern crate rocket;
-use grapevine_common::auth_secret::AuthSecretEncrypted;
-use grapevine_common::errors::GrapevineServerError;
-use grapevine_common::http::requests::TestProofCompressionRequest;
-use grapevine_common::session_key::{Server, SessionKey};
-use grapevine_common::utils::convert_username_to_fr;
-use jsonwebtoken::errors::Error;
-use jsonwebtoken::{encode, Algorithm, EncodingKey, Header};
+
 use mongo::GrapevineDB;
 use routes::{
-    add_relationship, create_phrase, create_user, get_available_proofs, get_pubkey,
-    get_user, get_proof_with_params, degree_proof
+    add_relationship, create_phrase, create_user, degree_proof, get_all_degrees,
+    get_available_proofs, get_proof_with_params, get_pubkey, get_user,
 };
-// 👈 New!
+
 use crate::guards::NonceGuard;
-use babyjubjub_rs::{decompress_point, decompress_signature, verify, Point, Signature};
-use mongodb::{
-    bson::{doc, oid::ObjectId},
-    options::{ClientOptions, FindOneOptions, ServerApi, ServerApiVersion},
-    Client, Collection,
-};
-use num_bigint::{BigInt, Sign};
+use mongodb::bson::doc;
 use rocket::fs::{relative, FileServer};
-use rocket::outcome::Outcome::{Error as Failure, Success};
-use rocket::request::{self as request, FromRequest};
-use rocket::serde::{json::Json, Deserialize, Serialize};
-use rocket::{Data, Request, Response, State};
 
 mod guards;
 mod mongo;
@@ -59,6 +43,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 get_available_proofs,
                 get_proof_with_params,
                 degree_proof,
+                get_all_degrees
             ],
         )
         .mount("/static", FileServer::from(relative!("static")))

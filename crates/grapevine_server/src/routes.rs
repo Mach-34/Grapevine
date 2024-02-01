@@ -4,7 +4,10 @@ use babyjubjub_rs::{decompress_point, decompress_signature, verify};
 use grapevine_circuits::{nova::verify_nova_proof, utils::decompress_proof};
 use grapevine_common::auth_secret::AuthSecretEncrypted;
 use grapevine_common::errors::GrapevineServerError;
-use grapevine_common::http::requests::{CreateUserRequest, DegreeProofRequest};
+use grapevine_common::http::{
+    requests::{CreateUserRequest, DegreeProofRequest},
+    responses::DegreeData
+};
 use grapevine_common::utils::convert_username_to_fr;
 use grapevine_common::MAX_USERNAME_CHARS;
 use grapevine_common::{
@@ -275,8 +278,19 @@ pub async fn get_pubkey(username: String, db: &State<GrapevineDB>) -> Result<Str
 pub async fn get_available_proofs(
     username: String,
     db: &State<GrapevineDB>,
-) -> Result<Json<Vec<ObjectId>>, Status> {
+) -> Result<Json<Vec<String>>, Status> {
     Ok(Json(db.find_available_degrees(username).await))
+}
+
+#[get("/user/<username>/degrees")]
+pub async fn get_all_degrees(
+    username: String,
+    db: &State<GrapevineDB>,
+) -> Result<Json<Vec<DegreeData>>, Status> {
+    match db.get_all_degrees(username).await {
+        Some(proofs) => Ok(Json(proofs)),
+        None => Err(Status::NotFound),
+    }
 }
 
 // returns auth secret and proof data
