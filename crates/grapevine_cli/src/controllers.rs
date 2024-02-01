@@ -11,12 +11,14 @@ use ff::PrimeField;
 use grapevine_circuits::utils::{compress_proof, decompress_proof};
 use grapevine_common::auth_secret::{AuthSecret, AuthSecretEncrypted};
 use grapevine_common::http::requests::{
-    CreateUserRequest, NewPhraseRequest, NewRelationshipRequest, TestProofCompressionRequest,
+    CreateUserRequest, DegreeProofRequest, NewPhraseRequest, NewRelationshipRequest, TestProofCompressionRequest
 };
+use grapevine_common::http::responses::DegreeData;
 use grapevine_common::models::proof::ProvingData;
 use grapevine_common::models::user::User;
 use grapevine_common::utils::random_fr;
-use mongodb::bson::oid::ObjectId;
+use bson::oid::ObjectId;
+use serde::Serialize;
 // use grapevine_circuits::{
 //     nova::{continue_nova_proof, get_public_params, get_r1cs, nova_proof, verify_nova_proof},
 // };
@@ -132,6 +134,7 @@ pub async fn create_new_phrase(phrase: String) -> Result<(), GrapevineCLIError> 
     let username = vec![account.username().clone()];
     let auth_secret = vec![account.auth_secret().clone()];
     // create proof
+    // println!("Auth Secret: {:?}", auth_secret_input[0].to_bytes);
     let res = nova_proof(wc_path, &r1cs, &params, &phrase, &username, &auth_secret);
     let proof = match res {
         Ok(proof) => proof,
@@ -162,11 +165,13 @@ pub async fn create_new_phrase(phrase: String) -> Result<(), GrapevineCLIError> 
         proof: compressed,
         username: account.username().clone(),
     };
+    let serialized: Vec<u8> = bincode::serialize(&body).unwrap();
 
+    // send request
     let url = format!("{}/phrase/create", crate::SERVER_URL);
     let client = reqwest::Client::new();
-    let res = client.post(&url).json(&body).send().await.unwrap();
-    // // handle response from server
+    let res = client.post(&url).body(serialized).send().await.unwrap();
+    // handle response from server
     match res.status() {
         reqwest::StatusCode::CREATED => {
             println!("Created new phrase");
@@ -197,7 +202,6 @@ pub async fn prove_separation_degree(oid: String) -> Result<(), GrapevineCLIErro
         oid,
         account.username()
     );
-    println!("getting proving data");
     let res = reqwest::get(&url).await.unwrap();
     let proving_data = match res.status() {
         reqwest::StatusCode::OK => {
@@ -210,14 +214,14 @@ pub async fn prove_separation_degree(oid: String) -> Result<(), GrapevineCLIErro
             return Err(GrapevineCLIError::ServerError(text));
         }
     };
-    println!("got proving data");
     // decrypt auth secret
     let auth_secret_encrypted = AuthSecretEncrypted {
         ephemeral_key: proving_data.ephemeral_key,
         ciphertext: proving_data.ciphertext,
-        username: account.username().clone(),
+        username: proving_data.username,
         recipient: account.pubkey().compress(),
     };
+    let auth_secret = account.decrypt_auth_secret(auth_secret_encrypted);
     // decompress proof
     let mut proof = decompress_proof(&proving_data.proof);
     // verify proof
@@ -230,7 +234,6 @@ pub async fn prove_separation_degree(oid: String) -> Result<(), GrapevineCLIErro
         }
     };
     // build nova proof
-    let auth_secret = account.decrypt_auth_secret(auth_secret_encrypted);
     let username_input = vec![auth_secret.username, account.username().clone()];
     let auth_secret_input = vec![auth_secret.auth_secret, account.auth_secret().clone()];
     match continue_nova_proof(
@@ -253,14 +256,16 @@ pub async fn prove_separation_degree(oid: String) -> Result<(), GrapevineCLIErro
     let compressed = compress_proof(&proof);
 
     // build request body
-    let body = NewPhraseRequest {
+    let body = DegreeProofRequest {
         proof: compressed,
         username: account.username().clone(),
+        previous: oid,
+        degree: proving_data.degree + 1,
     };
-
-    let url = format!("{}/phrase/create", crate::SERVER_URL);
+    let serialized: Vec<u8> = bincode::serialize(&body).unwrap();
+    let url = format!("{}/phrase/continue", crate::SERVER_URL);
     let client = reqwest::Client::new();
-    let res = client.post(&url).json(&body).send().await.unwrap();
+    let res = client.post(&url).body(serialized).send().await.unwrap();
     // // handle response from server
     match res.status() {
         reqwest::StatusCode::CREATED => {
@@ -275,15 +280,32 @@ pub async fn prove_separation_degree(oid: String) -> Result<(), GrapevineCLIErro
     }
 }
 
+pub async fn prove_all_available() -> Result<(), GrapevineCLIError> {
+    // get account
+    let account = get_account()?;
+    // get available proofs
+    let url = format!("{}/proof/{}/available", crate::SERVER_URL, account.username());
+    let res= reqwest::get(&url).await.unwrap().json::<Vec<String>>().await.unwrap();
+    // prove each available proof
+    println!("Found {} available proofs", res.len());
+    for oid in res {
+        println!("Proving {}", oid);
+        prove_separation_degree(oid).await.unwrap();
+    }
+    println!("Finished updating available proofs");
+    Ok(())
+}
+
 pub async fn get_available_proofs() -> Result<(), GrapevineCLIError> {
     // get account
     let account = get_account()?;
     // send request
+    println!("Attempting to get proofs");
     let url = format!("{}/proof/{}/available", crate::SERVER_URL, account.username());
     let res = reqwest::get(&url)
         .await
         .unwrap()
-        .json::<Vec<ObjectId>>()
+        .json::<Vec<String>>()
         .await;
     // handle result
     match res {
@@ -292,11 +314,62 @@ pub async fn get_available_proofs() -> Result<(), GrapevineCLIError> {
             Ok(())
         }
         Err(e) => {
+            println!("Failed to get proofs");
             return Err(GrapevineCLIError::ServerError(String::from(
                 "Couldn't get available proofs",
             )))
         }
     }
+}
+
+pub async fn get_my_proofs() -> Result<(), GrapevineCLIError> {
+    // get account
+    let account = get_account()?;
+    // send request
+    let url = format!("{}/user/{}/degrees", crate::SERVER_URL, account.username());
+    let res = reqwest::get(&url)
+        .await
+        .unwrap()
+        .json::<Vec<DegreeData>>()
+        .await;
+    // handle result
+    let degree_data = match res {
+        Ok(proofs) => proofs,
+        Err(e) => {
+            println!("Failed to get proofs");
+            return Err(GrapevineCLIError::ServerError(String::from(
+                "Couldn't get available proofs",
+            )))
+        }
+    };
+    println!("Proofs of {}'s degrees of separation from phrases/ users:", account.username());
+    for degree in degree_data {
+        println!("=-=-=-=-=-=-=-=-=-=-=-=-=");
+        println!("Phrase hash: 0x{}", hex::encode(degree.phrase_hash));
+        if degree.relation.is_none() {
+            println!("Phrase created by this user");
+        } else {
+            println!("Degrees of separation from origin: {}", degree.degree);
+            println!("Originator: {}", degree.originator);
+            println!("Your relation: {}", degree.relation.unwrap());
+        }
+    }
+    println!("=-=-=-=-=-=-=-=-=-=-=-=-=");
+
+    Ok(())
+}
+
+pub fn account_details() -> Result<(), GrapevineCLIError>{
+    // get account
+    let account = get_account().unwrap();
+    let auth_secret = hex::encode(account.auth_secret().to_bytes());
+    let pk = hex::encode(account.private_key_raw());
+    let pubkey = hex::encode(account.pubkey().compress());
+    println!("Username: {}", account.username());
+    println!("Auth Secret: {}", auth_secret);
+    println!("Private Key: {}", pk);
+    println!("Pubkey: {}", pubkey);
+    Ok(())
 }
 
 pub fn get_account_info() {

@@ -12,23 +12,13 @@ use mongo::GrapevineDB;
 use rocket::http::Status;
 use rocket::response::status::NotFound;
 use routes::{
-    add_relationship, create_phrase, create_user, get_available_proofs, get_proof_with_params,
-    get_pubkey, get_user,
+    add_relationship, create_phrase, create_user, degree_proof, get_all_degrees,
+    get_available_proofs, get_proof_with_params, get_pubkey, get_user,
 };
-// 👈 New!
+
 use crate::guards::NonceGuard;
-use babyjubjub_rs::{decompress_point, decompress_signature, verify, Point, Signature};
-use mongodb::{
-    bson::{doc, oid::ObjectId},
-    options::{ClientOptions, FindOneOptions, ServerApi, ServerApiVersion},
-    Client, Collection,
-};
-use num_bigint::{BigInt, Sign};
+use mongodb::bson::doc;
 use rocket::fs::{relative, FileServer};
-use rocket::outcome::Outcome::{Error as Failure, Success};
-use rocket::request::{self as request, FromRequest};
-use rocket::serde::{json::Json, Deserialize, Serialize};
-use rocket::{Data, Request, Response, State};
 
 mod catchers;
 mod guards;
@@ -61,6 +51,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 add_relationship,
                 get_available_proofs,
                 get_proof_with_params,
+                degree_proof,
+                get_all_degrees
             ],
         )
         .mount("/static", FileServer::from(relative!("static")))

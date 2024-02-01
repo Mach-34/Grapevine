@@ -4,7 +4,10 @@ use babyjubjub_rs::{decompress_point, decompress_signature, verify};
 use grapevine_circuits::{nova::verify_nova_proof, utils::decompress_proof};
 use grapevine_common::auth_secret::AuthSecretEncrypted;
 use grapevine_common::errors::GrapevineServerError;
-use grapevine_common::http::requests::{CreateUserRequest, DegreeProofRequest};
+use grapevine_common::http::{
+    requests::{CreateUserRequest, DegreeProofRequest},
+    responses::DegreeData,
+};
 use grapevine_common::utils::convert_username_to_fr;
 use grapevine_common::MAX_USERNAME_CHARS;
 use grapevine_common::{
@@ -17,10 +20,12 @@ use grapevine_common::{
 };
 use mongodb::bson::oid::ObjectId;
 use num_bigint::{BigInt, Sign};
+use rocket::data::{FromData, ToByteUnit};
 use rocket::http::Status;
 use rocket::response::status::{self, NotFound};
 use rocket::serde::json::Json;
-use rocket::{request, response, Request, State};
+use rocket::tokio::io::AsyncReadExt;
+use rocket::{request, response, Data, Request, State};
 use std::io::{self, Write};
 use std::ops::Not;
 use std::str::FromStr;
@@ -102,11 +107,19 @@ pub async fn create_user(
     }
 }
 
-#[post("/phrase/create", format = "json", data = "<request>")]
-pub async fn create_phrase(
-    request: Json<NewPhraseRequest>,
-    db: &State<GrapevineDB>,
-) -> Result<Status, Status> {
+#[post("/phrase/create", data = "<data>")]
+pub async fn create_phrase(data: Data<'_>, db: &State<GrapevineDB>) -> Result<Status, Status> {
+    // stream in data
+    // todo: implement FromData trait on NewPhraseRequest
+    let mut buffer = Vec::new();
+    let mut stream = data.open(2.mebibytes()); // Adjust size limit as needed
+    if let Err(e) = stream.read_to_end(&mut buffer).await {
+        return Err(Status::BadRequest);
+    }
+    let request = match bincode::deserialize::<NewPhraseRequest>(&buffer) {
+        Ok(req) => req,
+        Err(e) => return Err(Status::BadRequest),
+    };
     let decompressed_proof = decompress_proof(&request.proof);
     // verify the proof
     let public_params = use_public_params().unwrap();
@@ -146,15 +159,22 @@ pub async fn create_phrase(
     }
 }
 
-#[post("/phrase/continue", format = "json", data = "<request>")]
-pub async fn degree_proof(
-    request: Json<DegreeProofRequest>,
-    db: &State<GrapevineDB>,
-) -> Result<Status, Status> {
+#[post("/phrase/continue", data = "<data>")]
+pub async fn degree_proof(data: Data<'_>, db: &State<GrapevineDB>) -> Result<Status, Status> {
+    // stream in data
+    // todo: implement FromData trait on NewPhraseRequest
+    let mut buffer = Vec::new();
+    let mut stream = data.open(2.mebibytes()); // Adjust size limit as needed
+    if let Err(e) = stream.read_to_end(&mut buffer).await {
+        return Err(Status::BadRequest);
+    }
+    let request = match bincode::deserialize::<DegreeProofRequest>(&buffer) {
+        Ok(req) => req,
+        Err(e) => return Err(Status::BadRequest),
+    };
     let decompressed_proof = decompress_proof(&request.proof);
     // verify the proof
     let public_params = use_public_params().unwrap();
-    println!("Try Verify");
     let verify_res = verify_nova_proof(
         &decompressed_proof,
         &public_params,
@@ -173,7 +193,6 @@ pub async fn degree_proof(
     };
     // get user doc
     let user = db.get_user(request.username.clone()).await.unwrap();
-    println!("User: {:?}", user);
     // @TODO: needs to delete a previous proof by same user on same phrase hash if exists, including removing from last proof's previous field
     // build DegreeProof model
     let proof_doc = DegreeProof {
@@ -183,7 +202,7 @@ pub async fn degree_proof(
         user: Some(user.id.unwrap()),
         degree: Some(request.degree),
         proof: Some(request.proof.clone()),
-        preceding: Some(request.previous),
+        preceding: Some(ObjectId::from_str(&request.previous).unwrap()),
         proceeding: Some(vec![]),
     };
 
@@ -263,8 +282,19 @@ pub async fn get_pubkey(
 pub async fn get_available_proofs(
     username: String,
     db: &State<GrapevineDB>,
-) -> Result<Json<Vec<ObjectId>>, Status> {
+) -> Result<Json<Vec<String>>, Status> {
     Ok(Json(db.find_available_degrees(username).await))
+}
+
+#[get("/user/<username>/degrees")]
+pub async fn get_all_degrees(
+    username: String,
+    db: &State<GrapevineDB>,
+) -> Result<Json<Vec<DegreeData>>, Status> {
+    match db.get_all_degrees(username).await {
+        Some(proofs) => Ok(Json(proofs)),
+        None => Err(Status::NotFound),
+    }
 }
 
 // returns auth secret and proof data

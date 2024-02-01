@@ -1,6 +1,6 @@
 use crate::auth_secret::AuthSecretEncrypted;
 use crate::serde::{deserialize_byte_buf, serialize_byte_buf};
-use mongodb::bson::oid::ObjectId;
+use bson::oid::ObjectId;
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -38,6 +38,6 @@ pub struct NewRelationshipRequest {
 pub struct DegreeProofRequest {
     pub username: String,
     pub proof: Vec<u8>,
-    pub previous: ObjectId,
+    pub previous: String,
     pub degree: u8,
 }

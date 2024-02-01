@@ -2,11 +2,13 @@ use crate::{DATABASE, MONGODB_URI};
 use futures::stream::StreamExt;
 use grapevine_common::auth_secret::AuthSecretEncrypted;
 use grapevine_common::errors::GrapevineServerError;
+use grapevine_common::http::responses::DegreeData;
 use grapevine_common::models::proof::ProvingData;
 use grapevine_common::models::{proof::DegreeProof, relationship::Relationship, user::User};
 use mongodb::bson::{self, doc, oid::ObjectId, Binary};
 use mongodb::options::{
-    AggregateOptions, ClientOptions, FindOneOptions, FindOptions, ServerApi, ServerApiVersion,
+    AggregateOptions, ClientOptions, FindOneAndDeleteOptions, FindOneOptions, FindOptions,
+    ServerApi, ServerApiVersion,
 };
 use mongodb::{Client, Collection};
 
@@ -196,6 +198,31 @@ impl GrapevineDB {
         user: &ObjectId,
         proof: &DegreeProof,
     ) -> Result<ObjectId, GrapevineServerError> {
+        // check if an existing proof in this chain exists for the user
+        // todo: make this not ugly
+        let phrase_hash_bson: Vec<i32> = proof
+            .phrase_hash
+            .unwrap()
+            .to_vec()
+            .iter()
+            .map(|x| *x as i32)
+            .collect();
+        let query = doc! { "user": user, "phrase_hash":  phrase_hash_bson };
+        let projection = doc! { "_id": 1 };
+        let options = FindOneAndDeleteOptions::builder()
+            .projection(projection)
+            .build();
+        let oid = match self
+            .degree_proofs
+            .find_one_and_delete(query, Some(options))
+            .await
+            .unwrap()
+        {
+            Some(document) => document.id,
+            None => None,
+        };
+
+        // delete previous proof made by user if an existing proof is being replaced
         // create new proof document
         let proof_oid = self
             .degree_proofs
@@ -216,8 +243,12 @@ impl GrapevineDB {
         }
         // push the proof to the user's list of proofs
         let query = doc! { "_id": user };
-        let update = doc! { "$push": { "degree_proofs": bson::to_bson(&proof_oid).unwrap()} };
-        self.users.update_one(query, update, None).await.unwrap();
+        let update = doc! {"$push": { "degree_proofs": bson::to_bson(&proof_oid).unwrap()}};
+        self.users.update_one(query.clone(), update, None).await.unwrap();
+        if oid.is_some() {
+            let update = doc! { "$pull": { "degree_proofs": oid.unwrap() } };
+            self.users.update_one(query, update, None).await.unwrap();
+        }
         Ok(proof_oid)
     }
 
@@ -233,58 +264,81 @@ impl GrapevineDB {
      *   - find degree chains they are not a part of
      *   - find lower degree proofs they can build from
      */
-    pub async fn find_available_degrees(&self, username: String) -> Vec<ObjectId> {
+    pub async fn find_available_degrees(&self, username: String) -> Vec<String> {
         // find degree chains they are not a part of
         let pipeline = vec![
-            // stage 1: find the user doc from username
-            doc! {"$match": {"username": username }},
-            // stage 2: lookup degree proofs the user has already amde
+            // find the user to find available proofs for
+            doc! { "$match": { "username": username } },
+            doc! { "$project": { "relationships": 1, "degree_proofs": 1, "_id": 0 } },
+            // look up the degree proofs made by this user
             doc! {
                 "$lookup": {
-                    "from": "degreeProofs",
+                    "from": "degree_proofs",
                     "localField": "degree_proofs",
                     "foreignField": "_id",
-                    "as": "userDegreeProofs"
+                    "as": "userDegreeProofs",
+                    "pipeline": [doc! { "$project": { "degree": 1, "phrase_hash": 1 } }]
                 }
             },
-            // stage 3: Lookup relationships and degree proofs from relationships
+            // look up the relationships made by this user
             doc! {
                 "$lookup": {
                     "from": "relationships",
                     "localField": "relationships",
                     "foreignField": "_id",
-                    "as": "userRelationships"
+                    "as": "userRelationships",
+                    "pipeline": [doc! { "$project": { "sender": 1 } }]
                 }
             },
-            doc! { "$unwind": "$userRelationships" },
+            // look up the degree proofs made by relationships
+            // @todo: allow limitation of degrees of separation here
             doc! {
                 "$lookup": {
-                    "from": "degreeProofs",
-                    "localField": "userRelationships.recipient",
+                    "from": "degree_proofs",
+                    "localField": "userRelationships.sender",
                     "foreignField": "user",
-                    "as": "relationshipDegreeProofs"
+                    "as": "relationshipDegreeProofs",
+                    "pipeline": [doc! { "$project": { "degree": 1, "phrase_hash": 1 } }]
                 }
             },
+            // unwind the results
+            doc! { "$project": { "userDegreeProofs": 1, "relationshipDegreeProofs": 1 } },
             doc! { "$unwind": "$relationshipDegreeProofs" },
-            // stage 4: group degree proofs by phrase_hash and sort by degree (min)
+            // find the lowest degree proof in each chain from relationship proofs and reference user proofs in this chain if exists
             doc! {
                 "$group": {
                     "_id": "$relationshipDegreeProofs.phrase_hash",
-                    "lowestDegreeProof": { "$min": "$relationshipDegreeProofs.degree" },
-                    "degreeProofId": { "$first": "$relationshipDegreeProofs._id" }
+                    "originalId": { "$first": "$relationshipDegreeProofs._id" },
+                    "degree": { "$min": "$relationshipDegreeProofs.degree" },
+                    "userProof": {
+                        "$first": {
+                            "$arrayElemAt": [{
+                                "$filter": {
+                                    "input": "$userDegreeProofs",
+                                    "as": "userProof",
+                                    "cond": { "$eq": ["$$userProof.phrase_hash", "$relationshipDegreeProofs.phrase_hash"] }
+                                }
+                            }, 0]
+                        }
+                    }
                 }
             },
-            // Stage 5: Compare and construct the result set
+            // remove the proofs that do not offer improved degrees of separation from existing user proofs
             doc! {
-                "$project": {
-                    "_id": 1,
-                    "isLowerDegree": {"$lt": ["$lowestDegreeProof", "$$userDegreeProofs.degree"]}
+                "$match": {
+                    "$expr": {
+                        "$or": [
+                            { "$gte": ["$userProof.degree", { "$add": ["$degree", 2] }] },
+                            { "$eq": ["$userProof", null] }
+                        ]
+                    }
                 }
             },
-            doc! {"$match": { "isLowerDegree": true }},
+            // project only the ids of the proofs the user can build from
+            doc! { "$project": { "_id": "$originalId" } },
         ];
         // get the OID's of degree proofs the user can build from
-        let mut proofs: Vec<ObjectId> = vec![];
+        let mut proofs: Vec<String> = vec![];
         let mut cursor = self.users.aggregate(pipeline, None).await.unwrap();
         while let Some(result) = cursor.next().await {
             match result {
@@ -293,7 +347,7 @@ impl GrapevineDB {
                         .get("_id")
                         .and_then(|id| id.as_object_id())
                         .unwrap();
-                    proofs.push(oid);
+                    proofs.push(oid.to_string());
                 }
                 Err(e) => println!("Error: {}", e),
             }
@@ -302,8 +356,164 @@ impl GrapevineDB {
         proofs
     }
 
-    // (username, ephemeral_key, ciphertext)
-    // todo: modify auth secret to work with this
+    // @todo: ask chatgpt for better name
+    pub async fn get_all_degrees(&self, username: String) -> Option<Vec<DegreeData>> {
+        let pipeline = vec![
+            // get the user to find the proofs of degrees of separation for the user
+            doc! { "$match": { "username": username } },
+            doc! { "$project": { "_id": 1, "degree_proofs": 1 } },
+            // look up the degree proof documents
+            doc! {
+                "$lookup": {
+                    "from": "degree_proofs",
+                    "localField": "degree_proofs",
+                    "foreignField": "_id",
+                    "as": "proofs",
+                    "pipeline": [doc! { "$project": { "degree": 1, "preceding": 1, "phrase_hash": 1 } }]
+                }
+            },
+            doc! { "$unwind": "$proofs" },
+            doc! {
+                "$project": {
+                    "degree": "$proofs.degree",
+                    "preceding": "$proofs.preceding",
+                    "phrase_hash": "$proofs.phrase_hash",
+                    "_id": 0
+                }
+            },
+            // get the preceding proof if it exists, then get the user who made it to show the connection
+            doc! {
+                "$lookup": {
+                    "from": "degree_proofs",
+                    "localField": "preceding",
+                    "foreignField": "_id",
+                    "as": "relation",
+                    "pipeline": [doc! { "$project": { "user": 1, "_id": 0 } }]
+                }
+            },
+            doc! {
+                "$project": {
+                    "degree": 1,
+                    "preceding": 1,
+                    "phrase_hash": 1,
+                    "relation": { "$arrayElemAt": ["$relation.user", 0] },
+                    "_id": 0
+                }
+            },
+            doc! {
+                "$lookup": {
+                    "from": "users",
+                    "localField": "relation",
+                    "foreignField": "_id",
+                    "as": "relation",
+                    "pipeline": [doc! { "$project": { "_id": 0, "username": 1 } }]
+                }
+            },
+            doc! {
+                "$project": {
+                    "degree": 1,
+                    "phrase_hash": 1,
+                    "relation": { "$arrayElemAt": ["$relation.username", 0] },
+                    "_id": 0
+                }
+            },
+            // look up the first proof in the chain to show who you are X degrees separated from
+            doc! {
+                "$lookup": {
+                    "from": "degree_proofs",
+                    "let": { "phrase_hash": "$phrase_hash" },
+                    "pipeline": [
+                        doc! {
+                            "$match": {
+                                "$expr": {
+                                    "$and": [
+                                        { "$eq": ["$phrase_hash", "$$phrase_hash"] },
+                                        { "$eq": ["$degree", 1] }
+                                    ]
+                                }
+                            }
+                        },
+                        doc! { "$project": { "user": 1, "_id": 0 } }
+                    ],
+                    "as": "originator",
+                }
+            },
+            doc! {
+                "$project": {
+                    "degree": 1,
+                    "relation": 1,
+                    "phrase_hash": 1,
+                    "originator": { "$arrayElemAt": ["$originator.user", 0] },
+                }
+            },
+            doc! {
+                "$lookup": {
+                    "from": "users",
+                    "localField": "originator",
+                    "foreignField": "_id",
+                    "as": "originator",
+                    "pipeline": [doc! { "$project": { "_id": 0, "username": 1 } }]
+                }
+            },
+            doc! {
+                "$project": {
+                    "degree": 1,
+                    "relation": 1,
+                    "phrase_hash": 1,
+                    "originator": { "$arrayElemAt": ["$originator.username", 0] },
+                }
+            },
+            doc! { "$sort": { "degree": 1 }},
+        ];
+        // get the OID's of degree proofs the user can build from
+        let mut degrees: Vec<DegreeData> = vec![];
+        let mut cursor = self.users.aggregate(pipeline, None).await.unwrap();
+        while let Some(result) = cursor.next().await {
+            match result {
+                Ok(document) => {
+                    let degree = document.get_i32("degree").unwrap() as u8;
+                    let relation = match document.get("relation") {
+                        Some(relation) => Some(relation.as_str().unwrap().to_string()),
+                        None => None,
+                    };
+                    // @todo: can this be retrieved better?
+                    let phrase_hash: [u8; 32] = document
+                        .get("phrase_hash")
+                        .unwrap()
+                        .as_array()
+                        .unwrap()
+                        .iter()
+                        .map(|x| x.as_i32().unwrap() as u8)
+                        .collect::<Vec<u8>>()
+                        .try_into()
+                        .unwrap();
+                    let originator = document.get_str("originator").unwrap();
+                    degrees.push(DegreeData {
+                        degree,
+                        relation,
+                        originator: originator.to_string(),
+                        phrase_hash,
+                    });
+                }
+                Err(e) => return None,
+            }
+        }
+        Some(degrees)
+    }
+
+    // used by passing args hash to check if existing phrase hash exists and deletes it
+    // pub async fn delete_proof(&self, user: oid: ObjectId) -> Result<(), GrapevineServerError> {
+    //     // delete the proof document
+    //     let query = doc! { "_id": oid };
+    //     let res = self.degree_proofs.delete_one(query, None).await.unwrap();
+    //     match res.deleted_count {
+    //         1 => Ok(()),
+    //         _ => Err(GrapevineServerError::MongoError(String::from("todo"))),
+    //     }
+    //     // @todo: removing the proof will break downstream proof chains. This must be handled. Potentially we just delete downstream proofs and make them reprove?
+    //     // remove the reference to the proof in the user's list of proofs
+    //     let
+    // }
 
     /**
      * Get a proof from the server with all info needed to prove a degree of separation as a given user

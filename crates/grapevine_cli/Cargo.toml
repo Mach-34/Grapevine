@@ -5,11 +5,12 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
+bincode.workspace = true
+bson.workspace = true
 nova-scotia.workspace = true
 nova-snark.workspace = true
 grapevine_circuits.workspace = true
 grapevine_common.workspace = true
-mongodb.workspace = true # todo: replace with bson
 ff.workspace = true
 ff_ce.workspace = true
 hex.workspace = true
@@ -22,7 +23,6 @@ babyjubjub-rs.workspace = true
 clap = { version = "4.4.7", features = ["derive"] }
 reqwest = { version = "0.11.23", features = ["json"] }
 poseidon-rs = "0.0.10"
-jsonwebtoken = "9.2.0"
 
 [[bin]]
 name = "grapevine"
