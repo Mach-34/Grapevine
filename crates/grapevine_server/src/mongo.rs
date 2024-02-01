@@ -245,9 +245,10 @@ impl GrapevineDB {
         let query = doc! { "_id": user };
         let update = doc! {"$push": { "degree_proofs": bson::to_bson(&proof_oid).unwrap()}};
         self.users.update_one(query.clone(), update, None).await.unwrap();
-        let update = doc! { "$pull": { "degree_proofs": oid.unwrap() } };
-        self.users.update_one(query, update, None).await.unwrap();
-
+        if oid.is_some() {
+            let update = doc! { "$pull": { "degree_proofs": oid.unwrap() } };
+            self.users.update_one(query, update, None).await.unwrap();
+        }
         Ok(proof_oid)
     }
 

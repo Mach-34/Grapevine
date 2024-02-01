@@ -12,7 +12,7 @@ fi
 ### alice <---- bob <---- charlie <---- the_user
 ### 
 ### 2.
-### alice <---- bob <---- the_user
+### alice <---- bob <---- the_user 
 ###
 ### 3. 
 ### alice <---- the_user
@@ -64,7 +64,7 @@ mv the_user.key grapevine.key
 grapevine prove-all
 ## Get all proofs as the user (show degree 4)
 printf "\n"
-grapevine my-proofs
+grapevine my-degrees
 printf "\n"
 mv grapevine.key the_user.key
 
@@ -79,7 +79,7 @@ mv the_user.key grapevine.key
 grapevine prove-all
 printf "\n"
 ## Get all proofs as the user (show degree 3 and old proof removed)
-grapevine my-proofs
+grapevine my-degrees
 printf "\n"
 mv grapevine.key the_user.key
 
@@ -95,7 +95,7 @@ mv the_user.key grapevine.key
 grapevine prove-all
 printf "\n"
 ## Get all proofs as the user (show degree 3 and old proof removed)
-grapevine my-proofs
+grapevine my-degrees
 printf "\n"
 mv grapevine.key the_user.key
 
