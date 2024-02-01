@@ -29,6 +29,8 @@ enum Commands {
     ProveSeparation(ProveSeparationArgs),
     // View the OID's of proofs the user can build from
     AvailableProofs,
+    // Get account details
+    GetAccount
 }
 
 #[derive(Args)]
@@ -76,5 +78,6 @@ pub async fn main() {
             controllers::prove_separation_degree(cmd.username.clone().unwrap()).await
         }
         Commands::AvailableProofs => controllers::get_available_proofs().await,
+        Commands::GetAccount => controllers::account_details(),
     }
 }

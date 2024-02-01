@@ -9,6 +9,7 @@ name = "grapevine-server"
 path = "src/main.rs"
 
 [dependencies]
+bincode.workspace = true
 grapevine_common.workspace = true
 grapevine_circuits.workspace = true
 nova-scotia.workspace = true

@@ -10,7 +10,7 @@ use jsonwebtoken::{encode, Algorithm, EncodingKey, Header};
 use mongo::GrapevineDB;
 use routes::{
     add_relationship, create_phrase, create_user, get_available_proofs, get_pubkey,
-    get_user, get_proof_with_params
+    get_user, get_proof_with_params, degree_proof
 };
 // 👈 New!
 use crate::guards::NonceGuard;
@@ -58,6 +58,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 add_relationship,
                 get_available_proofs,
                 get_proof_with_params,
+                degree_proof,
             ],
         )
         .mount("/static", FileServer::from(relative!("static")))
