@@ -202,7 +202,6 @@ pub async fn prove_separation_degree(oid: String) -> Result<(), GrapevineCLIErro
         oid,
         account.username()
     );
-    println!("getting proving data");
     let res = reqwest::get(&url).await.unwrap();
     let proving_data = match res.status() {
         reqwest::StatusCode::OK => {
@@ -253,8 +252,6 @@ pub async fn prove_separation_degree(oid: String) -> Result<(), GrapevineCLIErro
         }
     };
 
-    println!("Built proof!");
-
     // compress the proof
     let compressed = compress_proof(&proof);
 
@@ -266,7 +263,6 @@ pub async fn prove_separation_degree(oid: String) -> Result<(), GrapevineCLIErro
         degree: proving_data.degree + 1,
     };
     let serialized: Vec<u8> = bincode::serialize(&body).unwrap();
-    println!("Serialized len: {}", serialized.len());
     let url = format!("{}/phrase/continue", crate::SERVER_URL);
     let client = reqwest::Client::new();
     let res = client.post(&url).body(serialized).send().await.unwrap();
@@ -288,6 +284,7 @@ pub async fn get_available_proofs() -> Result<(), GrapevineCLIError> {
     // get account
     let account = get_account()?;
     // send request
+    println!("Attempting to get proofs");
     let url = format!("{}/proof/{}/available", crate::SERVER_URL, account.username());
     let res = reqwest::get(&url)
         .await
@@ -301,6 +298,7 @@ pub async fn get_available_proofs() -> Result<(), GrapevineCLIError> {
             Ok(())
         }
         Err(e) => {
+            println!("Failed to get proofs");
             return Err(GrapevineCLIError::ServerError(String::from(
                 "Couldn't get available proofs",
             )))
