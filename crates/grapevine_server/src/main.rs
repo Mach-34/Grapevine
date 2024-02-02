@@ -6,11 +6,8 @@ use grapevine_common::errors::GrapevineServerError;
 use grapevine_common::http::requests::TestProofCompressionRequest;
 use grapevine_common::session_key::{Server, SessionKey};
 use grapevine_common::utils::convert_username_to_fr;
-use jsonwebtoken::errors::Error;
-use jsonwebtoken::{encode, Algorithm, EncodingKey, Header};
 use mongo::GrapevineDB;
-use rocket::http::Status;
-use rocket::response::status::NotFound;
+use rocket::http::{Header, Status};
 use routes::{
     add_relationship, create_phrase, create_user, degree_proof, get_all_degrees,
     get_available_proofs, get_proof_with_params, get_pubkey, get_user,
@@ -24,7 +21,6 @@ mod catchers;
 mod guards;
 mod mongo;
 mod routes;
-mod tests;
 mod utils;
 
 const MONGODB_URI: &str = "mongodb://localhost:27017";
@@ -76,7 +72,7 @@ async fn health() -> &'static str {
 #[cfg(test)]
 mod test {
     use super::*;
-    use rocket::{local::asynchronous::Client, Rocket};
+    use rocket::local::asynchronous::Client;
 
     struct GrapevineTestContext {
         client: Client,
@@ -111,6 +107,19 @@ mod test {
     }
 
     #[rocket::async_test]
+    async fn test_create_user() {
+        // let account =
+        let GrapevineTestContext { client } = GrapevineTestContext::init().await;
+        // let auth_header = Header::new("Authorization", "Missing_delimeter");
+        let res = client
+            .post("/user/create")
+            // .header(auth_header)
+            .dispatch()
+            .await;
+        // Clear
+    }
+
+    #[rocket::async_test]
     async fn test_nonce_guard() {
         let GrapevineTestContext { client } = GrapevineTestContext::init().await;
 
@@ -119,9 +128,21 @@ mod test {
         let message = res.into_string().await.unwrap();
         assert_eq!("Missing authorization header", message);
 
-        // Test malformed authorization header
-        // let res = client.get("/action").dispatch().await;
+        // Test malformed authorization header #1
+        let auth_header = Header::new("Authorization", "Missing_delimeter");
+        let res = client.get("/action").header(auth_header).dispatch().await;
+        let message = res.into_string().await.unwrap();
+        assert_eq!("Malformed authorization header", message);
+
+        // Test malformed authorization header #2
+        // let auth_header = Header::new("Authorization", "Correct_delimeter-Incorrect_form");
+        // let res = client.get("/action").header(auth_header).dispatch().await;
         // let message = res.into_string().await.unwrap();
-        // assert_eq!("Missing authorization header", message);
+        // assert_eq!("Malformed authorization header", message);
+
+        let auth_header = Header::new("Authorization", "Missing_delimeter");
+        let res = client.get("/action").header(auth_header).dispatch().await;
+        let message = res.into_string().await.unwrap();
+        assert_eq!("Malformed authorization header", message);
     }
 }
