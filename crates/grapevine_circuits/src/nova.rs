@@ -476,7 +476,8 @@ mod test {
         println!("Compressed proof size: {}", compressed_proof.len());
 
         // decompress the proof
-        let decompressed_proof = decompress_proof(&compressed_proof[..]);
+        let decompressed_proof =
+            decompress_proof(&compressed_proof[..]).expect("Failed to parse bytes into Nova Proof");
 
         // verify the compressed then uncompressed proof
         let iterations = usernames.len() * 2;

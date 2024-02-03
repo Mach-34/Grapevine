@@ -21,7 +21,7 @@ pub fn bad_request(req: &Request) -> CustomResponder {
     match req.local_cache(|| ErrorMessage(None)) {
         ErrorMessage(Some(msg)) => CustomResponder::BadRequest(msg.to_string()),
         ErrorMessage(None) => {
-            CustomResponder::Unauthorized("Unknown bad request error has occurred".to_string())
+            CustomResponder::BadRequest("Unknown bad request error has occurred".to_string())
         }
     }
 }

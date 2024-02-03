@@ -33,14 +33,15 @@ impl<'r> FromRequest<'r> for NonceGuard {
 
                 // #### TODO: Put signature verifiaction here ####
 
-                if mongo_nonce == 0 {
+                if mongo_nonce.is_none() {
                     // User does not exist
-                    let err_msg = format!("User '{}' not found", username);
+                    let err_msg = format!("User {} not found", username);
                     request.local_cache(|| ErrorMessage(Some(err_msg)));
                     Failure((Status::NotFound, ()))
                 } else {
+                    let stored_nonce = mongo_nonce.unwrap();
                     // #### TODO: Switch with verified signature ####
-                    match mongo_nonce as u64 == nonce {
+                    match stored_nonce == nonce {
                         true => {
                             // Increment nonce
                             mongo.increment_nonce(username).await;
@@ -51,7 +52,7 @@ impl<'r> FromRequest<'r> for NonceGuard {
                         false => {
                             let err_msg = format!(
                                 "Incorrect nonce provided. Expected {} and received {}",
-                                mongo_nonce, nonce
+                                stored_nonce, nonce
                             );
                             request.local_cache(|| ErrorMessage(Some(err_msg)));
                             return Failure((Status::BadRequest, ()));

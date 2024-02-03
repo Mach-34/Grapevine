@@ -72,18 +72,6 @@ impl GrapevineAccount {
         message.decrypt(self.private_key())
     }
 
-    /**
-     * Generates a new private key as a 32 byte array
-     *
-     * @returns - the new private key
-     */
-    pub fn new_private_key() -> [u8; 32] {
-        let mut rng = rand::thread_rng();
-        let sk_raw = rng.gen_biguint(1024).to_bigint().unwrap();
-        let (_, sk_raw_bytes) = sk_raw.to_bytes_be();
-        sk_raw_bytes[..32].try_into().unwrap()
-    }
-
     pub fn sign_username(&self) -> Signature {
         let message = BigInt::from_bytes_le(
             Sign::Plus,

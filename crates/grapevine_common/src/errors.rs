@@ -13,9 +13,13 @@ impl std::fmt::Display for GrapevineServerError {
         match self {
             GrapevineServerError::Signature(msg) => write!(f, "Signature error: {}", msg),
             GrapevineServerError::UserExists(msg) => write!(f, "Username {} already exists", msg),
-            GrapevineServerError::UserDoesNotExist(msg) => write!(f, "Username {} does not exist", msg),
+            GrapevineServerError::UserDoesNotExist(msg) => {
+                write!(f, "Username {} does not exist", msg)
+            }
             GrapevineServerError::UsernameTooLong(msg) => write!(f, "Username {} is too long", msg),
-            GrapevineServerError::UsernameNotAscii(msg) => write!(f, "Username {} is not ascii", msg),
+            GrapevineServerError::UsernameNotAscii(msg) => {
+                write!(f, "Username {} is not ascii", msg)
+            }
             GrapevineServerError::MongoError(msg) => write!(f, "Mongo error: {}", msg),
         }
     }

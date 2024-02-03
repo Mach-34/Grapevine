@@ -1,3 +1,4 @@
+use crate::guards::NonceGuard;
 use crate::mongo::GrapevineDB;
 use crate::utils::use_public_params;
 use babyjubjub_rs::{decompress_point, decompress_signature, verify};
@@ -22,7 +23,7 @@ use mongodb::bson::oid::ObjectId;
 use num_bigint::{BigInt, Sign};
 use rocket::data::{FromData, ToByteUnit};
 use rocket::http::Status;
-use rocket::response::status::{self, NotFound};
+use rocket::response::status::{self as ResponseStatus, NotFound};
 use rocket::serde::json::Json;
 use rocket::tokio::io::AsyncReadExt;
 use rocket::{request, response, Data, Request, State};
@@ -43,6 +44,15 @@ pub async fn create_user(
     request: Json<CreateUserRequest>,
     db: &State<GrapevineDB>,
 ) -> Result<Status, Status> {
+    // check username length is valid
+    if request.username.len() > MAX_USERNAME_CHARS {
+        println!("Charcter length exceeded");
+        return Err(Status::BadRequest);
+        // return Err(GrapevineServerError::UsernameTooLong(
+        //     request.username.clone(),
+        // ));
+    };
+
     // check the validity of the signature over the username
     let message = BigInt::from_bytes_le(
         Sign::Plus,
@@ -56,16 +66,10 @@ pub async fn create_user(
             // return Err(GrapevineServerError::Signature(
             //     "Signature by pubkey does not match given message".to_string(),
             // ))
-            return Err(Status::Unauthorized);
+            return Err(Status::BadRequest);
         }
     };
-    // check username length is valid
-    if !request.username.len() <= MAX_USERNAME_CHARS {
-        return Err(Status::BadRequest);
-        // return Err(GrapevineServerError::UsernameTooLong(
-        //     request.username.clone(),
-        // ));
-    };
+
     // check the username is ascii
     if !request.username.is_ascii() {
         return Err(Status::BadRequest);
@@ -108,7 +112,11 @@ pub async fn create_user(
 }
 
 #[post("/phrase/create", data = "<data>")]
-pub async fn create_phrase(data: Data<'_>, db: &State<GrapevineDB>) -> Result<Status, Status> {
+pub async fn create_phrase(
+    _guard: NonceGuard,
+    data: Data<'_>,
+    db: &State<GrapevineDB>,
+) -> Result<Status, Status> {
     // stream in data
     // todo: implement FromData trait on NewPhraseRequest
     let mut buffer = Vec::new();
@@ -120,10 +128,12 @@ pub async fn create_phrase(data: Data<'_>, db: &State<GrapevineDB>) -> Result<St
         Ok(req) => req,
         Err(e) => return Err(Status::BadRequest),
     };
-    let decompressed_proof = decompress_proof(&request.proof);
+    let decompressed_proof = match decompress_proof(&request.proof) {
+        Ok(proof) => proof,
+        Err(_) => return Err(Status::BadRequest),
+    };
     // verify the proof
     let public_params = use_public_params().unwrap();
-    println!("Try Verify");
     let verify_res = verify_nova_proof(&decompressed_proof, &public_params, 2);
     let (phrase_hash, auth_hash) = match verify_res {
         Ok(res) => {
@@ -139,8 +149,6 @@ pub async fn create_phrase(data: Data<'_>, db: &State<GrapevineDB>) -> Result<St
     };
     // get user doc
     let user = db.get_user(request.username.clone()).await.unwrap();
-    println!("User: {:?}", user);
-    // @TODO: handle user does not exist
     // build DegreeProof model
     let proof_doc = DegreeProof {
         id: None,
@@ -172,7 +180,10 @@ pub async fn degree_proof(data: Data<'_>, db: &State<GrapevineDB>) -> Result<Sta
         Ok(req) => req,
         Err(e) => return Err(Status::BadRequest),
     };
-    let decompressed_proof = decompress_proof(&request.proof);
+    let decompressed_proof = match decompress_proof(&request.proof) {
+        Ok(proof) => proof,
+        Err(_) => return Err(Status::BadRequest),
+    };
     // verify the proof
     let public_params = use_public_params().unwrap();
     let verify_res = verify_nova_proof(

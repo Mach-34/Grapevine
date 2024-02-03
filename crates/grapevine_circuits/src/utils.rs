@@ -4,7 +4,7 @@ use flate2::write::GzEncoder;
 use flate2::Compression;
 use grapevine_common::utils::{convert_phrase_to_fr, convert_username_to_fr};
 use grapevine_common::{Fr, NovaProof, Params};
-use serde_json::{json, Value};
+use serde_json::{json, Error, Value};
 use std::io::{Read, Write};
 use std::{collections::HashMap, env::current_dir};
 
@@ -125,7 +125,7 @@ pub fn read_proof(path: std::path::PathBuf) -> NovaProof {
     // read the proof from fs
     let compressed_proof = std::fs::read(path).expect("Unable to read proof");
     // decompress the proof
-    decompress_proof(&compressed_proof[..])
+    decompress_proof(&compressed_proof[..]).expect("Failed to parse bytes into Nova Proof")
 }
 
 /**
@@ -150,13 +150,13 @@ pub fn compress_proof(proof: &NovaProof) -> Vec<u8> {
  * @param proof - the compressed Nova Proof to decompress
  * @return - the decompressed proof
  */
-pub fn decompress_proof(proof: &[u8]) -> NovaProof {
+pub fn decompress_proof(proof: &[u8]) -> Result<NovaProof, Error> {
     // decompress the proof into the serialized json string
     let mut decoder = GzDecoder::new(proof);
     let mut serialized = String::new();
     decoder.read_to_string(&mut serialized).unwrap();
     // deserialize the proof
-    serde_json::from_str(&serialized).unwrap()
+    serde_json::from_str(&serialized)
 }
 
 mod test {
