@@ -1,5 +1,6 @@
-use babyjubjub_rs::{Point, PrivateKey};
 use crate::compat::ff_ce_to_le_bytes;
+use babyjubjub_rs::{Point, PrivateKey};
+use num_bigint::{RandBigInt, ToBigInt};
 use sha256::digest;
 
 /**
@@ -25,4 +26,16 @@ pub fn gen_aes_key(sk: PrivateKey, pk: Point) -> ([u8; 16], [u8; 16]) {
     let aes_iv: [u8; 16] = hash[16..32].try_into().unwrap();
     // return
     (aes_key, aes_iv)
+}
+
+/**
+ * Generates a new private key as a 32 byte array
+ *
+ * @returns - the new private key
+ */
+pub fn new_private_key() -> [u8; 32] {
+    let mut rng = rand::thread_rng();
+    let sk_raw = rng.gen_biguint(1024).to_bigint().unwrap();
+    let (_, sk_raw_bytes) = sk_raw.to_bytes_be();
+    sk_raw_bytes[..32].try_into().unwrap()
 }

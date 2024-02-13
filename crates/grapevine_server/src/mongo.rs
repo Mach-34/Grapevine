@@ -44,10 +44,11 @@ impl GrapevineDB {
             .expect("Error incrementing nonce");
     }
 
-    pub async fn get_nonce(&self, username: &str) -> u64 {
+    pub async fn get_nonce(&self, username: &str) -> Option<u64> {
         // Verify user existence
         let filter = doc! { "username": username };
-        let projection = doc! { "nonce": 1 };
+        // TODO: Projection doesn't work without pubkey due to BSON deserialization error
+        let projection = doc! { "nonce": 1, "pubkey": 1 };
         let find_options = FindOneOptions::builder().projection(projection).build();
         let user = self
             .users
@@ -55,8 +56,8 @@ impl GrapevineDB {
             .await
             .unwrap();
         match user {
-            Some(user) => user.nonce.unwrap(),
-            None => 0,
+            Some(user) => Some(user.nonce.unwrap()),
+            None => None,
         }
     }
 
@@ -244,7 +245,10 @@ impl GrapevineDB {
         // push the proof to the user's list of proofs
         let query = doc! { "_id": user };
         let update = doc! {"$push": { "degree_proofs": bson::to_bson(&proof_oid).unwrap()}};
-        self.users.update_one(query.clone(), update, None).await.unwrap();
+        self.users
+            .update_one(query.clone(), update, None)
+            .await
+            .unwrap();
         if oid.is_some() {
             let update = doc! { "$pull": { "degree_proofs": oid.unwrap() } };
             self.users.update_one(query, update, None).await.unwrap();
@@ -257,6 +261,13 @@ impl GrapevineDB {
             .find_one(doc! { "_id": proof_oid }, None)
             .await
             .unwrap()
+    }
+
+    pub async fn remove_user(&self, user: &ObjectId) {
+        self.users
+            .delete_one(doc! { "_id": user }, None)
+            .await
+            .expect("Failed to remove user");
     }
 
     /**

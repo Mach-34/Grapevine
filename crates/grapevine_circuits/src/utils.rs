@@ -4,7 +4,7 @@ use flate2::write::GzEncoder;
 use flate2::Compression;
 use grapevine_common::utils::{convert_phrase_to_fr, convert_username_to_fr};
 use grapevine_common::{Fr, NovaProof, Params};
-use serde_json::{json, Value};
+use serde_json::{json, Error, Value};
 use std::io::{Read, Write};
 use std::{collections::HashMap, env::current_dir};
 
