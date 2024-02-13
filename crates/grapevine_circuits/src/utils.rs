@@ -125,7 +125,7 @@ pub fn read_proof(path: std::path::PathBuf) -> NovaProof {
     // read the proof from fs
     let compressed_proof = std::fs::read(path).expect("Unable to read proof");
     // decompress the proof
-    decompress_proof(&compressed_proof[..]).expect("Failed to parse bytes into Nova Proof")
+    decompress_proof(&compressed_proof[..])
 }
 
 /**
@@ -150,13 +150,13 @@ pub fn compress_proof(proof: &NovaProof) -> Vec<u8> {
  * @param proof - the compressed Nova Proof to decompress
  * @return - the decompressed proof
  */
-pub fn decompress_proof(proof: &[u8]) -> Result<NovaProof, Error> {
+pub fn decompress_proof(proof: &[u8]) -> NovaProof {
     // decompress the proof into the serialized json string
     let mut decoder = GzDecoder::new(proof);
     let mut serialized = String::new();
     decoder.read_to_string(&mut serialized).unwrap();
     // deserialize the proof
-    serde_json::from_str(&serialized)
+    serde_json::from_str(&serialized).unwrap()
 }
 
 mod test {

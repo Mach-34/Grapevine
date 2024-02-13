@@ -224,8 +224,7 @@ pub async fn prove_separation_degree(oid: String) -> Result<(), GrapevineCLIErro
     };
     let auth_secret = account.decrypt_auth_secret(auth_secret_encrypted);
     // decompress proof
-    let mut proof =
-        decompress_proof(&proving_data.proof).expect("Failed to parse bytes into Nova Proof");
+    let mut proof = decompress_proof(&proving_data.proof);
     // verify proof
     let res = verify_nova_proof(&proof, &public_params, (proving_data.degree * 2) as usize);
     let previous_output = match res {

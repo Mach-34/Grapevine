@@ -128,10 +128,7 @@ pub async fn create_phrase(
         Ok(req) => req,
         Err(e) => return Err(Status::BadRequest),
     };
-    let decompressed_proof = match decompress_proof(&request.proof) {
-        Ok(proof) => proof,
-        Err(_) => return Err(Status::BadRequest),
-    };
+    let decompressed_proof = decompress_proof(&request.proof);
     // verify the proof
     let public_params = use_public_params().unwrap();
     let verify_res = verify_nova_proof(&decompressed_proof, &public_params, 2);
@@ -180,10 +177,7 @@ pub async fn degree_proof(data: Data<'_>, db: &State<GrapevineDB>) -> Result<Sta
         Ok(req) => req,
         Err(e) => return Err(Status::BadRequest),
     };
-    let decompressed_proof = match decompress_proof(&request.proof) {
-        Ok(proof) => proof,
-        Err(_) => return Err(Status::BadRequest),
-    };
+    let decompressed_proof = decompress_proof(&request.proof);
     // verify the proof
     let public_params = use_public_params().unwrap();
     let verify_res = verify_nova_proof(

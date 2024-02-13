@@ -383,31 +383,12 @@ mod test_rocket {
         }
 
         // Load in user from previous tests
-        let users = USERS.lock().unwrap();
-        let user_1 = users.get(0).unwrap();
+        let mut users = USERS.lock().unwrap();
+        let mut user_1 = users.get(0).unwrap().clone();
         let mut nonce = user_1.nonce;
         let username_2 = String::from("omniman");
         // Test case where user does not exist
         let phrase = String::from("She'll be coming around the mountain when she comes");
-        // let params = use_public_params().unwrap();
-        // let r1cs = use_r1cs().unwrap();
-        // let wc_path = use_wasm().unwrap();
-
-        // let username = String::from("omniman");
-        // clear_user_from_db(username.clone()).await;
-
-        // let username_vec = vec![username.clone()];
-        // let auth_secret_vec = vec![random_fr()];
-
-        // let proof = nova_proof(
-        //     wc_path,
-        //     &r1cs,
-        //     &params,
-        //     &phrase,
-        //     &username_vec,
-        //     &auth_secret_vec,
-        // )
-        // .unwrap();
 
         let auth_header = Header::new("Authorization", format!("{}-{}", username_2, 0));
 
@@ -442,10 +423,57 @@ mod test_rocket {
         // TODO: Replace code with error message
         assert_eq!(code, Status::BadRequest.code);
 
+        // TODO: Fix proof decompression function to account for this error
         // Test request with empty proof inside of body
 
+        // let body = NewPhraseRequest {
+        //     proof: vec![8],
+        //     username: user_1.username.clone(),
+        // };
+        // let serialized: Vec<u8> = bincode::serialize(&body).unwrap();
+        // let auth_header_3 = Header::new(
+        //     "Authorization",
+        //     format!("{}-{}", user_1.username.clone(), nonce),
+        // );
+        // nonce += 1;
+        // let code = client
+        //     .post("/phrase/create")
+        //     .header(auth_header_3)
+        //     .body(serialized)
+        //     .dispatch()
+        //     .await
+        //     .status()
+        //     .code;
+
+        // // TODO: Replace code with error message
+        // assert_eq!(code, Status::BadRequest.code);
+
+        // Test case with valid proof
+
+        let params = use_public_params().unwrap();
+        let r1cs = use_r1cs().unwrap();
+        let wc_path = use_wasm().unwrap();
+
+        let username = String::from("omniman");
+        clear_user_from_db(username.clone()).await;
+
+        let username_vec = vec![username.clone()];
+        let auth_secret_vec = vec![random_fr()];
+
+        let proof = nova_proof(
+            wc_path,
+            &r1cs,
+            &params,
+            &phrase,
+            &username_vec,
+            &auth_secret_vec,
+        )
+        .unwrap();
+
+        let compressed = compress_proof(&proof);
+
         let body = NewPhraseRequest {
-            proof: vec![],
+            proof: compressed,
             username: user_1.username.clone(),
         };
         let serialized: Vec<u8> = bincode::serialize(&body).unwrap();
@@ -463,7 +491,13 @@ mod test_rocket {
             .status()
             .code;
 
-        // TODO: Replace code with error message
-        assert_eq!(code, Status::BadRequest.code);
+        assert_eq!(code, Status::Created.code);
+
+        // Save updated nonce
+        user_1.nonce = nonce;
+        users[0] = user_1;
     }
+
+    #[rocket::async_test]
+    async fn test_continue_phrase() {}
 }
