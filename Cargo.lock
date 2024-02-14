@@ -209,7 +209,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5711413242ffbd385a283d7750768c3c7c7925f1ede260ff05fa34a482c69b25"
 dependencies = [
  "arrayref",
- "blake",
  "blake-hash",
  "ff_ce",
  "generic-array 0.14.7",
@@ -313,16 +312,6 @@ dependencies = [
  "radium",
  "tap",
  "wyz",
-]
-
-[[package]]
-name = "blake"
-version = "2.0.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ee55e9ca33be1f257d8356cfb29b10b1c8f86dc38cf1344ca01525464356cd0c"
-dependencies = [
- "cc",
- "libc",
 ]
 
 [[package]]
@@ -1253,6 +1242,7 @@ dependencies = [
  "num-bigint 0.4.4",
  "poseidon-rs 0.0.8",
  "rand 0.8.5",
+ "reqwest",
  "serde",
  "serde_bytes",
  "serde_json",

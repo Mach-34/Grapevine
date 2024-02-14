@@ -1,12 +1,15 @@
 use std::path::PathBuf;
 
+use crate::auth_secret::{AuthSecret, AuthSecretEncrypted, AuthSecretEncryptedUser};
+use crate::crypto::new_private_key;
+use crate::http::requests::CreateUserRequest;
+use crate::utils::{convert_username_to_fr, random_fr};
+use crate::Fr;
 use babyjubjub_rs::{Point, PrivateKey, Signature};
-use grapevine_common::auth_secret::{AuthSecret, AuthSecretEncrypted, AuthSecretEncryptedUser};
-use grapevine_common::crypto::new_private_key;
-use grapevine_common::utils::{convert_username_to_fr, random_fr};
-use grapevine_common::Fr;
 use num_bigint::{BigInt, RandBigInt, Sign, ToBigInt};
 use serde::{Deserialize, Serialize};
+
+pub type Nonce = u64;
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct GrapevineAccount {
@@ -60,6 +63,10 @@ impl GrapevineAccount {
         PrivateKey::import(self.private_key.to_vec()).unwrap()
     }
 
+    pub fn nonce(&self) -> Nonce {
+        self.nonce
+    }
+
     pub fn auth_secret(&self) -> &Fr {
         &self.auth_secret
     }
@@ -78,6 +85,16 @@ impl GrapevineAccount {
             &convert_username_to_fr(&self.username).unwrap()[..],
         );
         self.private_key().sign(message).unwrap()
+    }
+
+    pub fn create_user_request(&self) -> CreateUserRequest {
+        // return the Create User http request struct
+        CreateUserRequest {
+            username: self.username.clone(),
+            pubkey: self.pubkey().compress(),
+            auth_secret: self.encrypt_auth_secret(self.pubkey()),
+            signature: self.sign_username().compress(),
+        }
     }
 }
 

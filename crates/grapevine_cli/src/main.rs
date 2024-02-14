@@ -1,6 +1,5 @@
 use clap::{Args, Parser, Subcommand};
 
-mod account;
 mod controllers;
 mod errors;
 mod utils;
