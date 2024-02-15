@@ -67,6 +67,10 @@ impl GrapevineAccount {
         self.nonce
     }
 
+    pub fn increment_nonce(&mut self) {
+        self.nonce += 1;
+    }
+
     pub fn auth_secret(&self) -> &Fr {
         &self.auth_secret
     }

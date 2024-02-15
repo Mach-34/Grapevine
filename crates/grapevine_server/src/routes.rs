@@ -1,3 +1,4 @@
+use crate::catchers::GrapevineResponder;
 use crate::guards::NonceGuard;
 use crate::mongo::GrapevineDB;
 use crate::utils::use_public_params;
@@ -43,14 +44,13 @@ use std::str::FromStr;
 pub async fn create_user(
     request: Json<CreateUserRequest>,
     db: &State<GrapevineDB>,
-) -> Result<Status, Status> {
+) -> Result<GrapevineResponder, GrapevineResponder> {
     // check username length is valid
     if request.username.len() > MAX_USERNAME_CHARS {
-        println!("Charcter length exceeded");
-        return Err(Status::BadRequest);
-        // return Err(GrapevineServerError::UsernameTooLong(
-        //     request.username.clone(),
-        // ));
+        return Err(GrapevineResponder::BadRequest(format!(
+            "Username {} exceeds limit of 30 characters.",
+            request.username
+        )));
     };
 
     // check the validity of the signature over the username
@@ -63,19 +63,17 @@ pub async fn create_user(
     match verify(pubkey_decompressed, signature_decompressed, message) {
         true => (),
         false => {
-            // return Err(GrapevineServerError::Signature(
-            //     "Signature by pubkey does not match given message".to_string(),
-            // ))
-            return Err(Status::BadRequest);
+            return Err(GrapevineResponder::BadRequest(
+                "Signature by pubkey does not match given message".to_string(),
+            ));
         }
     };
 
     // check the username is ascii
     if !request.username.is_ascii() {
-        return Err(Status::BadRequest);
-        // return Err(GrapevineServerError::UsernameNotAscii(
-        //     request.username.clone(),
-        // ));
+        return Err(GrapevineResponder::BadRequest(
+            "Username must only contain ascii characters.".to_string(),
+        ));
     };
     // check that the username or pubkey are not already used
     match db
@@ -90,11 +88,14 @@ pub async fn create_user(
                 _ => "",
             };
             if found[0] || found[1] {
-                // return Err(GrapevineServerError::UserExists(String::from(error_msg)));
-                return Err(Status::Conflict);
+                return Err(GrapevineResponder::Conflict(error_msg.to_string()));
             }
         }
-        Err(e) => return Err(Status::NotImplemented),
+        Err(e) => {
+            return Err(GrapevineResponder::NotImplemented(
+                "Unknown mongodb error has occured".to_string(),
+            ))
+        }
     };
     // create the new user in the database
     let user = User {
@@ -106,8 +107,12 @@ pub async fn create_user(
         degree_proofs: Some(vec![]),
     };
     match db.create_user(user).await {
-        Ok(_) => Ok(Status::Created),
-        Err(e) => Err(Status::NotImplemented),
+        Ok(_) => Ok(GrapevineResponder::Created(
+            "User succefully created".to_string(),
+        )),
+        Err(e) => Err(GrapevineResponder::NotImplemented(
+            "Unimplemented error creating user".to_string(),
+        )),
     }
 }
 
@@ -256,10 +261,12 @@ pub async fn add_relationship(
 pub async fn get_user(
     username: String,
     db: &State<GrapevineDB>,
-) -> Result<Json<User>, NotFound<String>> {
+) -> Result<Json<User>, GrapevineResponder> {
     match db.get_user(username).await {
         Some(user) => Ok(Json(user)),
-        None => Err(NotFound("User not does not exist.".to_string())),
+        None => Err(GrapevineResponder::NotFound(
+            "User not does not exist.".to_string(),
+        )),
     }
 }
 

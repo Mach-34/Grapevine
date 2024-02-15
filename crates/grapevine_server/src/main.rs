@@ -1,9 +1,9 @@
 #[macro_use]
 extern crate rocket;
-use catchers::{bad_request, not_found, unauthorized, CustomResponder};
+use catchers::{bad_request, not_found, unauthorized, GrapevineResponder};
 use grapevine_common::auth_secret::AuthSecretEncrypted;
-use grapevine_common::errors::GrapevineServerError;
 use grapevine_common::http::requests::TestProofCompressionRequest;
+use grapevine_common::models::user::User;
 use grapevine_common::session_key::{Server, SessionKey};
 use grapevine_common::utils::convert_username_to_fr;
 use mongo::GrapevineDB;
@@ -88,6 +88,7 @@ mod test_rocket {
     use rocket::{
         local::asynchronous::{Client, LocalResponse},
         request,
+        serde::json::Json,
     };
     use std::sync::Mutex;
 
@@ -135,17 +136,34 @@ mod test_rocket {
         }
     }
 
-    /** Returns status code */
-    async fn create_user_request(context: &GrapevineTestContext, request: &CreateUserRequest) -> u16 {
-        context.client
+    /* Returns status code */
+    async fn create_user_request(
+        context: &GrapevineTestContext,
+        request: &CreateUserRequest,
+    ) -> String {
+        context
+            .client
             .post("/user/create")
             .header(ContentType::JSON)
             .body(serde_json::json!(request).to_string())
             .dispatch()
             .await
-            .status()
-            .code
+            .into_string()
+            .await
+            .unwrap()
     }
+
+    // async fn get_user_request(context: &GrapevineTestContext, username: String) {
+    //     let res:  = context
+    //         .client
+    //         .post(format!("/user/{}", username))
+    //         .dispatch()
+    //         .await
+    //         .into_json()
+    //         .await
+    //         .unwrap();
+    //     println!("{:?}", res)
+    // }
 
     // fn check_test_env_prepared() -> bool {
     //     let users = USERS.lock().unwrap();
@@ -190,10 +208,196 @@ mod test_rocket {
         // check response failure
         assert_eq!(
             create_user_request(&context, &request).await,
-            Status::BadRequest.code,
+            "Signature by pubkey does not match given message",
             "Request should fail due to mismatched msg"
         );
     }
+
+    #[rocket::async_test]
+    async fn test_username_exceeding_character_limit() {
+        let context = GrapevineTestContext::init().await;
+
+        let account = GrapevineAccount::new(String::from("userA1"));
+
+        let mut request = account.create_user_request();
+
+        request.username = String::from("fake_username_1234567890_abcdef");
+
+        assert_eq!(
+            create_user_request(&context, &request).await,
+            format!(
+                "Username {} exceeds limit of 30 characters.",
+                request.username
+            ),
+            "Request should fail to to character length exceeded"
+        );
+    }
+
+    #[rocket::async_test]
+    async fn test_username_with_non_ascii_characters() {
+        let context = GrapevineTestContext::init().await;
+
+        let account = GrapevineAccount::new(String::from("fake_username_😍😌£"));
+
+        let request = account.create_user_request();
+
+        assert_eq!(
+            create_user_request(&context, &request).await,
+            "Username must only contain ascii characters.",
+            "User should be created"
+        );
+    }
+
+    #[rocket::async_test]
+    async fn test_successful_user_creation() {
+        let username = String::from("manbearpig");
+        clear_user_from_db(username.clone()).await;
+
+        let context = GrapevineTestContext::init().await;
+
+        let account = GrapevineAccount::new(username.clone());
+
+        let request = account.create_user_request();
+
+        assert_eq!(
+            create_user_request(&context, &request).await,
+            "User succefully created",
+            "User should be created"
+        );
+
+        // Check that user was stored in DB
+        // get_user_request(&context, username).await;
+
+        // Store user for later testing
+        let mut users = USERS.lock().unwrap();
+        users.push(account);
+    }
+
+    #[rocket::async_test]
+    async fn test_nonce_guard_missing_auth_header() {
+        let context = GrapevineTestContext::init().await;
+
+        // Test no authorization header
+        let res = context.client.get("/nonce-guard-test").dispatch().await;
+        let message = res.into_string().await.unwrap();
+        assert_eq!("Missing authorization header", message);
+    }
+
+    #[rocket::async_test]
+    async fn test_nonce_guard_malformed_auth_header() {
+        let context = GrapevineTestContext::init().await;
+
+        let auth_header = Header::new("Authorization", "Missing_delimeter");
+        let res = context
+            .client
+            .get("/nonce-guard-test")
+            .header(auth_header)
+            .dispatch()
+            .await;
+        let message = res.into_string().await.unwrap();
+        assert_eq!("Malformed authorization header", message);
+    }
+
+    #[rocket::async_test]
+    async fn test_nonce_guard_non_existent_user() {
+        let context = GrapevineTestContext::init().await;
+        let auth_header = Header::new("Authorization", "charlie-0");
+        let res = context
+            .client
+            .get("/nonce-guard-test")
+            .header(auth_header)
+            .dispatch()
+            .await;
+        let message = res.into_string().await.unwrap();
+        assert_eq!("User charlie not found", message);
+    }
+
+    #[rocket::async_test]
+    async fn test_nonce_guard_successful_verification() {
+        let users = USERS.lock().unwrap();
+        let user = users.get(0).unwrap().clone();
+        let auth_header = Header::new(
+            "Authorization",
+            format!("{}-{}", user.username(), user.nonce()),
+        );
+        let context = GrapevineTestContext::init().await;
+        let res = context
+            .client
+            .get("/nonce-guard-test")
+            .header(auth_header)
+            .dispatch()
+            .await;
+        let message = res.into_string().await.unwrap();
+        assert_eq!("Succesfully verified nonce", message);
+    }
+
+    #[rocket::async_test]
+    async fn test_nonce_guard_without_nonce_increment() {
+        let mut users = USERS.lock().unwrap();
+        let mut user = users.get(0).unwrap().clone();
+        let nonce = user.nonce();
+        let auth_header = Header::new("Authorization", format!("{}-{}", user.username(), nonce));
+        let context = GrapevineTestContext::init().await;
+        let res = context
+            .client
+            .get("/nonce-guard-test")
+            .header(auth_header)
+            .dispatch()
+            .await;
+        let message = res.into_string().await.unwrap();
+        assert_eq!(
+            format!(
+                "Incorrect nonce provided. Expected {} and received {}",
+                nonce + 1,
+                nonce
+            ),
+            message
+        );
+        user.increment_nonce();
+        users[0] = user;
+    }
+
+    #[rocket::async_test]
+    async fn test_nonce_guard_after_nonce_increment() {
+        let mut users = USERS.lock().unwrap();
+        let mut user = users.get(0).unwrap().clone();
+        let context = GrapevineTestContext::init().await;
+        let auth_header = Header::new(
+            "Authorization",
+            format!("{}-{}", user.username(), user.nonce()),
+        );
+        let res = context
+            .client
+            .get("/nonce-guard-test")
+            .header(auth_header)
+            .dispatch()
+            .await;
+        let message = res.into_string().await.unwrap();
+        assert_eq!("Succesfully verified nonce", message);
+
+        user.increment_nonce();
+        users[0] = user;
+    }
+
+    // #############################################
+
+    // #[rocket::async_test]
+    // async fn test_duplicate_username() {
+    //     let username = String::from("manbearpig");
+    //     clear_user_from_db(username.clone()).await;
+
+    //     let context = GrapevineTestContext::init().await;
+
+    //     let account = GrapevineAccount::new(username.clone());
+
+    //     let request = account.create_user_request();
+
+    //     assert_eq!(
+    //         create_user_request(&context, &request).await,
+    //         "User succefully created",
+    //         "User should be created"
+    //     );
+    // }
 
     // #[rocket::async_test]
     // async fn test_create_user() {
@@ -284,90 +488,6 @@ mod test_rocket {
     //     // );
 
     //     // TODO: Battle test route for more errors
-    // }
-
-    // #[rocket::async_test]
-    // async fn test_nonce_guard() {
-    //     // Load in stored user
-    //     let mut users = USERS.lock().unwrap();
-    //     let mut user_1 = users.get(0).unwrap().clone();
-    //     let mut nonce = user_1.nonce();
-    //     let GrapevineTestContext { client } = GrapevineTestContext::init().await;
-
-    //     // Test no authorization header
-    //     let res = client.get("/nonce-guard-test").dispatch().await;
-    //     let message = res.into_string().await.unwrap();
-    //     assert_eq!("Missing authorization header", message);
-
-    //     // Test malformed authorization header #1
-    //     let auth_header = Header::new("Authorization", "Missing_delimeter");
-    //     let res = client
-    //         .get("/nonce-guard-test")
-    //         .header(auth_header)
-    //         .dispatch()
-    //         .await;
-    //     let message = res.into_string().await.unwrap();
-    //     assert_eq!("Malformed authorization header", message);
-
-    //     // TODO: Handle case where nonce is not numerical
-    //     // Test malformed authorization header #2
-    //     // let auth_header = Header::new("Authorization", "Correct_delimeter-Incorrect_form");
-    //     // let res = client.get("/action").header(auth_header).dispatch().await;
-    //     // let message = res.into_string().await.unwrap();
-    //     // assert_eq!("Malformed authorization header", message);
-
-    //     // Test nonce with non-existent user
-    //     let auth_header = Header::new("Authorization", "charlie-0");
-    //     let res = client
-    //         .get("/nonce-guard-test")
-    //         .header(auth_header)
-    //         .dispatch()
-    //         .await;
-    //     let message = res.into_string().await.unwrap();
-    //     assert_eq!("User charlie not found", message);
-
-    //     // Test successful nonce verification
-    //     let username = String::from("manbearpig");
-    //     let auth_header = Header::new("Authorization", format!("{}-{}", username, nonce));
-    //     let res = client
-    //         .get("/nonce-guard-test")
-    //         .header(auth_header)
-    //         .dispatch()
-    //         .await;
-    //     let message = res.into_string().await.unwrap();
-    //     assert_eq!("Succesfully verified nonce", message);
-
-    //     // Try request again without incrementing nonce
-    //     let auth_header = Header::new("Authorization", format!("{}-{}", username, nonce));
-    //     let res = client
-    //         .get("/nonce-guard-test")
-    //         .header(auth_header)
-    //         .dispatch()
-    //         .await;
-    //     let message = res.into_string().await.unwrap();
-    //     assert_eq!(
-    //         format!(
-    //             "Incorrect nonce provided. Expected {} and received {}",
-    //             nonce + 1,
-    //             nonce
-    //         ),
-    //         message
-    //     );
-
-    //     // Try request again after incrementing nonce
-    //     nonce += 1;
-    //     let auth_header = Header::new("Authorization", format!("{}-{}", username, nonce));
-    //     let res = client
-    //         .get("/nonce-guard-test")
-    //         .header(auth_header)
-    //         .dispatch()
-    //         .await;
-    //     let message = res.into_string().await.unwrap();
-    //     assert_eq!("Succesfully verified nonce", message);
-
-    //     // Update stored user nonce
-    //     user_1.nonce = nonce;
-    //     users[0] = user_1;
     // }
 
     // #[rocket::async_test]

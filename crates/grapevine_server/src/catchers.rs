@@ -1,15 +1,22 @@
-use rocket::{catcher::Catcher, request::Request};
+use rocket::request::Request;
 
+// TODO: Rename to GrapvineServerError?
 #[derive(Responder)]
-pub enum CustomResponder {
+pub enum GrapevineResponder {
     // #[response(status = 200)]
     // Ok(String),
+    #[response(status = 201)]
+    Created(String),
     #[response(status = 400)]
     BadRequest(String),
     #[response(status = 401)]
     Unauthorized(String),
     #[response(status = 404)]
     NotFound(String),
+    #[response(status = 409)]
+    Conflict(String),
+    #[response(status = 501)]
+    NotImplemented(String),
     // #[response(status = 500)]
     // UnknownError(String),
 }
@@ -17,29 +24,29 @@ pub enum CustomResponder {
 pub struct ErrorMessage(pub Option<String>);
 
 #[catch(400)]
-pub fn bad_request(req: &Request) -> CustomResponder {
+pub fn bad_request(req: &Request) -> GrapevineResponder {
     match req.local_cache(|| ErrorMessage(None)) {
-        ErrorMessage(Some(msg)) => CustomResponder::BadRequest(msg.to_string()),
+        ErrorMessage(Some(msg)) => GrapevineResponder::BadRequest(msg.to_string()),
         ErrorMessage(None) => {
-            CustomResponder::BadRequest("Unknown bad request error has occurred".to_string())
+            GrapevineResponder::BadRequest("Unknown bad request error has occurred".to_string())
         }
     }
 }
 
 #[catch(401)]
-pub fn unauthorized(req: &Request) -> CustomResponder {
+pub fn unauthorized(req: &Request) -> GrapevineResponder {
     match req.local_cache(|| ErrorMessage(None)) {
-        ErrorMessage(Some(msg)) => CustomResponder::Unauthorized(msg.to_string()),
+        ErrorMessage(Some(msg)) => GrapevineResponder::Unauthorized(msg.to_string()),
         ErrorMessage(None) => {
-            CustomResponder::Unauthorized("Unknown authorization error has occurred".to_string())
+            GrapevineResponder::Unauthorized("Unknown authorization error has occurred".to_string())
         }
     }
 }
 
 #[catch(404)]
-pub fn not_found(req: &Request) -> CustomResponder {
+pub fn not_found(req: &Request) -> GrapevineResponder {
     match req.local_cache(|| ErrorMessage(None)) {
-        ErrorMessage(Some(msg)) => CustomResponder::NotFound(msg.to_string()),
-        ErrorMessage(None) => CustomResponder::NotFound("Asset not found".to_string()),
+        ErrorMessage(Some(msg)) => GrapevineResponder::NotFound(msg.to_string()),
+        ErrorMessage(None) => GrapevineResponder::NotFound("Asset not found".to_string()),
     }
 }
