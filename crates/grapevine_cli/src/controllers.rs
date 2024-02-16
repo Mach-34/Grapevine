@@ -26,13 +26,10 @@ pub async fn register(username: String) -> Result<(), GrapevineCLIError> {
     let account = make_or_get_account(username.clone())?;
     // sign the username
     let signature = account.sign_username();
-    // encrypt auth secret with own pubkey for recovery
-    let auth_secret_encrypted = account.encrypt_auth_secret(account.pubkey());
     // build request body
     let body = CreateUserRequest {
         username: username.clone(),
         pubkey: account.pubkey().compress(),
-        auth_secret: auth_secret_encrypted,
         signature: signature.compress(),
     };
     // send create user request
@@ -353,7 +350,6 @@ pub async fn get_my_proofs() -> Result<(), GrapevineCLIError> {
             println!("Phrase created by this user");
         } else {
             println!("Degrees of separation from origin: {}", degree.degree);
-            println!("Originator: {}", degree.originator);
             println!("Your relation: {}", degree.relation.unwrap());
         }
     }

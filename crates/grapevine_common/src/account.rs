@@ -96,7 +96,6 @@ impl GrapevineAccount {
         CreateUserRequest {
             username: self.username.clone(),
             pubkey: self.pubkey().compress(),
-            auth_secret: self.encrypt_auth_secret(self.pubkey()),
             signature: self.sign_username().compress(),
         }
     }

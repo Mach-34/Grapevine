@@ -1,4 +1,4 @@
-use crate::{DATABASE, MONGODB_URI};
+use crate::{DATABASE_NAME, MONGODB_URI};
 use futures::stream::StreamExt;
 use grapevine_common::auth_secret::AuthSecretEncrypted;
 use grapevine_common::errors::GrapevineServerError;
@@ -20,11 +20,11 @@ pub struct GrapevineDB {
 
 impl GrapevineDB {
     pub async fn init() -> Self {
-        let mut client_options = ClientOptions::parse(MONGODB_URI).await.unwrap();
+        let mut client_options = ClientOptions::parse(&**MONGODB_URI).await.unwrap();
         let server_api = ServerApi::builder().version(ServerApiVersion::V1).build();
         client_options.server_api = Some(server_api);
         let client = Client::with_options(client_options).unwrap();
-        let db = client.database(DATABASE);
+        let db = client.database(&**DATABASE_NAME);
         let users = db.collection("users");
         let relationships = db.collection("relationships");
         let degree_proofs = db.collection("degree_proofs");
@@ -428,52 +428,6 @@ impl GrapevineDB {
                     "_id": 0
                 }
             },
-            // look up the first proof in the chain to show who you are X degrees separated from
-            doc! {
-                "$lookup": {
-                    "from": "degree_proofs",
-                    "let": { "phrase_hash": "$phrase_hash" },
-                    "pipeline": [
-                        doc! {
-                            "$match": {
-                                "$expr": {
-                                    "$and": [
-                                        { "$eq": ["$phrase_hash", "$$phrase_hash"] },
-                                        { "$eq": ["$degree", 1] }
-                                    ]
-                                }
-                            }
-                        },
-                        doc! { "$project": { "user": 1, "_id": 0 } }
-                    ],
-                    "as": "originator",
-                }
-            },
-            doc! {
-                "$project": {
-                    "degree": 1,
-                    "relation": 1,
-                    "phrase_hash": 1,
-                    "originator": { "$arrayElemAt": ["$originator.user", 0] },
-                }
-            },
-            doc! {
-                "$lookup": {
-                    "from": "users",
-                    "localField": "originator",
-                    "foreignField": "_id",
-                    "as": "originator",
-                    "pipeline": [doc! { "$project": { "_id": 0, "username": 1 } }]
-                }
-            },
-            doc! {
-                "$project": {
-                    "degree": 1,
-                    "relation": 1,
-                    "phrase_hash": 1,
-                    "originator": { "$arrayElemAt": ["$originator.username", 0] },
-                }
-            },
             doc! { "$sort": { "degree": 1 }},
         ];
         // get the OID's of degree proofs the user can build from
@@ -502,7 +456,6 @@ impl GrapevineDB {
                     degrees.push(DegreeData {
                         degree,
                         relation,
-                        originator: originator.to_string(),
                         phrase_hash,
                     });
                 }
