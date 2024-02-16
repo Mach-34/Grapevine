@@ -9,7 +9,6 @@ pub struct CreateUserRequest {
     pub pubkey: [u8; 32],
     #[serde(with = "serde_bytes")]
     pub signature: [u8; 64],
-    pub auth_secret: AuthSecretEncrypted,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]

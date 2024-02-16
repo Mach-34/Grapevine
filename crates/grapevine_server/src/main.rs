@@ -1,20 +1,10 @@
 #[macro_use]
 extern crate rocket;
-use catchers::{bad_request, not_found, unauthorized, GrapevineResponder};
-use grapevine_common::auth_secret::AuthSecretEncrypted;
-use grapevine_common::http::requests::TestProofCompressionRequest;
-use grapevine_common::models::user::User;
-use grapevine_common::session_key::{Server, SessionKey};
-use grapevine_common::utils::convert_username_to_fr;
-use mongo::GrapevineDB;
-use num_bigint::{BigInt, Sign};
-use rocket::http::{ContentType, Header, Status};
-use routes::{
-    add_relationship, create_phrase, create_user, degree_proof, get_all_degrees,
-    get_available_proofs, get_proof_with_params, get_pubkey, get_user,
-};
-
 use crate::guards::NonceGuard;
+use catchers::{bad_request, not_found, unauthorized};
+use dotenv::dotenv;
+use lazy_static::lazy_static;
+use mongo::GrapevineDB;
 use mongodb::bson::doc;
 use rocket::fs::{relative, FileServer};
 
@@ -24,8 +14,22 @@ mod mongo;
 mod routes;
 mod utils;
 
-const MONGODB_URI: &str = "mongodb://localhost:27017";
-const DATABASE: &str = "grapevine";
+lazy_static! {
+    static ref MONGODB_URI: String = {
+        dotenv().ok();
+        match std::env::var("MONGODB_URI") {
+            Ok(uri) => uri,
+            Err(_) => "mongodb://localhost:27017".to_string(),
+        }
+    };
+    static ref DATABASE_NAME: String = {
+        dotenv().ok();
+        match std::env::var("DATABASE_NAME") {
+            Ok(db) => db,
+            Err(_) => "grapevine".to_string(),
+        }
+    };
+}
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -35,33 +39,26 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     tracing_subscriber::fmt::init();
     // TODO: Route formatting/ segmenting logic
     rocket::build()
+        // add mongodb client to context
         .manage(mongo)
-        .mount(
-            "/",
-            routes![
-                action,
-                health,
-                create_user,
-                get_user,
-                create_phrase,
-                get_pubkey,
-                add_relationship,
-                get_available_proofs,
-                get_proof_with_params,
-                degree_proof,
-                get_all_degrees
-            ],
-        )
+        // mount user routes
+        .mount("/user", &**routes::USER_ROUTES)
+        // mount proof routes
+        .mount("/proof", &**routes::PROOF_ROUTES)
+        // mount artifact file server
         .mount("/static", FileServer::from(relative!("static")))
+        // mount test methods (TO BE REMOVED)
+        .mount("/test", routes![action, health])
+        // register request guards
         .register("/", catchers![bad_request, not_found, unauthorized])
         .launch()
-        .await
-        .unwrap();
+        .await?;
     Ok(())
 }
 
 #[get("/nonce-guard-test")]
 async fn action(_guard: NonceGuard) -> &'static str {
+    println!("test");
     "Succesfully verified nonce"
 }
 
@@ -72,7 +69,7 @@ async fn health() -> &'static str {
 
 #[cfg(test)]
 mod test_rocket {
-    use self::utils::{use_public_params, use_r1cs, use_wasm};
+    use self::utils::use_public_params;
 
     use super::*;
     use babyjubjub_rs::PrivateKey;
@@ -84,11 +81,13 @@ mod test_rocket {
         account::GrapevineAccount,
         auth_secret::AuthSecretEncryptedUser,
         http::requests::{CreateUserRequest, NewPhraseRequest, NewRelationshipRequest},
+        models::user::User,
         models::{proof::ProvingData, user},
         utils::random_fr,
     };
     use lazy_static::lazy_static;
     use rocket::{
+        http::{ContentType, Header},
         local::asynchronous::{Client, LocalResponse},
         request,
         serde::json::Json,
@@ -107,22 +106,15 @@ mod test_rocket {
         async fn init() -> Self {
             let mongo = GrapevineDB::init().await;
             let rocket = rocket::build()
+                // add mongodb client to context
                 .manage(mongo)
-                .mount(
-                    "/",
-                    routes![
-                        action,
-                        health,
-                        create_user,
-                        degree_proof,
-                        get_user,
-                        create_phrase,
-                        get_pubkey,
-                        add_relationship,
-                        get_available_proofs,
-                        get_proof_with_params,
-                    ],
-                )
+                // mount user routes
+                .mount("/user", &**routes::USER_ROUTES)
+                // mount proof routes
+                .mount("/proof", &**routes::PROOF_ROUTES)
+                // mount test routes
+                .mount("/", routes![action, health])
+                // mount artifact file server
                 .mount("/static", FileServer::from(relative!("static")))
                 .register("/", catchers![bad_request, not_found, unauthorized]);
 
@@ -134,7 +126,7 @@ mod test_rocket {
 
     async fn clear_user_from_db(username: String) {
         let db = GrapevineDB::init().await;
-        let user = db.get_user(username.clone()).await;
+        let user = db.get_user(&username).await;
         if user.is_some() {
             db.remove_user(&user.unwrap().id.unwrap()).await;
         }
@@ -234,7 +226,7 @@ mod test_rocket {
     async fn test_username_with_non_ascii_characters() {
         let context = GrapevineTestContext::init().await;
 
-        let account = GrapevineAccount::new(String::from("fake_username_😍😌£"));
+        let account = GrapevineAccount::new(String::from("😍"));
 
         let request = account.create_user_request();
 
@@ -247,7 +239,7 @@ mod test_rocket {
 
     #[rocket::async_test]
     async fn test_successful_user_creation() {
-        let username = String::from("manbearpig");
+        let username = String::from("username");
         clear_user_from_db(username.clone()).await;
 
         let context = GrapevineTestContext::init().await;
@@ -274,6 +266,7 @@ mod test_rocket {
         // Test no authorization header
         let res = context.client.get("/nonce-guard-test").dispatch().await;
         let message = res.into_string().await.unwrap();
+        println!("message: {}", message);
         assert_eq!("Missing authorization header", message);
     }
 
@@ -294,6 +287,7 @@ mod test_rocket {
 
     #[rocket::async_test]
     async fn test_nonce_guard_non_existent_user() {
+        // make and send request with improper header
         let context = GrapevineTestContext::init().await;
         let auth_header = Header::new("Authorization", "charlie-0");
         let res = context
@@ -302,8 +296,11 @@ mod test_rocket {
             .header(auth_header)
             .dispatch()
             .await;
+        // check response message and status
+        assert_eq!(404, res.status().code);
         let message = res.into_string().await.unwrap();
         assert_eq!("User charlie not found", message);
+
     }
 
     // #[rocket::async_test]

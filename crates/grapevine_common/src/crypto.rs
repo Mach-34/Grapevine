@@ -1,7 +1,7 @@
-use crate::compat::ff_ce_to_le_bytes;
+use crate::{compat::ff_ce_to_le_bytes, utils::convert_username_to_fr};
 use babyjubjub_rs::{Point, PrivateKey};
 use num_bigint::{RandBigInt, ToBigInt};
-use sha256::digest;
+use sha3::{Digest, Sha3_256};
 
 /**
  * Computes an AES-CBC-128 Key from a Baby Jub Jub shared secret
@@ -38,4 +38,27 @@ pub fn new_private_key() -> [u8; 32] {
     let sk_raw = rng.gen_biguint(1024).to_bigint().unwrap();
     let (_, sk_raw_bytes) = sk_raw.to_bytes_be();
     sk_raw_bytes[..32].try_into().unwrap()
+}
+
+/**
+ * Computes the sha256 hash H |username, nonce| with last byte zeroed
+ * 
+ * @param username - the username to hash
+ * @param nonce - the nonce to hash
+ * @return - the sha256 hash of the username and nonce
+ */
+pub fn nonce_hash(username: &String, nonce: u64) -> [u8; 32] {
+    let mut hasher = Sha3_256::new();
+    // add username to hash buffer
+    let username_bytes = convert_username_to_fr(username).unwrap();
+    hasher.update(username_bytes);
+    // add nonce to hash buffer
+    let nonce_bytes = nonce.to_le_bytes();
+    hasher.update(nonce_bytes);
+    // compute sha256 hash
+    let mut hash: [u8; 32] = hasher.finalize().into();
+    // 0 the last byte to ensure it always falls within the prime field Fr
+    hash[31] = 0;
+
+    hash
 }

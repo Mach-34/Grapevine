@@ -1,4 +1,4 @@
-use crate::{DATABASE, MONGODB_URI};
+use crate::{DATABASE_NAME, MONGODB_URI};
 use futures::stream::StreamExt;
 use grapevine_common::auth_secret::AuthSecretEncrypted;
 use grapevine_common::errors::GrapevineServerError;
@@ -20,11 +20,11 @@ pub struct GrapevineDB {
 
 impl GrapevineDB {
     pub async fn init() -> Self {
-        let mut client_options = ClientOptions::parse(MONGODB_URI).await.unwrap();
+        let mut client_options = ClientOptions::parse(&**MONGODB_URI).await.unwrap();
         let server_api = ServerApi::builder().version(ServerApiVersion::V1).build();
         client_options.server_api = Some(server_api);
         let client = Client::with_options(client_options).unwrap();
-        let db = client.database(DATABASE);
+        let db = client.database(&**DATABASE_NAME);
         let users = db.collection("users");
         let relationships = db.collection("relationships");
         let degree_proofs = db.collection("degree_proofs");
@@ -35,6 +35,8 @@ impl GrapevineDB {
         }
     }
 
+    /// USER FUNCTIONS ///
+
     pub async fn increment_nonce(&self, username: &str) {
         let filter = doc! { "username": username };
         let update = doc! { "$inc": { "nonce": 1 } };
@@ -44,7 +46,7 @@ impl GrapevineDB {
             .expect("Error incrementing nonce");
     }
 
-    pub async fn get_nonce(&self, username: &str) -> Option<u64> {
+    pub async fn get_nonce(&self, username: &str) -> Option<(u64, [u8; 32])> {
         // Verify user existence
         let filter = doc! { "username": username };
         // TODO: Projection doesn't work without pubkey due to BSON deserialization error
@@ -56,7 +58,7 @@ impl GrapevineDB {
             .await
             .unwrap();
         match user {
-            Some(user) => Some(user.nonce.unwrap()),
+            Some(user) => Some((user.nonce.unwrap(), user.pubkey.unwrap())),
             None => None,
         }
     }
@@ -108,7 +110,37 @@ impl GrapevineDB {
         Ok(found)
     }
 
-    pub async fn get_user(&self, username: String) -> Option<User> {
+    /**
+     * Insert a new user into the database
+     * @notice - assumes username and pubkey auth checks were already performed
+     *
+     * @param user - the user to insert into the database
+     * @param auth_secret - the encrypted auth secret used by this user
+     * @returns - an error if the user already exists, or Ok otherwise
+     */
+    pub async fn create_user(&self, user: User) -> Result<ObjectId, GrapevineServerError> {
+        // check if the username exists already in the database
+        let query = doc! { "username": &user.username };
+        let options = FindOneOptions::builder()
+            .projection(doc! {"_id": 1})
+            .build();
+        match self.users.find_one(query, options).await.unwrap() {
+            Some(_) => {
+                return Err(GrapevineServerError::UserExists(
+                    user.username.clone().unwrap(),
+                ))
+            }
+            None => (),
+        };
+
+        // insert the user into the collection
+        match self.users.insert_one(&user, None).await {
+            Ok(result) => Ok(result.inserted_id.as_object_id().unwrap()),
+            Err(e) => Err(GrapevineServerError::MongoError(e.to_string())),
+        }
+    }
+
+    pub async fn get_user(&self, username: &String) -> Option<User> {
         let filter = doc! { "username": username };
         let projection = doc! { "degree_proofs": 0 };
         let find_options = FindOneOptions::builder().projection(projection).build();
@@ -156,42 +188,6 @@ impl GrapevineDB {
             doc! { "$push": { "relationships": bson::to_bson(&relationship_oid).unwrap()} };
         self.users.update_one(query, update, None).await.unwrap();
         Ok(relationship_oid)
-    }
-
-    /**
-     * Insert a new user into the database
-     * @notice - assumes username and pubkey auth checks were already performed
-     *
-     * @param user - the user to insert into the database
-     * @param auth_secret - the encrypted auth secret used by this user
-     * @returns - an error if the user already exists, or Ok otherwise
-     */
-    pub async fn create_user(&self, user: User) -> Result<ObjectId, GrapevineServerError> {
-        // check if the username exists already in the database
-        let query = doc! { "username": &user.username };
-        let options = FindOneOptions::builder()
-            .projection(doc! {"_id": 1})
-            .build();
-        match self.users.find_one(query, options).await.unwrap() {
-            Some(_) => {
-                return Err(GrapevineServerError::UserExists(
-                    user.username.clone().unwrap(),
-                ))
-            }
-            None => (),
-        };
-
-        // insert the user into the collection
-        let uuid = self
-            .users
-            .insert_one(&user, None)
-            .await
-            .unwrap()
-            .inserted_id
-            .as_object_id()
-            .unwrap();
-
-        Ok(uuid)
     }
 
     pub async fn add_proof(
@@ -428,52 +424,6 @@ impl GrapevineDB {
                     "_id": 0
                 }
             },
-            // look up the first proof in the chain to show who you are X degrees separated from
-            doc! {
-                "$lookup": {
-                    "from": "degree_proofs",
-                    "let": { "phrase_hash": "$phrase_hash" },
-                    "pipeline": [
-                        doc! {
-                            "$match": {
-                                "$expr": {
-                                    "$and": [
-                                        { "$eq": ["$phrase_hash", "$$phrase_hash"] },
-                                        { "$eq": ["$degree", 1] }
-                                    ]
-                                }
-                            }
-                        },
-                        doc! { "$project": { "user": 1, "_id": 0 } }
-                    ],
-                    "as": "originator",
-                }
-            },
-            doc! {
-                "$project": {
-                    "degree": 1,
-                    "relation": 1,
-                    "phrase_hash": 1,
-                    "originator": { "$arrayElemAt": ["$originator.user", 0] },
-                }
-            },
-            doc! {
-                "$lookup": {
-                    "from": "users",
-                    "localField": "originator",
-                    "foreignField": "_id",
-                    "as": "originator",
-                    "pipeline": [doc! { "$project": { "_id": 0, "username": 1 } }]
-                }
-            },
-            doc! {
-                "$project": {
-                    "degree": 1,
-                    "relation": 1,
-                    "phrase_hash": 1,
-                    "originator": { "$arrayElemAt": ["$originator.username", 0] },
-                }
-            },
             doc! { "$sort": { "degree": 1 }},
         ];
         // get the OID's of degree proofs the user can build from
@@ -502,7 +452,6 @@ impl GrapevineDB {
                     degrees.push(DegreeData {
                         degree,
                         relation,
-                        originator: originator.to_string(),
                         phrase_hash,
                     });
                 }
