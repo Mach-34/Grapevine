@@ -35,6 +35,8 @@ impl GrapevineDB {
         }
     }
 
+    /// USER FUNCTIONS ///
+
     pub async fn increment_nonce(&self, username: &str) {
         let filter = doc! { "username": username };
         let update = doc! { "$inc": { "nonce": 1 } };
@@ -108,7 +110,38 @@ impl GrapevineDB {
         Ok(found)
     }
 
-    pub async fn get_user(&self, username: String) -> Option<User> {
+    /**
+     * Insert a new user into the database
+     * @notice - assumes username and pubkey auth checks were already performed
+     *
+     * @param user - the user to insert into the database
+     * @param auth_secret - the encrypted auth secret used by this user
+     * @returns - an error if the user already exists, or Ok otherwise
+     */
+    pub async fn create_user(&self, user: User) -> Result<ObjectId, GrapevineServerError> {
+        // check if the username exists already in the database
+        let query = doc! { "username": &user.username };
+        let options = FindOneOptions::builder()
+            .projection(doc! {"_id": 1})
+            .build();
+        match self.users.find_one(query, options).await.unwrap() {
+            Some(_) => {
+                return Err(GrapevineServerError::UserExists(
+                    user.username.clone().unwrap(),
+                ))
+            }
+            None => (),
+        };
+
+        // insert the user into the collection
+        match self.users.insert_one(&user, None).await {
+            Ok(result) => Ok(result.inserted_id.as_object_id().unwrap()),
+            Err(e) => Err(GrapevineServerError::MongoError(e.to_string()))
+        }
+
+    }
+
+    pub async fn get_user(&self, username: &String) -> Option<User> {
         let filter = doc! { "username": username };
         let projection = doc! { "degree_proofs": 0 };
         let find_options = FindOneOptions::builder().projection(projection).build();
@@ -156,42 +189,6 @@ impl GrapevineDB {
             doc! { "$push": { "relationships": bson::to_bson(&relationship_oid).unwrap()} };
         self.users.update_one(query, update, None).await.unwrap();
         Ok(relationship_oid)
-    }
-
-    /**
-     * Insert a new user into the database
-     * @notice - assumes username and pubkey auth checks were already performed
-     *
-     * @param user - the user to insert into the database
-     * @param auth_secret - the encrypted auth secret used by this user
-     * @returns - an error if the user already exists, or Ok otherwise
-     */
-    pub async fn create_user(&self, user: User) -> Result<ObjectId, GrapevineServerError> {
-        // check if the username exists already in the database
-        let query = doc! { "username": &user.username };
-        let options = FindOneOptions::builder()
-            .projection(doc! {"_id": 1})
-            .build();
-        match self.users.find_one(query, options).await.unwrap() {
-            Some(_) => {
-                return Err(GrapevineServerError::UserExists(
-                    user.username.clone().unwrap(),
-                ))
-            }
-            None => (),
-        };
-
-        // insert the user into the collection
-        let uuid = self
-            .users
-            .insert_one(&user, None)
-            .await
-            .unwrap()
-            .inserted_id
-            .as_object_id()
-            .unwrap();
-
-        Ok(uuid)
     }
 
     pub async fn add_proof(

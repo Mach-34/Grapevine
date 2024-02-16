@@ -1,6 +1,6 @@
-use crate::guards::NonceGuard;
 use crate::mongo::GrapevineDB;
-use crate::utils::use_public_params;
+use crate::utils::PUBLIC_PARAMS;
+use crate::{catchers::Response, guards::NonceGuard};
 use grapevine_circuits::{nova::verify_nova_proof, utils::decompress_proof};
 use grapevine_common::{
     http::requests::{DegreeProofRequest, NewPhraseRequest},
@@ -34,22 +34,27 @@ pub async fn create_phrase(
     _guard: NonceGuard,
     data: Data<'_>,
     db: &State<GrapevineDB>,
-) -> Result<Status, Status> {
+) -> Result<Status, Response> {
     // stream in data
     // todo: implement FromData trait on NewPhraseRequest
     let mut buffer = Vec::new();
     let mut stream = data.open(2.mebibytes()); // Adjust size limit as needed
     if let Err(e) = stream.read_to_end(&mut buffer).await {
-        return Err(Status::BadRequest);
+        return Err(Response::BadRequest(String::from(
+            "Error deserializing body from binary to NewPhraseRequest",
+        )));
     }
     let request = match bincode::deserialize::<NewPhraseRequest>(&buffer) {
         Ok(req) => req,
-        Err(e) => return Err(Status::BadRequest),
+        Err(e) => {
+            return Err(Response::BadRequest(String::from(
+                "Error deserializing body from binary to NewPhraseRequest",
+            )))
+        }
     };
     let decompressed_proof = decompress_proof(&request.proof);
     // verify the proof
-    let public_params = use_public_params().unwrap();
-    let verify_res = verify_nova_proof(&decompressed_proof, &public_params, 2);
+    let verify_res = verify_nova_proof(&decompressed_proof, &*PUBLIC_PARAMS, 2);
     let (phrase_hash, auth_hash) = match verify_res {
         Ok(res) => {
             let phrase_hash = res.0[1];
@@ -59,11 +64,11 @@ pub async fn create_phrase(
         }
         Err(e) => {
             println!("Proof verification failed: {:?}", e);
-            return Err(Status::BadRequest);
+            return Err(Response::BadRequest(String::from("Failed to verify proof")));
         }
     };
     // get user doc
-    let user = db.get_user(request.username.clone()).await.unwrap();
+    let user = db.get_user(&request.username).await.unwrap();
     // build DegreeProof model
     let proof_doc = DegreeProof {
         id: None,
@@ -78,7 +83,12 @@ pub async fn create_phrase(
 
     match db.add_proof(&user.id.unwrap(), &proof_doc).await {
         Ok(_) => Ok(Status::Created),
-        Err(e) => Err(Status::NotImplemented),
+        Err(e) => {
+            println!("Error adding proof: {:?}", e);
+            Err(Response::InternalError(String::from(
+                "Failed to add proof to db",
+            )))
+        }
     }
 }
 
@@ -113,10 +123,9 @@ pub async fn degree_proof(data: Data<'_>, db: &State<GrapevineDB>) -> Result<Sta
     };
     let decompressed_proof = decompress_proof(&request.proof);
     // verify the proof
-    let public_params = use_public_params().unwrap();
     let verify_res = verify_nova_proof(
         &decompressed_proof,
-        &public_params,
+        &*PUBLIC_PARAMS,
         (request.degree * 2) as usize,
     );
     let (phrase_hash, auth_hash) = match verify_res {
@@ -131,7 +140,7 @@ pub async fn degree_proof(data: Data<'_>, db: &State<GrapevineDB>) -> Result<Sta
         }
     };
     // get user doc
-    let user = db.get_user(request.username.clone()).await.unwrap();
+    let user = db.get_user(&request.username).await.unwrap();
     // @TODO: needs to delete a previous proof by same user on same phrase hash if exists, including removing from last proof's previous field
     // build DegreeProof struct
     let proof_doc = DegreeProof {
@@ -198,10 +207,13 @@ pub async fn get_proof_with_params(
     oid: String,
     username: String,
     db: &State<GrapevineDB>,
-) -> Result<Json<ProvingData>, Status> {
+) -> Result<Json<ProvingData>, Response> {
     let oid = ObjectId::from_str(&oid).unwrap();
     match db.get_proof_and_data(username, oid).await {
         Some(data) => Ok(Json(data)),
-        None => Err(Status::NotFound),
+        None => Err(Response::NotFound(format!(
+            "No proof found with oid {}",
+            oid
+        ))),
     }
 }

@@ -1,4 +1,4 @@
-use crate::catchers::GrapevineResponder;
+use crate::catchers::Response;
 use crate::mongo::GrapevineDB;
 use babyjubjub_rs::{decompress_point, decompress_signature, verify};
 use grapevine_common::http::{requests::CreateUserRequest, responses::DegreeData};
@@ -8,7 +8,6 @@ use grapevine_common::{
     http::requests::NewRelationshipRequest,
     models::{relationship::Relationship, user::User},
 };
-use rocket::response::status::NotFound;
 use rocket::State;
 
 use num_bigint::{BigInt, Sign};
@@ -19,14 +18,14 @@ use rocket::serde::json::Json;
 
 /**
  * Create a new user of the grapevine service
- * 
+ *
  * @param data - the CreateUserRequest containing:
  *             * username: the username for the new user
  *             * pubkey: the public key used to authZ/authN and deriving AES encryption keys
  *             * signature: the signature over the username by pubkey
  * @return status:
  *             * 201 if success
- *             * 400 if username length exceeds 30 characters, username is not valid ASCII, 
+ *             * 400 if username length exceeds 30 characters, username is not valid ASCII,
  *               invalid signature over username by pubkey, or issues deserializing request
  *             * 409 if username || pubkey are already in use by another user
  *             * 500 if db fails or other unknown issue
@@ -35,13 +34,19 @@ use rocket::serde::json::Json;
 pub async fn create_user(
     request: Json<CreateUserRequest>,
     db: &State<GrapevineDB>,
-) -> Result<GrapevineResponder, GrapevineResponder> {
+) -> Result<Response, Response> {
     // check username length is valid
     if request.username.len() > MAX_USERNAME_CHARS {
-        return Err(GrapevineResponder::BadRequest(format!(
+        return Err(Response::BadRequest(format!(
             "Username {} exceeds limit of 30 characters.",
             request.username
         )));
+    };
+    // check request is ascii
+    if !request.username.is_ascii() {
+        return Err(Response::BadRequest(
+            "Username must only contain ascii characters.".to_string(),
+        ));
     };
 
     // check the validity of the signature over the username
@@ -54,18 +59,12 @@ pub async fn create_user(
     match verify(pubkey_decompressed, signature_decompressed, message) {
         true => (),
         false => {
-            return Err(GrapevineResponder::BadRequest(
+            return Err(Response::BadRequest(
                 "Signature by pubkey does not match given message".to_string(),
             ));
         }
     };
 
-    // check the username is ascii
-    if !request.username.is_ascii() {
-        return Err(GrapevineResponder::BadRequest(
-            "Username must only contain ascii characters.".to_string(),
-        ));
-    };
     // check that the username or pubkey are not already used
     match db
         .check_creation_params(&request.username, &request.pubkey)
@@ -79,11 +78,11 @@ pub async fn create_user(
                 _ => "",
             };
             if found[0] || found[1] {
-                return Err(GrapevineResponder::Conflict(error_msg.to_string()));
+                return Err(Response::Conflict(error_msg.to_string()));
             }
         }
         Err(e) => {
-            return Err(GrapevineResponder::NotImplemented(
+            return Err(Response::NotImplemented(
                 "Unknown mongodb error has occured".to_string(),
             ))
         }
@@ -98,10 +97,8 @@ pub async fn create_user(
         degree_proofs: Some(vec![]),
     };
     match db.create_user(user).await {
-        Ok(_) => Ok(GrapevineResponder::Created(
-            "User succefully created".to_string(),
-        )),
-        Err(e) => Err(GrapevineResponder::NotImplemented(
+        Ok(_) => Ok(Response::Created("User succefully created".to_string())),
+        Err(e) => Err(Response::NotImplemented(
             "Unimplemented error creating user".to_string(),
         )),
     }
@@ -110,7 +107,7 @@ pub async fn create_user(
 /**
  * Add a unidirectional relationship allowing the target to prove connection to the sender
  * @notice: it would be nice to have a proof of correct encryption for the ciphertext
- * 
+ *
  * @param data - the NewRelationshipRequest containing:
  *             * from: the username of the sender
  *             * to: the username of the recipient
@@ -128,20 +125,32 @@ pub async fn create_user(
 pub async fn add_relationship(
     request: Json<NewRelationshipRequest>,
     db: &State<GrapevineDB>,
-) -> Result<Status, Status> {
+) -> Result<Status, Response> {
     // ensure from != to
     if &request.from == &request.to {
-        return Err(Status::BadRequest);
+        return Err(Response::BadRequest(String::from(
+            "Cannot add relationship to self.",
+        )));
     }
     // ensure user exists
-    let sender = match db.get_user(request.from.clone()).await {
+    let sender = match db.get_user(&request.from).await {
         Some(user) => user.id.unwrap(),
-        None => return Err(Status::NotFound),
+        None => {
+            return Err(Response::NotFound(format!(
+                "Sending user {} not found",
+                request.from
+            )))
+        }
     };
     // would be nice to have a zk proof of correct encryption to recipient...
-    let recipient = match db.get_user(request.to.clone()).await {
+    let recipient = match db.get_user(&request.to).await {
         Some(user) => user.id.unwrap(),
-        None => return Err(Status::NotFound),
+        None => {
+            return Err(Response::NotFound(format!(
+                "Target user {} not found",
+                request.to
+            )))
+        }
     };
     // add relationship doc and push to recipient array
     let relationship_doc = Relationship {
@@ -154,7 +163,12 @@ pub async fn add_relationship(
 
     match db.add_relationship(&relationship_doc).await {
         Ok(_) => Ok(Status::Created),
-        Err(e) => Err(Status::NotImplemented),
+        Err(e) => {
+            println!("Error adding relationship: {:?}", e);
+            Err(Response::InternalError(String::from(
+                "Failed to add relationship to db",
+            )))
+        }
     }
 }
 
@@ -164,21 +178,16 @@ pub async fn add_relationship(
  * @todo: remove / replace with get nonce
  */
 #[get("/<username>")]
-pub async fn get_user(
-    username: String,
-    db: &State<GrapevineDB>,
-) -> Result<Json<User>, GrapevineResponder> {
-    match db.get_user(username).await {
+pub async fn get_user(username: String, db: &State<GrapevineDB>) -> Result<Json<User>, Response> {
+    match db.get_user(&username).await {
         Some(user) => Ok(Json(user)),
-        None => Err(GrapevineResponder::NotFound(
-            "User not does not exist.".to_string(),
-        )),
+        None => Err(Response::NotFound(format!("User {} does not exist.", username)))
     }
 }
 
 /**
  * Return the public key of a given user
- * 
+ *
  * @param username - the username to look up the public key for
  * @return - the public key of the user
  * @return status:
@@ -190,17 +199,17 @@ pub async fn get_user(
 pub async fn get_pubkey(
     username: String,
     db: &State<GrapevineDB>,
-) -> Result<String, NotFound<String>> {
+) -> Result<String, Response> {
     match db.get_pubkey(username).await {
         Some(pubkey) => Ok(hex::encode(pubkey)),
-        None => Err(NotFound("User not does not exist.".to_string())),
+        None => Err(Response::NotFound(String::from("User not does not exist."))),
     }
 }
 
 /**
  * Return a list of all available (new) degree proofs from existing connections that a user can
  * build from (empty if none)
- * 
+ *
  * @param username - the username to look up the available proofs for
  * @return - a vector of DegreeData structs containing:
  *             * oid: the ObjectID of the proof to build from
@@ -216,16 +225,16 @@ pub async fn get_pubkey(
 pub async fn get_all_degrees(
     username: String,
     db: &State<GrapevineDB>,
-) -> Result<Json<Vec<DegreeData>>, Status> {
+) -> Result<Json<Vec<DegreeData>>, Response> {
     match db.get_all_degrees(username).await {
         Some(proofs) => Ok(Json(proofs)),
-        None => Err(Status::NotFound),
+        None => Err(Response::InternalError(String::from("Error retrieving degrees in db"))),
     }
 }
 
 /**
  * Return a list of the usernames of all direct connections by a given user
- * 
+ *
  * @param username - the username to look up relationships for
  * @return - a vector of stringified usernames of direct connections (empty if none found)
  * @return status:
