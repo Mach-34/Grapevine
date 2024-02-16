@@ -20,8 +20,8 @@ rand.workspace = true
 tokio.workspace = true
 num-bigint.workspace = true
 babyjubjub-rs.workspace = true
+reqwest.workspace = true
 clap = { version = "4.4.7", features = ["derive"] }
-reqwest = { version = "0.11.23", features = ["json"] }
 poseidon-rs = "0.0.10"
 
 [[bin]]

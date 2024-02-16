@@ -1,3 +1,7 @@
+pub enum GrapevineServerErrorStatus {
+    NotFound(String),
+}
+
 #[derive(Debug)]
 pub enum GrapevineServerError {
     Signature(String),

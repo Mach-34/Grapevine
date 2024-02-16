@@ -1,34 +1,20 @@
-use crate::account::GrapevineAccount;
 use crate::errors::GrapevineCLIError;
 use crate::utils::artifacts_guard;
 use crate::utils::fs::{use_public_params, use_r1cs, use_wasm};
 use babyjubjub_rs::{decompress_point, PrivateKey};
-use grapevine_circuits::nova::{
-    continue_nova_proof, get_public_params, get_r1cs, nova_proof, verify_nova_proof,
-};
-// use grapevine_common::{Fr, NovaProof, G1, G2};
-use bson::oid::ObjectId;
-use ff::PrimeField;
+use grapevine_circuits::nova::{continue_nova_proof, nova_proof, verify_nova_proof};
 use grapevine_circuits::utils::{compress_proof, decompress_proof};
-use grapevine_common::auth_secret::{AuthSecret, AuthSecretEncrypted};
+use grapevine_common::account::GrapevineAccount;
+use grapevine_common::auth_secret::AuthSecretEncrypted;
 use grapevine_common::http::requests::{
     CreateUserRequest, DegreeProofRequest, NewPhraseRequest, NewRelationshipRequest,
     TestProofCompressionRequest,
 };
 use grapevine_common::http::responses::DegreeData;
 use grapevine_common::models::proof::ProvingData;
-use grapevine_common::models::user::User;
 use grapevine_common::utils::random_fr;
-use serde::Serialize;
-// use grapevine_circuits::{
-//     nova::{continue_nova_proof, get_public_params, get_r1cs, nova_proof, verify_nova_proof},
-// };
-// use nova_scotia::{circom::reader::load_r1cs, create_public_params, FileLocation};
-// use nova_snark::PublicParams;
-// use rand::random;
-// use std::env::current_dir;
+
 use std::path::Path;
-use std::str::FromStr;
 
 /**
  * Register a new user on Grapevine
@@ -40,13 +26,10 @@ pub async fn register(username: String) -> Result<(), GrapevineCLIError> {
     let account = make_or_get_account(username.clone())?;
     // sign the username
     let signature = account.sign_username();
-    // encrypt auth secret with own pubkey for recovery
-    let auth_secret_encrypted = account.encrypt_auth_secret(account.pubkey());
     // build request body
     let body = CreateUserRequest {
         username: username.clone(),
         pubkey: account.pubkey().compress(),
-        auth_secret: auth_secret_encrypted,
         signature: signature.compress(),
     };
     // send create user request
@@ -367,7 +350,6 @@ pub async fn get_my_proofs() -> Result<(), GrapevineCLIError> {
             println!("Phrase created by this user");
         } else {
             println!("Degrees of separation from origin: {}", degree.degree);
-            println!("Originator: {}", degree.originator);
             println!("Your relation: {}", degree.relation.unwrap());
         }
     }
