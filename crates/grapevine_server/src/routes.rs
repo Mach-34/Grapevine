@@ -118,21 +118,28 @@ pub async fn create_user(
 
 #[post("/phrase/create", data = "<data>")]
 pub async fn create_phrase(
-    _guard: NonceGuard,
     data: Data<'_>,
     db: &State<GrapevineDB>,
-) -> Result<Status, Status> {
+) -> Result<GrapevineResponder, GrapevineResponder> {
     // stream in data
     // todo: implement FromData trait on NewPhraseRequest
     let mut buffer = Vec::new();
     let mut stream = data.open(2.mebibytes()); // Adjust size limit as needed
     if let Err(e) = stream.read_to_end(&mut buffer).await {
-        return Err(Status::BadRequest);
+        // TODO: Empty body error needs to be caught here too
+        return Err(GrapevineResponder::TooLarge(
+            "Request body execeeds 2 megabytes".to_string(),
+        ));
     }
     let request = match bincode::deserialize::<NewPhraseRequest>(&buffer) {
         Ok(req) => req,
-        Err(e) => return Err(Status::BadRequest),
+        Err(e) => {
+            return Err(GrapevineResponder::BadRequest(
+                "Request body could not be parsed to NewPhraseRequest".to_string(),
+            ))
+        }
     };
+    // TODO: Add check to ensure bytes can be parsed into Nova proof
     let decompressed_proof = decompress_proof(&request.proof);
     // verify the proof
     let public_params = use_public_params().unwrap();
@@ -146,7 +153,9 @@ pub async fn create_phrase(
         }
         Err(e) => {
             println!("Proof verification failed: {:?}", e);
-            return Err(Status::BadRequest);
+            return Err(GrapevineResponder::BadRequest(
+                "Could not verify proof".to_string(),
+            ));
         }
     };
     // get user doc
@@ -164,23 +173,37 @@ pub async fn create_phrase(
     };
 
     match db.add_proof(&user.id.unwrap(), &proof_doc).await {
-        Ok(_) => Ok(Status::Created),
-        Err(e) => Err(Status::NotImplemented),
+        Ok(_) => Ok(GrapevineResponder::Created(
+            "Succesfully created phrase".to_string(),
+        )),
+        Err(e) => Err(GrapevineResponder::NotImplemented(
+            "Mongodb error adding proof.".to_string(),
+        )),
     }
 }
 
 #[post("/phrase/continue", data = "<data>")]
-pub async fn degree_proof(data: Data<'_>, db: &State<GrapevineDB>) -> Result<Status, Status> {
+pub async fn degree_proof(
+    data: Data<'_>,
+    db: &State<GrapevineDB>,
+) -> Result<GrapevineResponder, GrapevineResponder> {
     // stream in data
     // todo: implement FromData trait on NewPhraseRequest
     let mut buffer = Vec::new();
     let mut stream = data.open(2.mebibytes()); // Adjust size limit as needed
     if let Err(e) = stream.read_to_end(&mut buffer).await {
-        return Err(Status::BadRequest);
+        // TODO: Empty body error needs to be caught here too
+        return Err(GrapevineResponder::TooLarge(
+            "Request body execeeds 2 megabytes".to_string(),
+        ));
     }
     let request = match bincode::deserialize::<DegreeProofRequest>(&buffer) {
         Ok(req) => req,
-        Err(e) => return Err(Status::BadRequest),
+        Err(e) => {
+            return Err(GrapevineResponder::BadRequest(
+                "Request body could not be parsed to DegreeProofRequest".to_string(),
+            ))
+        }
     };
     let decompressed_proof = decompress_proof(&request.proof);
     // verify the proof
@@ -198,7 +221,9 @@ pub async fn degree_proof(data: Data<'_>, db: &State<GrapevineDB>) -> Result<Sta
         }
         Err(e) => {
             println!("Proof verification failed: {:?}", e);
-            return Err(Status::BadRequest);
+            return Err(GrapevineResponder::BadRequest(
+                "Could not verify proof".to_string(),
+            ));
         }
     };
     // get user doc
@@ -218,8 +243,12 @@ pub async fn degree_proof(data: Data<'_>, db: &State<GrapevineDB>) -> Result<Sta
 
     // add proof to db and update references
     match db.add_proof(&user.id.unwrap(), &proof_doc).await {
-        Ok(_) => Ok(Status::Created),
-        Err(e) => Err(Status::NotImplemented),
+        Ok(_) => Ok(GrapevineResponder::Created(
+            "Successfully created degree proof".to_string(),
+        )),
+        Err(e) => Err(GrapevineResponder::NotImplemented(
+            "Mongodb error creating degree proof.".to_string(),
+        )),
     }
 }
 
@@ -227,20 +256,30 @@ pub async fn degree_proof(data: Data<'_>, db: &State<GrapevineDB>) -> Result<Sta
 pub async fn add_relationship(
     request: Json<NewRelationshipRequest>,
     db: &State<GrapevineDB>,
-) -> Result<Status, Status> {
+) -> Result<GrapevineResponder, GrapevineResponder> {
     // ensure from != to
     if &request.from == &request.to {
-        return Err(Status::BadRequest);
+        return Err(GrapevineResponder::BadRequest(
+            "User cannot have a relationship with themself".to_string(),
+        ));
     }
     // ensure user exists
     let sender = match db.get_user(request.from.clone()).await {
         Some(user) => user.id.unwrap(),
-        None => return Err(Status::NotFound),
+        None => {
+            return Err(GrapevineResponder::NotFound(
+                "Sender does not exist.".to_string(),
+            ))
+        }
     };
     // would be nice to have a zk proof of correct encryption to recipient...
     let recipient = match db.get_user(request.to.clone()).await {
         Some(user) => user.id.unwrap(),
-        None => return Err(Status::NotFound),
+        None => {
+            return Err(GrapevineResponder::NotFound(
+                "Recipient does not exist.".to_string(),
+            ))
+        }
     };
     // add relationship doc and push to recipient array
     let relationship_doc = Relationship {
@@ -252,8 +291,13 @@ pub async fn add_relationship(
     };
 
     match db.add_relationship(&relationship_doc).await {
-        Ok(_) => Ok(Status::Created),
-        Err(e) => Err(Status::NotImplemented),
+        Ok(_) => Ok(GrapevineResponder::Created(format!(
+            "Relationship between {} and {} created",
+            request.from, request.to
+        ))),
+        Err(e) => Err(GrapevineResponder::NotImplemented(
+            "Mongodb error creating relationship.".to_string(),
+        )),
     }
 }
 

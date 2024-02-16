@@ -76,12 +76,15 @@ mod test_rocket {
 
     use super::*;
     use babyjubjub_rs::PrivateKey;
-    use grapevine_circuits::{nova::nova_proof, utils::compress_proof};
+    use grapevine_circuits::{
+        nova::nova_proof,
+        utils::{compress_proof, decompress_proof},
+    };
     use grapevine_common::{
         account::GrapevineAccount,
         auth_secret::AuthSecretEncryptedUser,
-        http::requests::{CreateUserRequest, NewPhraseRequest},
-        models::user,
+        http::requests::{CreateUserRequest, NewPhraseRequest, NewRelationshipRequest},
+        models::{proof::ProvingData, user},
         utils::random_fr,
     };
     use lazy_static::lazy_static;
@@ -111,6 +114,7 @@ mod test_rocket {
                         action,
                         health,
                         create_user,
+                        degree_proof,
                         get_user,
                         create_phrase,
                         get_pubkey,
@@ -136,7 +140,6 @@ mod test_rocket {
         }
     }
 
-    /* Returns status code */
     async fn create_user_request(
         context: &GrapevineTestContext,
         request: &CreateUserRequest,
@@ -153,43 +156,37 @@ mod test_rocket {
             .unwrap()
     }
 
-    // async fn get_user_request(context: &GrapevineTestContext, username: String) {
-    //     let res:  = context
-    //         .client
-    //         .post(format!("/user/{}", username))
-    //         .dispatch()
-    //         .await
-    //         .into_json()
-    //         .await
-    //         .unwrap();
-    //     println!("{:?}", res)
-    // }
+    async fn get_user_request(context: &GrapevineTestContext, username: String) -> Option<User> {
+        context
+            .client
+            .get(format!("/user/{}", username))
+            .dispatch()
+            .await
+            .into_json::<User>()
+            .await
+    }
 
-    // fn check_test_env_prepared() -> bool {
-    //     let users = USERS.lock().unwrap();
-    //     users.get(0).is_some()
-    // }
+    fn check_test_env_prepared() -> bool {
+        let users = USERS.lock().unwrap();
+        let prepared = users.get(0).is_some();
+        drop(users);
+        prepared
+    }
 
-    // async fn prepare_test_env() {
-    //     let mut users = USERS.lock().unwrap();
-    //     let username_1 = String::from("manbearpig");
-    //     // Check if user exists or not in database. If it does then remove it so that test can be performed
-    //     clear_user_from_db(username_1.clone()).await;
-    //     let user_1 = GrapevineTestUser {
-    //         nonce: 0,
-    //         private_key: new_private_key().to_vec(),
-    //         username: username_1,
-    //     };
-    //     users.push(user_1.clone());
-    //     create_user_request(
-    //         user_1.username.clone(),
-    //         user_1.username.clone(),
-    //         PrivateKey::import(user_1.private_key).unwrap(),
-    //         false,
-    //     )
-    //     .await;
-    //     // Create user in db
-    // }
+    async fn prepare_test_env() {
+        let mut users = USERS.lock().unwrap();
+        let user_1 = GrapevineAccount::new(String::from("manbearpig"));
+        // Check if user exists or not in database. If it does then remove it so that test can be performed
+        clear_user_from_db(user_1.username().clone()).await;
+
+        let context = GrapevineTestContext::init().await;
+
+        let request = user_1.create_user_request();
+
+        create_user_request(&context, &request).await;
+        users.push(user_1);
+        drop(users);
+    }
 
     #[rocket::async_test]
     async fn test_create_user_wrong_signature() {
@@ -266,11 +263,8 @@ mod test_rocket {
         );
 
         // Check that user was stored in DB
-        // get_user_request(&context, username).await;
-
-        // Store user for later testing
-        let mut users = USERS.lock().unwrap();
-        users.push(account);
+        let user = get_user_request(&context, username).await;
+        assert!(user.is_some(), "User should be stored inside of MongoDB");
     }
 
     #[rocket::async_test]
@@ -312,268 +306,157 @@ mod test_rocket {
         assert_eq!("User charlie not found", message);
     }
 
-    #[rocket::async_test]
-    async fn test_nonce_guard_successful_verification() {
-        let users = USERS.lock().unwrap();
-        let user = users.get(0).unwrap().clone();
-        let auth_header = Header::new(
-            "Authorization",
-            format!("{}-{}", user.username(), user.nonce()),
-        );
-        let context = GrapevineTestContext::init().await;
-        let res = context
-            .client
-            .get("/nonce-guard-test")
-            .header(auth_header)
-            .dispatch()
-            .await;
-        let message = res.into_string().await.unwrap();
-        assert_eq!("Succesfully verified nonce", message);
-    }
-
-    #[rocket::async_test]
-    async fn test_nonce_guard_without_nonce_increment() {
-        let mut users = USERS.lock().unwrap();
-        let mut user = users.get(0).unwrap().clone();
-        let nonce = user.nonce();
-        let auth_header = Header::new("Authorization", format!("{}-{}", user.username(), nonce));
-        let context = GrapevineTestContext::init().await;
-        let res = context
-            .client
-            .get("/nonce-guard-test")
-            .header(auth_header)
-            .dispatch()
-            .await;
-        let message = res.into_string().await.unwrap();
-        assert_eq!(
-            format!(
-                "Incorrect nonce provided. Expected {} and received {}",
-                nonce + 1,
-                nonce
-            ),
-            message
-        );
-        user.increment_nonce();
-        users[0] = user;
-    }
-
-    #[rocket::async_test]
-    async fn test_nonce_guard_after_nonce_increment() {
-        let mut users = USERS.lock().unwrap();
-        let mut user = users.get(0).unwrap().clone();
-        let context = GrapevineTestContext::init().await;
-        let auth_header = Header::new(
-            "Authorization",
-            format!("{}-{}", user.username(), user.nonce()),
-        );
-        let res = context
-            .client
-            .get("/nonce-guard-test")
-            .header(auth_header)
-            .dispatch()
-            .await;
-        let message = res.into_string().await.unwrap();
-        assert_eq!("Succesfully verified nonce", message);
-
-        user.increment_nonce();
-        users[0] = user;
-    }
-
-    // #############################################
-
     // #[rocket::async_test]
-    // async fn test_duplicate_username() {
-    //     let username = String::from("manbearpig");
-    //     clear_user_from_db(username.clone()).await;
-
-    //     let context = GrapevineTestContext::init().await;
-
-    //     let account = GrapevineAccount::new(username.clone());
-
-    //     let request = account.create_user_request();
-
-    //     assert_eq!(
-    //         create_user_request(&context, &request).await,
-    //         "User succefully created",
-    //         "User should be created"
-    //     );
-    // }
-
-    // #[rocket::async_test]
-    // async fn test_create_user() {
-    //     // Test mismatched username and signed message
-    //     let private_key = PrivateKey::import(new_private_key().to_vec()).unwrap();
-    //     let res_code = create_user_request(
-    //         String::from("fakename1"),
-    //         String::from("fakename2"),
-    //         private_key,
-    //         false,
-    //     )
-    //     .await;
-
-    //     // TODO: Replace with custom error message
-    //     assert_eq!(
-    //         res_code,
-    //         Status::BadRequest.code,
-    //         "Request should fail due to mismatched msg"
-    //     );
-
-    //     // Test username that exceeds 30 characters
-    //     let username_2 = String::from("fake_username_1234567890_abcdef");
-    //     let private_key_2 = PrivateKey::import(new_private_key().to_vec()).unwrap();
-    //     let res_code_2 =
-    //         create_user_request(username_2.clone(), username_2.clone(), private_key_2, true).await;
-
-    //     // TODO: Replace with custom error message
-    //     assert_eq!(
-    //         res_code_2,
-    //         Status::BadRequest.code,
-    //         "Request should fail from username exceeding 30 character limit"
-    //     );
-
-    //     // Test username that contains non ascii characters
-    //     let username_3 = String::from("fake_username_😍😌£");
-    //     let private_key_3 = PrivateKey::import(new_private_key().to_vec()).unwrap();
-    //     let res_code_3 =
-    //         create_user_request(username_3.clone(), username_3.clone(), private_key_3, false).await;
-
-    //     // TODO: Replace with custom error message
-    //     assert_eq!(
-    //         res_code_3,
-    //         Status::BadRequest.code,
-    //         "Request should fail from username containing non ascii characters"
-    //     );
-
-    //     // Successfully create user
-    //     let username_4 = String::from("manbearape");
-    //     let private_key_4_bytes = new_private_key().to_vec();
-    //     let private_key_4 = PrivateKey::import(private_key_4_bytes.clone()).unwrap();
-    //     let res_code_4 =
-    //         create_user_request(username_4.clone(), username_4.clone(), private_key_4, false).await;
-    //     assert_eq!(res_code_4, Status::Created.code, "Request should succeed");
-
-    //     // TODO: Conflict errors are not returning correctly. May need to change mongo function logic
-
-    //     // Test username that's already been stored
-    //     // let username_5 = String::from("manbearpig");
-    //     // let private_key_5 = PrivateKey::import(new_private_key().to_vec()).unwrap();
-    //     // let res_code_5 =
-    //     //     create_user_request(username_5.clone(), username_5.clone(), private_key_5, false).await;
-    //     // assert_eq!(
-    //     //     res_code_5,
-    //     //     Status::Conflict.code,
-    //     //     "Request should fail due to username already stored"
-    //     // );
-
-    //     // Test public key that's already been stored
-    //     // let username_6 = String::from("manbearape");
-    //     // let private_key_6 = PrivateKey::import(private_key_4_bytes.clone()).unwrap();
-    //     // let res_code_6 =
-    //     //     create_user_request(username_6.clone(), username_6.clone(), private_key_6, false).await;
-    //     // assert_eq!(
-    //     //     res_code_6,
-    //     //     Status::Conflict.code,
-    //     //     "Request should fail due to pubkey already stored"
-    //     // );
-
-    //     // Test public key and username that are already been stored
-    //     // let username_7 = String::from("manbearpig");
-    //     // let private_key_7 = PrivateKey::import(private_key_4_bytes.clone()).unwrap();
-    //     // let res_code_7 =
-    //     //     create_user_request(username_7.clone(), username_7.clone(), private_key_7, false).await;
-    //     // assert_eq!(
-    //     //     res_code_7,
-    //     //     Status::Conflict.code,
-    //     //     "Request should fail due to pubkey and username already stored"
-    //     // );
-
-    //     // TODO: Battle test route for more errors
-    // }
-
-    // #[rocket::async_test]
-    // async fn test_create_phrase() {
-    //     // Check that test environment has been prepared. If not then create users
+    // async fn test_nonce_guard_successful_verification() {
     //     if !check_test_env_prepared() {
     //         prepare_test_env().await
     //     }
 
-    //     // Load in user from previous tests
+    //     let users = USERS.lock().unwrap();
+    //     let user = users.get(0).unwrap().clone();
+    //     let auth_header = Header::new(
+    //         "Authorization",
+    //         format!("{}-{}", user.username(), user.nonce()),
+    //     );
+    //     let context = GrapevineTestContext::init().await;
+    //     let res = context
+    //         .client
+    //         .get("/nonce-guard-test")
+    //         .header(auth_header)
+    //         .dispatch()
+    //         .await;
+    //     let message = res.into_string().await.unwrap();
+    //     assert_eq!("Succesfully verified nonce", message);
+    //     drop(users);
+    // }
+
+    // #[rocket::async_test]
+    // async fn test_nonce_guard_with_incorrect_nonce() {
     //     let mut users = USERS.lock().unwrap();
-    //     let mut user_1 = users.get(0).unwrap().clone();
-    //     let mut nonce = user_1.nonce;
-    //     let username_2 = String::from("omniman");
-    //     // Test case where user does not exist
+    //     let mut user = users.get(0).unwrap().clone();
+    //     let nonce = user.nonce();
+    //     let auth_header = Header::new("Authorization", format!("{}-{}", user.username(), nonce));
+    //     let context = GrapevineTestContext::init().await;
+    //     let res = context
+    //         .client
+    //         .get("/nonce-guard-test")
+    //         .header(auth_header)
+    //         .dispatch()
+    //         .await;
+    //     let message = res.into_string().await.unwrap();
+    //     assert_eq!(
+    //         format!(
+    //             "Incorrect nonce provided. Expected {} and received {}",
+    //             nonce + 1,
+    //             nonce
+    //         ),
+    //         message
+    //     );
+    //     user.increment_nonce();
+    //     users[0] = user;
+    //     drop(users);
+    // }
+
+    // // #[rocket::async_test]
+    // // async fn test_nonce_guard_after_nonce_increment() {
+    // //     let mut users = USERS.lock().unwrap();
+    // //     let mut user = users.get(0).unwrap().clone();
+    // //     let context = GrapevineTestContext::init().await;
+    // //     let auth_header = Header::new(
+    // //         "Authorization",
+    // //         format!("{}-{}", user.username(), user.nonce()),
+    // //     );
+    // //     let res = context
+    // //         .client
+    // //         .get("/nonce-guard-test")
+    // //         .header(auth_header)
+    // //         .dispatch()
+    // //         .await;
+    // //     let message = res.into_string().await.unwrap();
+    // //     assert_eq!("Succesfully verified nonce", message);
+
+    // //     user.increment_nonce();
+    // //     users[0] = user;
+    // //     drop(users)
+    // // }
+
+    // // #[rocket::async_test]
+    // // async fn test_create_phrase_with_non_existent_user() {
+    // //     let user = GrapevineAccount::new(String::from("omniman"));
+    // //     let phrase = String::from("She'll be coming around the mountain when she comes");
+    // //     let context = GrapevineTestContext::init().await;
+
+    // //     let code = context
+    // //         .client
+    // //         .post("/phrase/create")
+    // //         .body(vec![])
+    // //         .dispatch()
+    // //         .await
+    // //         .status()
+    // //         .code;
+
+    // //     // TODO: Replace code with error message
+    // //     assert_eq!(code, Status::NotFound.code);
+    // // }
+
+    // #[rocket::async_test]
+    // async fn test_create_phrase_with_invalid_request_body() {
+    //     let context = GrapevineTestContext::init().await;
+
+    //     let res = context
+    //         .client
+    //         .post("/phrase/create")
+    //         .body(vec![])
+    //         .dispatch()
+    //         .await
+    //         .into_string()
+    //         .await
+    //         .unwrap();
+
+    //     assert_eq!(
+    //         "Request body could not be parsed to NewPhraseRequest", res,
+    //         "Empty request body shouldn't be parseable"
+    //     );
+    // }
+
+    // // #[rocket::async_test]
+    // // async fn test_create_phrase_with_request_body_over_2_mb() {
+    // //     let context = GrapevineTestContext::init().await;
+
+    // //     let body = vec![1; 4 * 1024 * 1024];
+
+    // //     let res = context
+    // //         .client
+    // //         .post("/phrase/create")
+    // //         .body(body)
+    // //         .dispatch()
+    // //         .await
+    // //         .into_string()
+    // //         .await
+    // //         .unwrap();
+
+    // //     assert_eq!(
+    // //         "Request body execeeds 2 megabytes", res,
+    // //         "Error should be thrown if request execeeds 2 megabytes"
+    // //     );
+    // // }
+
+    // #[rocket::async_test]
+    // async fn test_successful_phrase_creation() {
+    //     if !check_test_env_prepared() {
+    //         prepare_test_env().await
+    //     }
+
+    //     let users = USERS.lock().unwrap();
+    //     let user = users.get(0).unwrap().clone();
     //     let phrase = String::from("She'll be coming around the mountain when she comes");
 
-    //     let auth_header = Header::new("Authorization", format!("{}-{}", username_2, 0));
-
-    //     let GrapevineTestContext { client } = GrapevineTestContext::init().await;
-    //     let code = client
-    //         .post("/phrase/create")
-    //         .header(auth_header)
-    //         .body(vec![])
-    //         .dispatch()
-    //         .await
-    //         .status()
-    //         .code;
-
-    //     // TODO: Replace code with error message
-    //     assert_eq!(code, Status::NotFound.code);
-
-    //     // Request should fail when request body cannot be parsed into NewPhraseRequest
-    //     let auth_header_2 = Header::new(
-    //         "Authorization",
-    //         format!("{}-{}", user_1.username.clone(), nonce),
-    //     );
-    //     nonce += 1;
-    //     let code = client
-    //         .post("/phrase/create")
-    //         .header(auth_header_2)
-    //         .body(vec![])
-    //         .dispatch()
-    //         .await
-    //         .status()
-    //         .code;
-
-    //     // TODO: Replace code with error message
-    //     assert_eq!(code, Status::BadRequest.code);
-
-    //     // TODO: Fix proof decompression function to account for this error
-    //     // Test request with empty proof inside of body
-
-    //     // let body = NewPhraseRequest {
-    //     //     proof: vec![8],
-    //     //     username: user_1.username.clone(),
-    //     // };
-    //     // let serialized: Vec<u8> = bincode::serialize(&body).unwrap();
-    //     // let auth_header_3 = Header::new(
-    //     //     "Authorization",
-    //     //     format!("{}-{}", user_1.username.clone(), nonce),
-    //     // );
-    //     // nonce += 1;
-    //     // let code = client
-    //     //     .post("/phrase/create")
-    //     //     .header(auth_header_3)
-    //     //     .body(serialized)
-    //     //     .dispatch()
-    //     //     .await
-    //     //     .status()
-    //     //     .code;
-
-    //     // // TODO: Replace code with error message
-    //     // assert_eq!(code, Status::BadRequest.code);
-
-    //     // Test case with valid proof
+    //     let username_vec = vec![user.username().clone()];
+    //     let auth_secret_vec = vec![user.auth_secret().clone()];
 
     //     let params = use_public_params().unwrap();
     //     let r1cs = use_r1cs().unwrap();
     //     let wc_path = use_wasm().unwrap();
-
-    //     let username = String::from("omniman");
-    //     clear_user_from_db(username.clone()).await;
-
-    //     let username_vec = vec![username.clone()];
-    //     let auth_secret_vec = vec![random_fr()];
 
     //     let proof = nova_proof(
     //         wc_path,
@@ -585,34 +468,243 @@ mod test_rocket {
     //     )
     //     .unwrap();
 
+    //     let context = GrapevineTestContext::init().await;
+
     //     let compressed = compress_proof(&proof);
 
     //     let body = NewPhraseRequest {
     //         proof: compressed,
-    //         username: user_1.username.clone(),
+    //         username: user.username().clone(),
     //     };
+
     //     let serialized: Vec<u8> = bincode::serialize(&body).unwrap();
-    //     let auth_header_3 = Header::new(
-    //         "Authorization",
-    //         format!("{}-{}", user_1.username.clone(), nonce),
-    //     );
-    //     nonce += 1;
-    //     let code = client
+
+    //     let res = context
+    //         .client
     //         .post("/phrase/create")
-    //         .header(auth_header_3)
     //         .body(serialized)
     //         .dispatch()
     //         .await
-    //         .status()
-    //         .code;
+    //         .into_string()
+    //         .await
+    //         .unwrap();
 
-    //     assert_eq!(code, Status::Created.code);
-
-    //     // Save updated nonce
-    //     user_1.nonce = nonce;
-    //     users[0] = user_1;
+    //     assert_eq!(
+    //         "Succesfully created phrase", res,
+    //         "New phrase should be created with proper request body"
+    //     );
     // }
 
-    #[rocket::async_test]
-    async fn test_continue_phrase() {}
+    // // TODO: Test proof generation with a different set of public params
+
+    // #[rocket::async_test]
+    // async fn test_create_degree_proof_with_invalid_request_body() {
+    //     let context = GrapevineTestContext::init().await;
+
+    //     let res = context
+    //         .client
+    //         .post("/phrase/continue")
+    //         .body(vec![])
+    //         .dispatch()
+    //         .await
+    //         .into_string()
+    //         .await
+    //         .unwrap();
+
+    //     assert_eq!(
+    //         "Request body could not be parsed to DegreeProofRequest", res,
+    //         "Empty request body shouldn't be parseable"
+    //     );
+    // }
+
+    // #[rocket::async_test]
+    // async fn test_successful_degree_proof_creation() {
+    //     let context = GrapevineTestContext::init().await;
+
+    //     let params = use_public_params().unwrap();
+    //     let r1cs = use_r1cs().unwrap();
+    //     let wc_path = use_wasm().unwrap();
+
+    //     // TODO: Grab
+    //     let oid = "65ce16827c35eaf5e6f4eda5";
+
+    //     let users = USERS.lock().unwrap();
+    //     let user = users.get(0).unwrap().clone();
+
+    //     let context = GrapevineTestContext::init().await;
+
+    //     let url = format!("/proof/{}/params/{}", oid, user.username());
+
+    //     let res = context.client.get(url).dispatch().await;
+
+    //     let proving_data = res.into_json::<ProvingData>().await.unwrap();
+
+    //     let auth_secret_encrypted = AuthSecretEncrypted {
+    //         ephemeral_key: proving_data.ephemeral_key,
+    //         ciphertext: proving_data.ciphertext,
+    //         username: proving_data.username,
+    //         recipient: account.pubkey().compress(),
+    //     };
+    // }
+
+    // #[rocket::async_test]
+    // async fn test_relationship_creation_with_empty_request_body() {
+    //     if !check_test_env_prepared() {
+    //         prepare_test_env().await
+    //     }
+
+    //     let users = USERS.lock().unwrap();
+    //     let user = users.get(0).unwrap().clone();
+    //     let pubkey = user.pubkey();
+    //     let encrypted_auth_secret = user.encrypt_auth_secret(pubkey);
+
+    //     let body = NewRelationshipRequest {
+    //         from: user.username().clone(),
+    //         to: user.username().clone(),
+    //         ephemeral_key: encrypted_auth_secret.ephemeral_key,
+    //         ciphertext: encrypted_auth_secret.ciphertext,
+    //     };
+
+    //     let context = GrapevineTestContext::init().await;
+
+    //     let res = context
+    //         .client
+    //         .post("/user/relationship")
+    //         .json(&body)
+    //         .dispatch()
+    //         .await
+    //         .into_string()
+    //         .await
+    //         .unwrap();
+
+    //     assert_eq!(
+    //         "User cannot have a relationship with themself", res,
+    //         "User should not be able to have a relationsip with themselves."
+    //     );
+    // }
+
+    // #[rocket::async_test]
+    // async fn test_relationship_creation_with_non_existent_sender() {
+    //     if !check_test_env_prepared() {
+    //         prepare_test_env().await
+    //     }
+
+    //     let users = USERS.lock().unwrap();
+    //     let user = users.get(0).unwrap().clone();
+
+    //     let user_2 = GrapevineAccount::new(String::from("pizzaEater"));
+
+    //     let pubkey = user.pubkey();
+    //     let encrypted_auth_secret = user_2.encrypt_auth_secret(pubkey);
+
+    //     let context = GrapevineTestContext::init().await;
+
+    //     let body = NewRelationshipRequest {
+    //         from: user_2.username().clone(),
+    //         to: user.username().clone(),
+    //         ephemeral_key: encrypted_auth_secret.ephemeral_key,
+    //         ciphertext: encrypted_auth_secret.ciphertext,
+    //     };
+
+    //     let res = context
+    //         .client
+    //         .post("/user/relationship")
+    //         .json(&body)
+    //         .dispatch()
+    //         .await
+    //         .into_string()
+    //         .await
+    //         .unwrap();
+
+    //     assert_eq!(
+    //         "Sender does not exist.", res,
+    //         "Sender shouldn't exist inside database."
+    //     );
+    // }
+
+    // #[rocket::async_test]
+    // async fn test_relationship_creation_with_non_existent_recipient() {
+    //     if !check_test_env_prepared() {
+    //         prepare_test_env().await
+    //     }
+
+    //     let users = USERS.lock().unwrap();
+    //     let user = users.get(0).unwrap().clone();
+
+    //     let user_2 = GrapevineAccount::new(String::from("pizzaEater"));
+
+    //     let pubkey = user_2.pubkey();
+    //     let encrypted_auth_secret = user.encrypt_auth_secret(pubkey);
+
+    //     let context = GrapevineTestContext::init().await;
+
+    //     let body = NewRelationshipRequest {
+    //         from: user.username().clone(),
+    //         to: user_2.username().clone(),
+    //         ephemeral_key: encrypted_auth_secret.ephemeral_key,
+    //         ciphertext: encrypted_auth_secret.ciphertext,
+    //     };
+
+    //     let res = context
+    //         .client
+    //         .post("/user/relationship")
+    //         .json(&body)
+    //         .dispatch()
+    //         .await
+    //         .into_string()
+    //         .await
+    //         .unwrap();
+
+    //     assert_eq!(
+    //         "Recipient does not exist.", res,
+    //         "Recipient shouldn't exist inside database."
+    //     );
+    // }
+
+    // #[rocket::async_test]
+    // async fn test_successful_relationship_creation() {
+    //     if !check_test_env_prepared() {
+    //         prepare_test_env().await
+    //     }
+
+    //     let users = USERS.lock().unwrap();
+    //     let user = users.get(0).unwrap().clone();
+
+    //     // Create new user
+    //     let user_2 = GrapevineAccount::new(String::from("pizzaEater"));
+    //     let request = user_2.create_user_request();
+
+    //     let context = GrapevineTestContext::init().await;
+    //     create_user_request(&context, &request).await;
+
+    //     let pubkey = user_2.pubkey();
+    //     let encrypted_auth_secret = user.encrypt_auth_secret(pubkey);
+
+    //     let body = NewRelationshipRequest {
+    //         from: user.username().clone(),
+    //         to: user_2.username().clone(),
+    //         ephemeral_key: encrypted_auth_secret.ephemeral_key,
+    //         ciphertext: encrypted_auth_secret.ciphertext,
+    //     };
+
+    //     let res = context
+    //         .client
+    //         .post("/user/relationship")
+    //         .json(&body)
+    //         .dispatch()
+    //         .await
+    //         .into_string()
+    //         .await
+    //         .unwrap();
+
+    //     assert_eq!(
+    //         format!(
+    //             "Relationship between {} and {} created",
+    //             user.username(),
+    //             user_2.username()
+    //         ),
+    //         res,
+    //         "Recipient shouldn't exist inside database."
+    //     );
+    // }
 }

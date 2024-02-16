@@ -15,6 +15,8 @@ pub enum GrapevineResponder {
     NotFound(String),
     #[response(status = 409)]
     Conflict(String),
+    #[response(status = 413)]
+    TooLarge(String),
     #[response(status = 501)]
     NotImplemented(String),
     // #[response(status = 500)]
