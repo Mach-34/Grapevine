@@ -40,9 +40,9 @@ pub async fn create_phrase(
     let mut buffer = Vec::new();
     let mut stream = data.open(2.mebibytes()); // Adjust size limit as needed
     if let Err(e) = stream.read_to_end(&mut buffer).await {
-        return Err(Response::BadRequest(String::from(
-            "Error deserializing body from binary to NewPhraseRequest",
-        )));
+        return Err(Response::TooLarge(
+            "Request body execeeds 2 MiB".to_string(),
+        ));
     }
     let request = match bincode::deserialize::<NewPhraseRequest>(&buffer) {
         Ok(req) => req,
@@ -109,17 +109,23 @@ pub async fn create_phrase(
  *             * 500 if db fails or other unknown issue
  */
 #[post("/phrase/continue", data = "<data>")]
-pub async fn degree_proof(data: Data<'_>, db: &State<GrapevineDB>) -> Result<Status, Status> {
+pub async fn degree_proof(data: Data<'_>, db: &State<GrapevineDB>) -> Result<Status, Response> {
     // stream in data
     // todo: implement FromData trait on NewPhraseRequest
     let mut buffer = Vec::new();
     let mut stream = data.open(2.mebibytes()); // Adjust size limit as needed
     if let Err(_) = stream.read_to_end(&mut buffer).await {
-        return Err(Status::BadRequest);
+        return Err(Response::TooLarge(
+            "Request body execeeds 2 MiB".to_string(),
+        ));
     }
     let request = match bincode::deserialize::<DegreeProofRequest>(&buffer) {
         Ok(req) => req,
-        Err(_) => return Err(Status::BadRequest),
+        Err(e) => {
+            return Err(Response::BadRequest(String::from(
+                "Error deserializing body from binary to DegreeProofRequest",
+            )))
+        }
     };
     let decompressed_proof = decompress_proof(&request.proof);
     // verify the proof
@@ -136,7 +142,7 @@ pub async fn degree_proof(data: Data<'_>, db: &State<GrapevineDB>) -> Result<Sta
         }
         Err(e) => {
             println!("Proof verification failed: {:?}", e);
-            return Err(Status::BadRequest);
+            return Err(Response::BadRequest(String::from("Failed to verify proof")));
         }
     };
     // get user doc
@@ -157,7 +163,12 @@ pub async fn degree_proof(data: Data<'_>, db: &State<GrapevineDB>) -> Result<Sta
     // add proof to db and update references
     match db.add_proof(&user.id.unwrap(), &proof_doc).await {
         Ok(_) => Ok(Status::Created),
-        Err(e) => Err(Status::NotImplemented),
+        Err(e) => {
+            println!("Error adding proof: {:?}", e);
+            Err(Response::InternalError(String::from(
+                "Failed to add proof to db",
+            )))
+        }
     }
 }
 

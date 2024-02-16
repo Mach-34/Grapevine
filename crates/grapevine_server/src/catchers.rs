@@ -15,6 +15,8 @@ pub enum Response {
     Conflict(String),
     #[response(status = 500)]
     InternalError(String),
+    #[response(status = 413)]
+    TooLarge(String),
     #[response(status = 501)]
     NotImplemented(String),
 }
