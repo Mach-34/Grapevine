@@ -1264,6 +1264,7 @@ dependencies = [
  "serde_bytes",
  "serde_json",
  "sha256",
+ "sha3",
  "uuid",
 ]
 
@@ -1286,6 +1287,7 @@ dependencies = [
  "rocket",
  "serde",
  "serde_json",
+ "sha3",
  "tokio",
  "tracing",
  "tracing-subscriber",

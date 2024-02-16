@@ -46,7 +46,7 @@ impl GrapevineDB {
             .expect("Error incrementing nonce");
     }
 
-    pub async fn get_nonce(&self, username: &str) -> Option<u64> {
+    pub async fn get_nonce(&self, username: &str) -> Option<(u64, [u8; 32])> {
         // Verify user existence
         let filter = doc! { "username": username };
         // TODO: Projection doesn't work without pubkey due to BSON deserialization error
@@ -58,7 +58,7 @@ impl GrapevineDB {
             .await
             .unwrap();
         match user {
-            Some(user) => Some(user.nonce.unwrap()),
+            Some(user) => Some((user.nonce.unwrap(), user.pubkey.unwrap())),
             None => None,
         }
     }
@@ -136,9 +136,8 @@ impl GrapevineDB {
         // insert the user into the collection
         match self.users.insert_one(&user, None).await {
             Ok(result) => Ok(result.inserted_id.as_object_id().unwrap()),
-            Err(e) => Err(GrapevineServerError::MongoError(e.to_string()))
+            Err(e) => Err(GrapevineServerError::MongoError(e.to_string())),
         }
-
     }
 
     pub async fn get_user(&self, username: &String) -> Option<User> {
