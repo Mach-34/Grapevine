@@ -67,6 +67,10 @@ impl GrapevineAccount {
         self.nonce
     }
 
+    pub fn increment_nonce(&mut self) {
+        self.nonce += 1;
+    }
+
     pub fn auth_secret(&self) -> &Fr {
         &self.auth_secret
     }
@@ -92,7 +96,6 @@ impl GrapevineAccount {
         CreateUserRequest {
             username: self.username.clone(),
             pubkey: self.pubkey().compress(),
-            auth_secret: self.encrypt_auth_secret(self.pubkey()),
             signature: self.sign_username().compress(),
         }
     }

@@ -209,6 +209,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5711413242ffbd385a283d7750768c3c7c7925f1ede260ff05fa34a482c69b25"
 dependencies = [
  "arrayref",
+ "blake",
  "blake-hash",
  "ff_ce",
  "generic-array 0.14.7",
@@ -312,6 +313,16 @@ dependencies = [
  "radium",
  "tap",
  "wyz",
+]
+
+[[package]]
+name = "blake"
+version = "2.0.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ee55e9ca33be1f257d8356cfb29b10b1c8f86dc38cf1344ca01525464356cd0c"
+dependencies = [
+ "cc",
+ "libc",
 ]
 
 [[package]]
@@ -791,6 +802,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "dotenv"
+version = "0.15.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "77c90badedccf4105eca100756a0b1289e191f6fcbdadd3cee1d2f614f97da8f"
+
+[[package]]
 name = "ec-gpu"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1247,6 +1264,7 @@ dependencies = [
  "serde_bytes",
  "serde_json",
  "sha256",
+ "sha3",
  "uuid",
 ]
 
@@ -1256,6 +1274,7 @@ version = "0.1.0"
 dependencies = [
  "babyjubjub-rs",
  "bincode",
+ "dotenv",
  "futures",
  "grapevine_circuits",
  "grapevine_common",
@@ -1268,6 +1287,7 @@ dependencies = [
  "rocket",
  "serde",
  "serde_json",
+ "sha3",
  "tokio",
  "tracing",
  "tracing-subscriber",
