@@ -77,7 +77,7 @@ pub async fn add_relationship(username: String) -> Result<(), GrapevineCLIError>
     let encryped_auth_secret = account.encrypt_auth_secret(pubkey);
     // build relationship request body
     let body = NewRelationshipRequest {
-        from: account.username().clone(),
+        // from: account.username().clone(),
         to: username.clone(),
         ephemeral_key: encryped_auth_secret.ephemeral_key,
         ciphertext: encryped_auth_secret.ciphertext,
@@ -147,7 +147,7 @@ pub async fn create_new_phrase(phrase: String) -> Result<(), GrapevineCLIError> 
     // build request body
     let body = NewPhraseRequest {
         proof: compressed,
-        username: account.username().clone(),
+        // username: account.username().clone(),
     };
     let serialized: Vec<u8> = bincode::serialize(&body).unwrap();
 
@@ -242,7 +242,7 @@ pub async fn prove_separation_degree(oid: String) -> Result<(), GrapevineCLIErro
     // build request body
     let body = DegreeProofRequest {
         proof: compressed,
-        username: account.username().clone(),
+        // username: account.username().clone(),
         previous: oid,
         degree: proving_data.degree + 1,
     };

@@ -37,13 +37,13 @@ impl GrapevineDB {
 
     /// USER FUNCTIONS ///
 
-    pub async fn increment_nonce(&self, username: &str) {
+    pub async fn increment_nonce(&self, username: &str) -> Result<(), GrapevineServerError> {
         let filter = doc! { "username": username };
         let update = doc! { "$inc": { "nonce": 1 } };
-        self.users
-            .update_one(filter, update, None)
-            .await
-            .expect("Error incrementing nonce");
+        match self.users.update_one(filter, update, None).await {
+            Ok(_) => Ok(()),
+            Err(e) => Err(GrapevineServerError::MongoError(e.to_string())),
+        }
     }
 
     pub async fn get_nonce(&self, username: &str) -> Option<(u64, [u8; 32])> {

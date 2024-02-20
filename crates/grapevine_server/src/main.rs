@@ -1,6 +1,6 @@
 #[macro_use]
 extern crate rocket;
-use crate::guards::NonceGuard;
+use crate::guards::AuthenticatedUser;
 use catchers::{bad_request, not_found, unauthorized};
 use dotenv::dotenv;
 use lazy_static::lazy_static;
@@ -57,7 +57,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 #[get("/nonce-guard-test")]
-async fn action(_guard: NonceGuard) -> &'static str {
+async fn action(_guard: AuthenticatedUser) -> &'static str {
     println!("test");
     "Succesfully verified nonce"
 }

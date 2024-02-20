@@ -2,6 +2,7 @@ use crate::{compat::ff_ce_to_le_bytes, utils::convert_username_to_fr};
 use babyjubjub_rs::{Point, PrivateKey};
 use num_bigint::{RandBigInt, ToBigInt};
 use sha3::{Digest, Sha3_256};
+use sha256::digest;
 
 /**
  * Computes an AES-CBC-128 Key from a Baby Jub Jub shared secret
