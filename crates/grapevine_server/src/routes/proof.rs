@@ -1,6 +1,7 @@
 use crate::mongo::GrapevineDB;
 use crate::utils::PUBLIC_PARAMS;
-use crate::{catchers::Response, guards::NonceGuard};
+// use crate::{catchers::Response, guards::NonceGuard};
+use crate::catchers::Response;
 use grapevine_circuits::{nova::verify_nova_proof, utils::decompress_proof};
 use grapevine_common::{
     http::requests::{DegreeProofRequest, NewPhraseRequest},
@@ -31,7 +32,7 @@ use std::str::FromStr;
  */
 #[post("/phrase/create", data = "<data>")]
 pub async fn create_phrase(
-    _guard: NonceGuard,
+    //  _guard: NonceGuard,
     data: Data<'_>,
     db: &State<GrapevineDB>,
 ) -> Result<Status, Response> {
@@ -72,6 +73,7 @@ pub async fn create_phrase(
     // build DegreeProof model
     let proof_doc = DegreeProof {
         id: None,
+        inactive: Some(false),
         phrase_hash: Some(phrase_hash),
         auth_hash: Some(auth_hash),
         user: Some(user.id.unwrap()),
@@ -151,6 +153,7 @@ pub async fn degree_proof(data: Data<'_>, db: &State<GrapevineDB>) -> Result<Sta
     // build DegreeProof struct
     let proof_doc = DegreeProof {
         id: None,
+        inactive: Some(false),
         phrase_hash: Some(phrase_hash),
         auth_hash: Some(auth_hash),
         user: Some(user.id.unwrap()),
@@ -187,12 +190,20 @@ pub async fn degree_proof(data: Data<'_>, db: &State<GrapevineDB>) -> Result<Sta
  *         - 404 if user not found
  *         - 500 if db fails or other unknown issue
  */
-#[get("/proof/<username>/available")]
+#[get("/<username>/available")]
 pub async fn get_available_proofs(
     username: String,
     db: &State<GrapevineDB>,
 ) -> Result<Json<Vec<String>>, Status> {
     Ok(Json(db.find_available_degrees(username).await))
+}
+
+#[get("/<username>/pipeline-test")]
+pub async fn get_pipeline_test(
+    username: String,
+    db: &State<GrapevineDB>,
+) -> Result<Json<Vec<String>>, Status> {
+    Ok(Json(db.pipeline_test(username).await))
 }
 
 /**
@@ -213,7 +224,7 @@ pub async fn get_available_proofs(
  *         - 404 if username or proof not found
  *         - 500 if db fails or other unknown issue
  */
-#[get("/proof/<oid>/params/<username>")]
+#[get("/<oid>/params/<username>")]
 pub async fn get_proof_with_params(
     oid: String,
     username: String,
@@ -228,3 +239,38 @@ pub async fn get_proof_with_params(
         ))),
     }
 }
+
+// /**
+//  * Return a list of all proofs linked to a given phrase hash
+//  *
+//  *
+//  * @param phrase hash - the hash of the phrase creating the proof chain
+//  * @return - a vector of stringified OIDs of proofs within the given chain
+//  * @return status:
+//  *         - 200 if successful retrieval
+//  *         - 401 if signature mismatch or nonce mismatch
+//  *         - 404 if user not found
+//  *         - 500 if db fails or other unknown issue
+//  */
+// #[get("/chain/<phrase_hash>")]
+// pub async fn get_proof_chain(
+//     phrase_hash: String,
+//     db: &State<GrapevineDB>,
+// ) -> Result<Json<Vec<DegreeProof>>, Status> {
+//     Ok(Json(db.get_proof_chain(&phrase_hash).await))
+// }
+
+// /**
+//  * Returns all the information needed to construct a proof of degree of separation from a given user
+//  */
+// #[get("/proofs")]
+// pub async fn get_proof_ids(db: &State<GrapevineDB>) -> Result<Json<ProvingData>, Response> {
+//     let oid = ObjectId::from_str(&oid).unwrap();
+//     match db.get_proof_and_data(username, oid).await {
+//         Some(data) => Ok(Json(data)),
+//         None => Err(Response::NotFound(format!(
+//             "No proof found with oid {}",
+//             oid
+//         ))),
+//     }
+// }

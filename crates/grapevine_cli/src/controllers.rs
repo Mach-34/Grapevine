@@ -74,13 +74,13 @@ pub async fn add_relationship(username: String) -> Result<(), GrapevineCLIError>
         }
     };
     // encrypt auth secret with recipient's pubkey
-    let encryped_auth_secret = account.encrypt_auth_secret(pubkey);
+    let encrypted_auth_secret = account.encrypt_auth_secret(pubkey);
     // build relationship request body
     let body = NewRelationshipRequest {
         from: account.username().clone(),
         to: username.clone(),
-        ephemeral_key: encryped_auth_secret.ephemeral_key,
-        ciphertext: encryped_auth_secret.ciphertext,
+        ephemeral_key: encrypted_auth_secret.ephemeral_key,
+        ciphertext: encrypted_auth_secret.ciphertext,
     };
     // send request
     let url = format!("{}/user/relationship", crate::SERVER_URL);
