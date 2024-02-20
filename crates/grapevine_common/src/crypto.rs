@@ -1,8 +1,8 @@
 use crate::{compat::ff_ce_to_le_bytes, utils::convert_username_to_fr};
 use babyjubjub_rs::{Point, PrivateKey};
 use num_bigint::{RandBigInt, ToBigInt};
-use sha3::{Digest, Sha3_256};
 use sha256::digest;
+use sha3::{Digest, Sha3_256};
 
 /**
  * Computes an AES-CBC-128 Key from a Baby Jub Jub shared secret
@@ -43,7 +43,7 @@ pub fn new_private_key() -> [u8; 32] {
 
 /**
  * Computes the sha256 hash H |username, nonce| with last byte zeroed
- * 
+ *
  * @param username - the username to hash
  * @param nonce - the nonce to hash
  * @return - the sha256 hash of the username and nonce

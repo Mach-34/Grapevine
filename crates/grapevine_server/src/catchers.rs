@@ -16,7 +16,7 @@ pub enum Response {
     #[response(status = 201)]
     Created(String),
     #[response(status = 400)]
-    BadRequest(Json<ErrorResponse>),
+    BadRequest(String),
     #[response(status = 401)]
     Unauthorized(String),
     #[response(status = 404)]
@@ -37,6 +37,7 @@ pub struct ErrorMessage(pub Option<String>);
 pub fn bad_request(req: &Request) -> Response {
     match req.local_cache(|| ErrorMessage(None)) {
         ErrorMessage(Some(msg)) => {
+            // let 
             Response::BadRequest(msg.to_string())
         },
         ErrorMessage(None) => {

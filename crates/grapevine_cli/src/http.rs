@@ -18,9 +18,9 @@ pub async fn create_user(body: CreateUserRequest) -> Result<(), GrapevineCLIErro
         StatusCode::CREATED => {
             Ok(())
         },
-        StatusCode::CONFLICT => {
+        // StatusCode::CONFLICT => {
             
-        }
+        // }
 
         StatusCode::BAD_REQUEST => {
             println!("Error: username {} already exists", &body.username);

@@ -48,10 +48,13 @@ pub async fn create_phrase(
     let request = match bincode::deserialize::<NewPhraseRequest>(&buffer) {
         Ok(req) => req,
         Err(e) => {
-            println!("Error deserializing body from binary to NewPhraseRequest: {:?}", e);
+            println!(
+                "Error deserializing body from binary to NewPhraseRequest: {:?}",
+                e
+            );
             return Err(Response::BadRequest(String::from(
                 "Error deserializing body from binary to NewPhraseRequest",
-            )))
+            )));
         }
     };
     let decompressed_proof = decompress_proof(&request.proof);
@@ -74,6 +77,7 @@ pub async fn create_phrase(
     // build DegreeProof model
     let proof_doc = DegreeProof {
         id: None,
+        inactive: Some(false),
         phrase_hash: Some(phrase_hash),
         auth_hash: Some(auth_hash),
         user: Some(user.id.unwrap()),
@@ -111,7 +115,11 @@ pub async fn create_phrase(
  *             * 500 if db fails or other unknown issue
  */
 #[post("/phrase/continue", data = "<data>")]
-pub async fn degree_proof(user: AuthenticatedUser, data: Data<'_>, db: &State<GrapevineDB>) -> Result<Status, Response> {
+pub async fn degree_proof(
+    user: AuthenticatedUser,
+    data: Data<'_>,
+    db: &State<GrapevineDB>,
+) -> Result<Status, Response> {
     // stream in data
     // todo: implement FromData trait on NewPhraseRequest
     let mut buffer = Vec::new();
@@ -153,6 +161,7 @@ pub async fn degree_proof(user: AuthenticatedUser, data: Data<'_>, db: &State<Gr
     // build DegreeProof struct
     let proof_doc = DegreeProof {
         id: None,
+        inactive: Some(false),
         phrase_hash: Some(phrase_hash),
         auth_hash: Some(auth_hash),
         user: Some(user.id.unwrap()),
@@ -197,6 +206,14 @@ pub async fn get_available_proofs(
     Ok(Json(db.find_available_degrees(user.0).await))
 }
 
+#[get("/<username>/pipeline-test")]
+pub async fn get_pipeline_test(
+    username: String,
+    db: &State<GrapevineDB>,
+) -> Result<Json<Vec<String>>, Status> {
+    Ok(Json(db.pipeline_test(username).await))
+}
+
 /**
  * Returns all the information needed to construct a proof of degree of separation from a given user
  *
@@ -230,3 +247,38 @@ pub async fn get_proof_with_params(
         ))),
     }
 }
+
+// /**
+//  * Return a list of all proofs linked to a given phrase hash
+//  *
+//  *
+//  * @param phrase hash - the hash of the phrase creating the proof chain
+//  * @return - a vector of stringified OIDs of proofs within the given chain
+//  * @return status:
+//  *         - 200 if successful retrieval
+//  *         - 401 if signature mismatch or nonce mismatch
+//  *         - 404 if user not found
+//  *         - 500 if db fails or other unknown issue
+//  */
+// #[get("/chain/<phrase_hash>")]
+// pub async fn get_proof_chain(
+//     phrase_hash: String,
+//     db: &State<GrapevineDB>,
+// ) -> Result<Json<Vec<DegreeProof>>, Status> {
+//     Ok(Json(db.get_proof_chain(&phrase_hash).await))
+// }
+
+// /**
+//  * Returns all the information needed to construct a proof of degree of separation from a given user
+//  */
+// #[get("/proofs")]
+// pub async fn get_proof_ids(db: &State<GrapevineDB>) -> Result<Json<ProvingData>, Response> {
+//     let oid = ObjectId::from_str(&oid).unwrap();
+//     match db.get_proof_and_data(username, oid).await {
+//         Some(data) => Ok(Json(data)),
+//         None => Err(Response::NotFound(format!(
+//             "No proof found with oid {}",
+//             oid
+//         ))),
+//     }
+// }
