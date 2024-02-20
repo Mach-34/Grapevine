@@ -1,6 +1,7 @@
 use crate::errors::GrapevineCLIError;
 use crate::utils::artifacts_guard;
 use crate::utils::fs::{use_public_params, use_r1cs, use_wasm};
+use crate::http::{create_user_req};
 use babyjubjub_rs::{decompress_point, PrivateKey};
 use grapevine_circuits::nova::{continue_nova_proof, nova_proof, verify_nova_proof};
 use grapevine_circuits::utils::{compress_proof, decompress_proof};
@@ -22,16 +23,20 @@ use std::path::Path;
  * @param username - the username to register
  */
 pub async fn register(username: String) -> Result<(), GrapevineCLIError> {
-    // make account
+    // check username is < 30 chars
+    if username.len() > 30 {
+        return Err(GrapevineCLIError::UsernameTooLong(username));
+    }
+    // check username is ascii
+    if !username.is_ascii() {
+        return Err(GrapevineCLIError::UsernameNotAscii(username));
+    }
+    // make account (or retrieve from fs)
     let account = make_or_get_account(username.clone())?;
-    // sign the username
-    let signature = account.sign_username();
     // build request body
     let body = account.create_user_request();
     // send create user request
-    let url = format!("{}/user/create", crate::SERVER_URL);
-    let client = reqwest::Client::new();
-    let res = client.post(&url).json(&body).send().await.unwrap();
+    let res = create_user_req(body).await?;
     // handle response from server
     match res.status() {
         reqwest::StatusCode::CREATED => {

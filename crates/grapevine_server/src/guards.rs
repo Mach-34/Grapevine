@@ -17,18 +17,21 @@ pub struct AuthenticatedUser(pub String);
 
 #[rocket::async_trait]
 impl<'r> FromRequest<'r> for AuthenticatedUser {
-    type Error = GrapevineServerError;
+    type Error = ErrorMessage;
 
     async fn from_request(request: &'r Request<'_>) -> Outcome<Self, Self::Error> {
         // Connect to mongodb
         let mongo = match request.guard::<&State<GrapevineDB>>().await {
             Success(db) => db,
             _ => {
-                let error_message = String::from("Error connecting to database");
-                request.local_cache(|| ErrorMessage(Some(error_message.clone())));
                 return Failure((
                     Status::InternalServerError,
-                    GrapevineServerError::MongoError(error_message),
+                    ErrorMessage(
+                        Some(GrapevineServerError::MongoError(String::from(
+                            "Error connecting to database",
+                        ))),
+                        None,
+                    ),
                 ));
             }
         };
@@ -36,11 +39,14 @@ impl<'r> FromRequest<'r> for AuthenticatedUser {
         let username = match request.headers().get_one("X-Username") {
             Some(username) => String::from(username),
             None => {
-                request
-                    .local_cache(|| ErrorMessage(Some(String::from("Missing X-Username header"))));
                 return Failure((
                     Status::BadRequest,
-                    GrapevineServerError::HeaderError(String::from("X-Username")),
+                    ErrorMessage(
+                        Some(GrapevineServerError::HeaderError(String::from(
+                            "couldn't find X-Username",
+                        ))),
+                        None,
+                    ),
                 ));
             }
         };
@@ -52,25 +58,27 @@ impl<'r> FromRequest<'r> for AuthenticatedUser {
                 match decompress_signature(&bytes) {
                     Ok(signature) => signature,
                     Err(_) => {
-                        request.local_cache(|| {
-                            ErrorMessage(Some(String::from(
-                                "Error parsing signature from X-Authorization",
-                            )))
-                        });
                         return Failure((
                             Status::BadRequest,
-                            GrapevineServerError::HeaderError(String::from("X-Authorization")),
+                            ErrorMessage(
+                                Some(GrapevineServerError::HeaderError(String::from(
+                                    "couldn't parse X-Authorization",
+                                ))),
+                                None,
+                            ),
                         ));
                     }
                 }
             }
             None => {
-                request.local_cache(|| {
-                    ErrorMessage(Some(String::from("Missing X-Authorization header")))
-                });
                 return Failure((
                     Status::BadRequest,
-                    GrapevineServerError::HeaderError(String::from("X-Authorization")),
+                    ErrorMessage(
+                        Some(GrapevineServerError::HeaderError(String::from(
+                            "couldn't find X-Authorization",
+                        ))),
+                        None,
+                    ),
                 ));
             }
         };
@@ -78,10 +86,9 @@ impl<'r> FromRequest<'r> for AuthenticatedUser {
         let (nonce, pubkey) = match mongo.get_nonce(&username).await {
             Some(data) => data,
             None => {
-                request.local_cache(|| ErrorMessage(Some(format!("User {} not found", username))));
                 return Failure((
                     Status::NotFound,
-                    GrapevineServerError::UserDoesNotExist(username),
+                    ErrorMessage(Some(GrapevineServerError::UserDoesNotExist(username)), None),
                 ));
             }
         };
@@ -93,29 +100,29 @@ impl<'r> FromRequest<'r> for AuthenticatedUser {
         match verify(pubkey, signature, message) {
             true => (),
             false => {
-                request.local_cache(|| {
-                    ErrorMessage(Some(format!(
-                        "Signature does not match nonce and username. Expected nonce '{}'",
-                        nonce
-                    )))
-                });
                 return Failure((
                     Status::Unauthorized,
-                    GrapevineServerError::Signature(String::from("Failed to verify")),
+                    ErrorMessage(
+                        Some(GrapevineServerError::Signature(String::from(
+                            "Failed to verify nonce signature",
+                        ))),
+                        Some(nonce),
+                    ),
                 ));
             }
         };
         // Increment nonce in database
         match mongo.increment_nonce(&username).await {
             Ok(_) => Success(AuthenticatedUser(username)),
-            Err(_) => {
-                let error_message = String::from("Error incrementing nonce");
-                request.local_cache(|| ErrorMessage(Some(error_message.clone())));
-                Failure((
-                    Status::InternalServerError,
-                    GrapevineServerError::MongoError(error_message),
-                ))
-            }
+            Err(_) => Failure((
+                Status::InternalServerError,
+                ErrorMessage(
+                    Some(GrapevineServerError::MongoError(String::from(
+                        "Error incrementing nonce",
+                    ))),
+                    None,
+                ),
+            )),
         }
     }
 }
