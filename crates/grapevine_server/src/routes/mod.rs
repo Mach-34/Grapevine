@@ -8,6 +8,7 @@ lazy_static! {
         user::create_user,
         user::add_relationship,
         user::get_user,
+        user::get_nonce,
         user::get_pubkey,
         user::get_all_degrees
     ];

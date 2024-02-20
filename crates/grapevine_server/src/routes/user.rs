@@ -3,6 +3,7 @@ use crate::guards::AuthenticatedUser;
 use crate::mongo::GrapevineDB;
 use babyjubjub_rs::{decompress_point, decompress_signature, verify};
 use grapevine_common::errors::GrapevineServerError;
+use grapevine_common::http::requests::GetNonceRequest;
 use grapevine_common::http::{requests::CreateUserRequest, responses::DegreeData};
 use grapevine_common::utils::convert_username_to_fr;
 use grapevine_common::MAX_USERNAME_CHARS;
@@ -73,8 +74,6 @@ pub async fn create_user(
             )));
         }
     };
-    println!("Username: {}", &request.username);
-    println!("Pubkey: {}", hex::encode(&request.pubkey));
     // check that the username or pubkey are not already used
     match db
         .check_creation_params(&request.username, &request.pubkey)
@@ -223,6 +222,40 @@ pub async fn get_user(
             username
         ))),
     }
+}
+
+#[post("/nonce", format = "json", data = "<request>")]
+pub async fn get_nonce(
+    request: Json<GetNonceRequest>,
+    db: &State<GrapevineDB>,
+) -> Result<String, GrapevineResponse> {
+    // get pubkey & nonce for user
+    let (nonce, pubkey) = match db.get_nonce(&request.username).await {
+        Some((nonce, pubkey)) => (nonce, pubkey),
+        None => return Err(GrapevineResponse::NotFound(String::from(
+            "User not does not exist.",
+        ))),
+    };
+    // check the validity of the signature over the username
+    let message = BigInt::from_bytes_le(
+        Sign::Plus,
+        &convert_username_to_fr(&request.username).unwrap()[..],
+    );
+    let pubkey_decompressed = decompress_point(pubkey).unwrap();
+    let signature_decompressed = decompress_signature(&request.signature).unwrap();
+    match verify(pubkey_decompressed, signature_decompressed, message) {
+        true => (),
+        false => {
+            return Err(GrapevineResponse::BadRequest(ErrorMessage(
+                Some(GrapevineServerError::Signature(String::from(
+                    "Could not verify nonce recovery signature",
+                ))),
+                None,
+            )));
+        }
+    };
+    // return the stringified nonce
+    Ok(nonce.to_string())
 }
 
 /**

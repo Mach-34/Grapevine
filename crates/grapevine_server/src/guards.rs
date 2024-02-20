@@ -88,7 +88,7 @@ impl<'r> FromRequest<'r> for AuthenticatedUser {
             None => {
                 return Failure((
                     Status::NotFound,
-                    ErrorMessage(Some(GrapevineServerError::UserDoesNotExist(username)), None),
+                    ErrorMessage(Some(GrapevineServerError::UserNotFound(username)), None),
                 ));
             }
         };

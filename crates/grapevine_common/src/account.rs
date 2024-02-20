@@ -1,6 +1,6 @@
 use crate::auth_secret::{AuthSecret, AuthSecretEncrypted, AuthSecretEncryptedUser};
 use crate::crypto::{new_private_key, nonce_hash};
-use crate::http::requests::CreateUserRequest;
+use crate::http::requests::{CreateUserRequest, GetNonceRequest, NewRelationshipRequest};
 use crate::utils::{convert_username_to_fr, random_fr};
 use crate::Fr;
 use babyjubjub_rs::{Point, PrivateKey, Signature};
@@ -44,25 +44,38 @@ impl GrapevineAccount {
         serde_json::from_str(&account)
     }
 
-    pub fn save(self, path: PathBuf) -> Result<(), std::io::Error> {
+    pub fn save(&self, path: PathBuf) -> Result<(), std::io::Error> {
         let account = serde_json::to_string(&self).unwrap();
         std::fs::write(path, account)
     }
 
     /// NONCE METHODS ///
 
-    /** Increment nonce by 1 for normal actions */
-    pub fn increment_nonce(&mut self) {
+    /**
+     * Increment nonce by 1 for normal actions
+     *
+     * @param save - if some, path to save the account to after incrementing nonce
+     */
+    pub fn increment_nonce(&mut self, save: Option<PathBuf>) -> Result<(), std::io::Error> {
         self.nonce += 1;
+        if save.is_some() {
+            return self.save(save.unwrap());
+        }
+        Ok(())
     }
 
     /**
      * Set the nonce manually in the event nonce is desynchronized from server
      *
-     * @param nonce - the new nonce to set for the account
+     * @param nonce - the new nonce to set for the account\
+     * @param save - if some, path to save the account to after incrementing nonce
      */
-    pub fn set_nonce(&mut self, nonce: u64) {
+    pub fn set_nonce(&mut self, nonce: u64, save: Option<PathBuf>) -> Result<(), std::io::Error> {
         self.nonce = nonce;
+        if save.is_some() {
+            return self.save(save.unwrap());
+        }
+        Ok(())
     }
 
     /// AUTH SECRET METHODS ///
@@ -125,6 +138,40 @@ impl GrapevineAccount {
         CreateUserRequest {
             username: self.username.clone(),
             pubkey: self.pubkey().compress(),
+            signature: self.sign_username().compress(),
+        }
+    }
+
+    /**
+     * Create the http request body for creating adding a relationship to another user in the Grapevine Service
+     *
+     * @param username - the username of the target user adding you as a relationship
+     * @param pubkey - the public key of the target user adding you as a relationship
+     * @returns - the NewRelationshipRequest containing encrypted auth secret for target to use
+     */
+    pub fn new_relationship_request(
+        &self,
+        username: &String,
+        pubkey: &Point,
+    ) -> NewRelationshipRequest {
+        // encrypt the auth secret with the target pubkey
+        let encrypted_auth_secret = self.encrypt_auth_secret(pubkey.clone());
+        // return the New Relationship http request struct
+        NewRelationshipRequest {
+            to: username.clone(),
+            ephemeral_key: encrypted_auth_secret.ephemeral_key,
+            ciphertext: encrypted_auth_secret.ciphertext,
+        }
+    }
+
+    /**
+     * Create the http request body for getting a nonce from the Grapevine service
+     *
+     * @returns - the GetNonceRequest containing the signature over the username
+     */
+    pub fn get_nonce_request(&self) -> GetNonceRequest {
+        GetNonceRequest {
+            username: self.username.clone(),
             signature: self.sign_username().compress(),
         }
     }

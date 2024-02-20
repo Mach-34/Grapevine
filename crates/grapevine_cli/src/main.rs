@@ -26,14 +26,17 @@ struct Cli {
 enum Commands {
     /// Test the connection to the Grapevine server
     Health,
+    /// Print the details of your account
+    GetAccount,
+    /// Synchronize the local account nonce with expected nonce from server
+    SyncNonce,
     /// Create a new Grapevine Account
     RegisterAccount(RegisterAccountArgs),
-    // /// Add yourself as a connection to another Grapevine user
-    // AddRelationship(AddRelationshipArgs),
+    /// Add yourself as a connection to another Grapevine user
+    AddRelationship(AddRelationshipArgs),
     // /// Create a new phrase (degree 1 proof)
     // CreatePhrase(CreatePhrase),
-    // /// Print the details of your account
-    // GetAccount,
+
     // /// Prove all the the new degrees of separation available
     // ProveNew,
     // /// Print all of your degrees of separation
@@ -73,29 +76,26 @@ pub async fn main() {
 
     let result = match &cli.command {
         Commands::Health => controllers::health().await,
-        Commands::RegisterAccount(cmd) => {
-            controllers::register(cmd.username.clone()).await
-        }
-        // Commands::AddRelationship(cmd) => {
-        //     controllers::add_relationship(cmd.username.clone().unwrap()).await
-        // }
-        // Commands::CreatePhrase(cmd) => {
-        //     controllers::create_new_phrase(cmd.phrase.clone().unwrap()).await
-        // }
-        // Commands::GetAccount => controllers::account_details(),
-        // Commands::ProveNew => controllers::prove_all_available().await,
-        // Commands::GetDegrees => controllers::get_my_proofs().await,
+        Commands::GetAccount => controllers::account_details(),
+        Commands::SyncNonce => controllers::synchronize_nonce().await,
+        Commands::RegisterAccount(cmd) => controllers::register(cmd.username.clone()).await,
+        Commands::AddRelationship(cmd) => {
+            controllers::add_relationship(cmd.username.clone().unwrap()).await
+        } // Commands::CreatePhrase(cmd) => {
+          //     controllers::create_new_phrase(cmd.phrase.clone().unwrap()).await
+          // }
+          // Commands::ProveNew => controllers::prove_all_available().await,
+          // Commands::GetDegrees => controllers::get_my_proofs().await,
 
-
-        // Commands::ProveSeparation(cmd) => {
-        //     controllers::prove_separation_degree(cmd.username.clone().unwrap()).await
-        // }
-        // Commands::AvailableProofs => controllers::get_available_proofs().await,
+          // Commands::ProveSeparation(cmd) => {
+          //     controllers::prove_separation_degree(cmd.username.clone().unwrap()).await
+          // }
+          // Commands::AvailableProofs => controllers::get_available_proofs().await,
     };
 
     match result {
         Ok(message) => {
-            println!("Success: {}", message);
+            println!("{}", message);
         }
         Err(e) => {
             println!("Error: {}", e);

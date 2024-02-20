@@ -1,7 +1,7 @@
 use crate::errors::GrapevineCLIError;
-use crate::http::create_user_req;
+use crate::http::{add_relationship_req, create_user_req, get_pubkey_req, get_nonce_req};
 use crate::utils::artifacts_guard;
-use crate::utils::fs::{use_public_params, use_r1cs, use_wasm};
+use crate::utils::fs::{use_public_params, use_r1cs, use_wasm, ACCOUNT_PATH};
 use babyjubjub_rs::{decompress_point, PrivateKey};
 use grapevine_circuits::nova::{continue_nova_proof, nova_proof, verify_nova_proof};
 use grapevine_circuits::utils::{compress_proof, decompress_proof};
@@ -17,6 +17,28 @@ use grapevine_common::models::proof::ProvingData;
 use grapevine_common::utils::random_fr;
 
 use std::path::Path;
+
+/**
+ * Get the details of the current account
+ */
+pub fn account_details() -> Result<String, GrapevineCLIError> {
+    // get account
+    let account = match get_account() {
+        Ok(account) => account,
+        Err(e) => return Err(e),
+    };
+    let auth_secret = hex::encode(account.auth_secret().to_bytes());
+    let pk = hex::encode(account.private_key_raw());
+    let pubkey = hex::encode(account.pubkey().compress());
+    let res = format!(
+        "Username: {}\nAuth secret: 0x{}\nPrivate key: 0x{}\nPublic key: 0x{}",
+        account.username(),
+        auth_secret,
+        pk,
+        pubkey
+    );
+    Ok(res)
+}
 
 /**
  * Register a new user on Grapevine
@@ -44,7 +66,7 @@ pub async fn register(username: Option<String>) -> Result<String, GrapevineCLIEr
     // send create user request
     let res = create_user_req(body).await;
     match res {
-        Ok(_) => Ok(format!("registered account for \"{}\"", username)),
+        Ok(_) => Ok(format!("Success: registered account for \"{}\"", username)),
         Err(e) => Err(GrapevineCLIError::from(e)),
     }
 }
@@ -54,43 +76,51 @@ pub async fn register(username: Option<String>) -> Result<String, GrapevineCLIEr
  *
  * @param username - the username of the user to add a connection to
  */
-pub async fn add_relationship(username: String) -> Result<(), GrapevineCLIError> {
+pub async fn add_relationship(username: String) -> Result<String, GrapevineCLIError> {
     // get own account
-    let account = get_account()?;
+    let mut account = get_account()?;
     // get pubkey for recipient
-    let url = format!("{}/user/{}/pubkey", crate::SERVER_URL, username);
-    let pubkey = match reqwest::get(&url).await.unwrap().text().await {
-        Ok(pubkey) => decompress_point(hex::decode(pubkey).unwrap().try_into().unwrap()).unwrap(),
-        Err(e) => {
-            return Err(GrapevineCLIError::ServerError(format!(
-                "Couldn't get pubkey for user {}",
-                username
-            )))
-        }
+    let pubkey = match get_pubkey_req(username.clone()).await {
+        Ok(pubkey) => pubkey,
+        Err(e) => return Err(GrapevineCLIError::from(e)),
     };
-    // encrypt auth secret with recipient's pubkey
-    let encrypted_auth_secret = account.encrypt_auth_secret(pubkey);
-    // build relationship request body
-    let body = NewRelationshipRequest {
-        // from: account.username().clone(),
-        to: username.clone(),
-        ephemeral_key: encrypted_auth_secret.ephemeral_key,
-        ciphertext: encrypted_auth_secret.ciphertext,
+    // build relationship request body with encrypted auth secret payload
+    let body = account.new_relationship_request(&username, &pubkey);
+    // send add relationship request
+    let res = add_relationship_req(&mut account, body).await;
+    match res {
+        Ok(_) => Ok(format!(
+            "Success: added this account as a relationship for \"{}\"",
+            &username
+        )),
+        Err(e) => Err(GrapevineCLIError::from(e)),
+    }
+}
+
+/**
+ * Retrieve the current nonce for the account and synchronize it with the locally stored account
+ */
+pub async fn synchronize_nonce() -> Result<String, GrapevineCLIError> {
+    // get the account
+    let mut account = get_account()?;
+    // build nonce request body
+    let body = account.get_nonce_request();
+    // send nonce request
+    let res = get_nonce_req(body).await;
+    let expected_nonce = match res {
+        Ok(nonce) => nonce,
+        Err(e) => return Err(GrapevineCLIError::from(e)),
     };
-    // send request
-    let url = format!("{}/user/relationship", crate::SERVER_URL);
-    let client = reqwest::Client::new();
-    let res = client.post(&url).json(&body).send().await.unwrap();
-    // handle response from server
-    match res.status() {
-        reqwest::StatusCode::CREATED => {
-            println!("Added relationship with {}", username);
-            Ok(())
-        }
-        _ => {
-            let text = res.status().to_string();
-            println!("Error: {}", text);
-            Err(GrapevineCLIError::ServerError(text))
+    match expected_nonce == account.nonce() {
+        true => Ok(format!("Nonce is already synchronized at \"{}\"", expected_nonce)),
+        false => {
+            let msg = format!(
+                "Local nonce of \"{}\" synchronized to \"{}\" from server",
+                account.nonce(),
+                expected_nonce
+            );
+            account.set_nonce(expected_nonce, Some((&**ACCOUNT_PATH).to_path_buf())).unwrap();
+            Ok(msg)
         }
     }
 }
@@ -163,6 +193,9 @@ pub async fn create_new_phrase(phrase: String) -> Result<(), GrapevineCLIError> 
         }
     }
 }
+
+
+
 
 // DEV: Remove later
 
@@ -350,19 +383,6 @@ pub async fn get_my_proofs() -> Result<(), GrapevineCLIError> {
     }
     println!("=-=-=-=-=-=-=-=-=-=-=-=-=");
 
-    Ok(())
-}
-
-pub fn account_details() -> Result<(), GrapevineCLIError> {
-    // get account
-    let account = get_account().unwrap();
-    let auth_secret = hex::encode(account.auth_secret().to_bytes());
-    let pk = hex::encode(account.private_key_raw());
-    let pubkey = hex::encode(account.pubkey().compress());
-    println!("Username: {}", account.username());
-    println!("Auth Secret: {}", auth_secret);
-    println!("Private Key: {}", pk);
-    println!("Pubkey: {}", pubkey);
     Ok(())
 }
 

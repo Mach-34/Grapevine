@@ -1,6 +1,6 @@
 use grapevine_common::errors::GrapevineServerError;
 use rocket::{
-    http::ContentType,
+    http::{ContentType, Status},
     request::Request,
     response::{self, Responder, Response},
     serde::json::Json,
@@ -44,7 +44,7 @@ pub enum GrapevineResponse {
 // }
 
 // #[catch(401)]
-// pub fn unauthorized(req: &Request) -> Response {
+// pub fn unauthorized(req: &Request) -> GrapevineResponse {
 //     match req.local_cache(|| ErrorMessage(None)) {
 //         ErrorMessage(Some(msg)) => Response::Unauthorized(msg.to_string()),
 //         ErrorMessage(None) => {
@@ -66,6 +66,14 @@ pub struct ErrorMessage(pub Option<GrapevineServerError>, pub Option<u64>);
 
 impl<'r> Responder<'r, 'static> for ErrorMessage {
     fn respond_to(self, req: &'r Request<'_>) -> response::Result<'static> {
+        println!("Responding");
+        println!("===============================");
+        println!("===============================");
+        println!("===============================");
+        println!("===============================");
+        println!("===============================");
+        println!("===============================");
+
         let body = match self.0.is_some() {
             true => Json(self.0.unwrap()),
             false => Json(GrapevineServerError::InternalError),
@@ -73,7 +81,8 @@ impl<'r> Responder<'r, 'static> for ErrorMessage {
         let mut res = Response::build_from(body.respond_to(req)?);
         // optionally add nonce to header
         if self.1.is_some() {
-            res.raw_header("X-Nonce", self.1.unwrap().to_string());
+            println!("Nonce: {}", self.1.clone().unwrap());
+            res.raw_header("X-Nonce", self.1.unwrap().to_string()).status(Status::Unauthorized);
         };
         res.header(ContentType::JSON).ok()
     }
