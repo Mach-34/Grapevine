@@ -6,6 +6,7 @@ json = "20 MiB"
 bytes = "20 MiB"
 
 [release]
+address = "0.0.0.0"
 port = 443
 
 [release.tls]

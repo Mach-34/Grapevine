@@ -1,12 +1,22 @@
-use rocket::request::Request;
+use rocket::{request::Request, serde::json::Json};
+use serde::{Deserialize, Serialize};
 
 // TODO: Rename to GrapvineServerError?
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+struct ErrorResponse {
+    // the error message
+    message: String,
+    // an error code used to coordinate messages shown for errors
+    code: u8,
+}
+
 #[derive(Responder)]
 pub enum Response {
     #[response(status = 201)]
     Created(String),
     #[response(status = 400)]
-    BadRequest(String),
+    BadRequest(Json<ErrorResponse>),
     #[response(status = 401)]
     Unauthorized(String),
     #[response(status = 404)]
@@ -26,7 +36,9 @@ pub struct ErrorMessage(pub Option<String>);
 #[catch(400)]
 pub fn bad_request(req: &Request) -> Response {
     match req.local_cache(|| ErrorMessage(None)) {
-        ErrorMessage(Some(msg)) => Response::BadRequest(msg.to_string()),
+        ErrorMessage(Some(msg)) => {
+            Response::BadRequest(msg.to_string())
+        },
         ErrorMessage(None) => {
             Response::BadRequest("Unknown bad request error has occurred".to_string())
         }
