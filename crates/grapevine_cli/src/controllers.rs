@@ -27,11 +27,7 @@ pub async fn register(username: String) -> Result<(), GrapevineCLIError> {
     // sign the username
     let signature = account.sign_username();
     // build request body
-    let body = CreateUserRequest {
-        username: username.clone(),
-        pubkey: account.pubkey().compress(),
-        signature: signature.compress(),
-    };
+    let body = account.create_user_request();
     // send create user request
     let url = format!("{}/user/create", crate::SERVER_URL);
     let client = reqwest::Client::new();
@@ -77,7 +73,7 @@ pub async fn add_relationship(username: String) -> Result<(), GrapevineCLIError>
     let encrypted_auth_secret = account.encrypt_auth_secret(pubkey);
     // build relationship request body
     let body = NewRelationshipRequest {
-        from: account.username().clone(),
+        // from: account.username().clone(),
         to: username.clone(),
         ephemeral_key: encrypted_auth_secret.ephemeral_key,
         ciphertext: encrypted_auth_secret.ciphertext,
@@ -147,7 +143,7 @@ pub async fn create_new_phrase(phrase: String) -> Result<(), GrapevineCLIError> 
     // build request body
     let body = NewPhraseRequest {
         proof: compressed,
-        username: account.username().clone(),
+        // username: account.username().clone(),
     };
     let serialized: Vec<u8> = bincode::serialize(&body).unwrap();
 
@@ -242,7 +238,7 @@ pub async fn prove_separation_degree(oid: String) -> Result<(), GrapevineCLIErro
     // build request body
     let body = DegreeProofRequest {
         proof: compressed,
-        username: account.username().clone(),
+        // username: account.username().clone(),
         previous: oid,
         degree: proving_data.degree + 1,
     };
@@ -443,11 +439,12 @@ pub fn make_or_get_account(username: String) -> Result<GrapevineAccount, Grapevi
     Ok(account)
 }
 
+
 pub async fn health() -> Result<(), GrapevineCLIError> {
     // ensure artifacts exist
     artifacts_guard().await.unwrap();
     // get health status
-    let text = reqwest::get("http://localhost:8000/health")
+    let text = reqwest::get("http://localhost:8000/test/health")
         .await
         .unwrap()
         .text()
@@ -483,61 +480,6 @@ pub fn get_account() -> Result<GrapevineAccount, GrapevineCLIError> {
     }
 }
 
-pub fn make_or_get_key() -> Result<PrivateKey, std::env::VarError> {
-    // check whether .grapevine exists
-    let grapevine_path = match std::env::var("HOME") {
-        Ok(home) => Path::new(&home).join(".grapevine"),
-        Err(e) => return Err(e),
-    };
-    // if does not exist, create the dir
-    if !grapevine_path.exists() {
-        println!("Creating .grapevine directory...");
-        std::fs::create_dir(grapevine_path.clone()).unwrap();
-    }
-    // check if key exists
-    let key_path = grapevine_path.join("grapevine.key");
-    if !key_path.exists() {
-        println!("Generating new key...");
-        let key = random_fr();
-        let key_bytes = key.to_bytes();
-        std::fs::write(key_path.clone(), key_bytes).unwrap();
-        println!("Saved key to {}", key_path.display());
-    }
-    // get key from fs
-    let key_bytes = std::fs::read(key_path.clone()).unwrap();
-    let key = PrivateKey::import(key_bytes).unwrap();
-    return Ok(key);
-}
-
-pub async fn test_proof_compression() -> Result<(), GrapevineCLIError> {
-    let phrase: String = String::from("No one quite like you!");
-    let usernames = vec!["pigturtle"]
-        .iter()
-        .map(|s| String::from(*s))
-        .collect::<Vec<String>>();
-    let auth_secrets = vec![random_fr()];
-    let public_params = use_public_params().unwrap();
-    let r1cs = use_r1cs().unwrap();
-    let wc_path = use_wasm().unwrap();
-    let proof = nova_proof(
-        wc_path,
-        &r1cs,
-        &public_params,
-        &phrase,
-        &usernames,
-        &auth_secrets,
-    )
-    .unwrap();
-    let compressed = compress_proof(&proof);
-    let body = TestProofCompressionRequest {
-        proof: compressed,
-        username: String::from("pigturtle"),
-    };
-    let url = format!("{}/test-proof-compression", crate::SERVER_URL);
-    let client = reqwest::Client::new();
-    client.post(&url).json(&body).send().await.unwrap();
-    Ok(())
-}
 
 // #[cfg(test)]
 // mod test {

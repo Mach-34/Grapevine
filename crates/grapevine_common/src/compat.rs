@@ -1,8 +1,10 @@
-use super::Fr as Fr_ff;
+use crate::Fr as Fr_ff;
 use babyjubjub_rs::Fr as Fr_ff_ce;
 use ff::PrimeField;
 use ff_ce::{PrimeField as PrimeField_ce, PrimeFieldRepr as PrimeFieldRepr_ce};
 use poseidon_rs::FrRepr;
+
+/// YES THIS IS A MONSTROSITY WILL ADDRESS LATER™
 
 /**
  * Converts between Fr types

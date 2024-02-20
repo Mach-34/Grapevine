@@ -1,7 +1,6 @@
 use crate::mongo::GrapevineDB;
 use crate::utils::PUBLIC_PARAMS;
-// use crate::{catchers::Response, guards::NonceGuard};
-use crate::catchers::Response;
+use crate::{catchers::Response, guards::AuthenticatedUser};
 use grapevine_circuits::{nova::verify_nova_proof, utils::decompress_proof};
 use grapevine_common::{
     http::requests::{DegreeProofRequest, NewPhraseRequest},
@@ -32,7 +31,7 @@ use std::str::FromStr;
  */
 #[post("/phrase/create", data = "<data>")]
 pub async fn create_phrase(
-    //  _guard: NonceGuard,
+    user: AuthenticatedUser,
     data: Data<'_>,
     db: &State<GrapevineDB>,
 ) -> Result<Status, Response> {
@@ -41,6 +40,7 @@ pub async fn create_phrase(
     let mut buffer = Vec::new();
     let mut stream = data.open(2.mebibytes()); // Adjust size limit as needed
     if let Err(e) = stream.read_to_end(&mut buffer).await {
+        println!("Error reading request body: {:?}", e);
         return Err(Response::TooLarge(
             "Request body execeeds 2 MiB".to_string(),
         ));
@@ -48,9 +48,13 @@ pub async fn create_phrase(
     let request = match bincode::deserialize::<NewPhraseRequest>(&buffer) {
         Ok(req) => req,
         Err(e) => {
+            println!(
+                "Error deserializing body from binary to NewPhraseRequest: {:?}",
+                e
+            );
             return Err(Response::BadRequest(String::from(
                 "Error deserializing body from binary to NewPhraseRequest",
-            )))
+            )));
         }
     };
     let decompressed_proof = decompress_proof(&request.proof);
@@ -69,7 +73,7 @@ pub async fn create_phrase(
         }
     };
     // get user doc
-    let user = db.get_user(&request.username).await.unwrap();
+    let user = db.get_user(&user.0).await.unwrap();
     // build DegreeProof model
     let proof_doc = DegreeProof {
         id: None,
@@ -111,7 +115,11 @@ pub async fn create_phrase(
  *             * 500 if db fails or other unknown issue
  */
 #[post("/phrase/continue", data = "<data>")]
-pub async fn degree_proof(data: Data<'_>, db: &State<GrapevineDB>) -> Result<Status, Response> {
+pub async fn degree_proof(
+    user: AuthenticatedUser,
+    data: Data<'_>,
+    db: &State<GrapevineDB>,
+) -> Result<Status, Response> {
     // stream in data
     // todo: implement FromData trait on NewPhraseRequest
     let mut buffer = Vec::new();
@@ -148,7 +156,7 @@ pub async fn degree_proof(data: Data<'_>, db: &State<GrapevineDB>) -> Result<Sta
         }
     };
     // get user doc
-    let user = db.get_user(&request.username).await.unwrap();
+    let user = db.get_user(&user.0).await.unwrap();
     // @TODO: needs to delete a previous proof by same user on same phrase hash if exists, including removing from last proof's previous field
     // build DegreeProof struct
     let proof_doc = DegreeProof {
@@ -190,12 +198,12 @@ pub async fn degree_proof(data: Data<'_>, db: &State<GrapevineDB>) -> Result<Sta
  *         - 404 if user not found
  *         - 500 if db fails or other unknown issue
  */
-#[get("/<username>/available")]
+#[get("/proof/available")]
 pub async fn get_available_proofs(
-    username: String,
+    user: AuthenticatedUser,
     db: &State<GrapevineDB>,
 ) -> Result<Json<Vec<String>>, Status> {
-    Ok(Json(db.find_available_degrees(username).await))
+    Ok(Json(db.find_available_degrees(user.0).await))
 }
 
 #[get("/<username>/pipeline-test")]
@@ -224,14 +232,14 @@ pub async fn get_pipeline_test(
  *         - 404 if username or proof not found
  *         - 500 if db fails or other unknown issue
  */
-#[get("/<oid>/params/<username>")]
+#[get("/proof/<oid>/params")]
 pub async fn get_proof_with_params(
+    user: AuthenticatedUser,
     oid: String,
-    username: String,
     db: &State<GrapevineDB>,
 ) -> Result<Json<ProvingData>, Response> {
     let oid = ObjectId::from_str(&oid).unwrap();
-    match db.get_proof_and_data(username, oid).await {
+    match db.get_proof_and_data(user.0, oid).await {
         Some(data) => Ok(Json(data)),
         None => Err(Response::NotFound(format!(
             "No proof found with oid {}",

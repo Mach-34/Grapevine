@@ -28,7 +28,7 @@ serde_bytes = "0.11.14"
 sha256 = "1.4.0"
 aes = "0.8.3"
 cbc = "0.1.2"
-ahash = "=0.8.6"
+ahash = "0.8.9"
 
 [dev-dependencies]
 serde_json.workspace = true

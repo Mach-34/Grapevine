@@ -1,14 +1,12 @@
-use std::f32::consts::E;
-
+use crate::errors::GrapevineServerError;
 use crate::{DATABASE_NAME, MONGODB_URI};
 use futures::stream::StreamExt;
+
 use futures::TryStreamExt;
 use grapevine_common::auth_secret::AuthSecretEncrypted;
-use grapevine_common::errors::GrapevineServerError;
 use grapevine_common::http::responses::DegreeData;
 use grapevine_common::models::proof::ProvingData;
 use grapevine_common::models::{proof::DegreeProof, relationship::Relationship, user::User};
-use mongodb::bson::document;
 use mongodb::bson::{self, doc, oid::ObjectId, Binary};
 use mongodb::options::{
     AggregateOptions, ClientOptions, DeleteOptions, FindOneAndDeleteOptions,
@@ -53,13 +51,13 @@ impl GrapevineDB {
 
     /// USER FUNCTIONS ///
 
-    pub async fn increment_nonce(&self, username: &str) {
+    pub async fn increment_nonce(&self, username: &str) -> Result<(), GrapevineServerError> {
         let filter = doc! { "username": username };
         let update = doc! { "$inc": { "nonce": 1 } };
-        self.users
-            .update_one(filter, update, None)
-            .await
-            .expect("Error incrementing nonce");
+        match self.users.update_one(filter, update, None).await {
+            Ok(_) => Ok(()),
+            Err(e) => Err(GrapevineServerError::MongoError(e.to_string())),
+        }
     }
 
     pub async fn get_nonce(&self, username: &str) -> Option<(u64, [u8; 32])> {

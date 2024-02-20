@@ -1,6 +1,6 @@
 #[macro_use]
 extern crate rocket;
-// use crate::guards::NonceGuard;
+use crate::guards::AuthenticatedUser;
 use catchers::{bad_request, not_found, unauthorized};
 use dotenv::dotenv;
 use lazy_static::lazy_static;
@@ -9,6 +9,7 @@ use mongodb::bson::doc;
 use rocket::fs::{relative, FileServer};
 
 mod catchers;
+mod errors;
 mod guards;
 mod mongo;
 mod routes;
@@ -63,7 +64,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 // }
 
 #[get("/nonce-guard-test")]
-async fn action() -> &'static str {
+async fn action(_guard: AuthenticatedUser) -> &'static str {
     println!("test");
     "Succesfully verified nonce"
 }
@@ -147,7 +148,6 @@ mod test_rocket {
         let encrypted_auth_secret = from.encrypt_auth_secret(pubkey);
 
         let body = NewRelationshipRequest {
-            from: from.username().clone(),
             to: to.username().clone(),
             ephemeral_key: encrypted_auth_secret.ephemeral_key,
             ciphertext: encrypted_auth_secret.ciphertext,
@@ -253,7 +253,6 @@ mod test_rocket {
 
         let body = DegreeProofRequest {
             proof: compressed,
-            username: user.username().clone(),
             previous: prev_id,
             degree: preceding.degree + 1,
         };
@@ -292,7 +291,6 @@ mod test_rocket {
 
         let body = NewPhraseRequest {
             proof: compressed,
-            username: user.username().clone(),
         };
 
         let serialized: Vec<u8> = bincode::serialize(&body).unwrap();
