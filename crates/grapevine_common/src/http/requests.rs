@@ -1,6 +1,3 @@
-use crate::auth_secret::AuthSecretEncrypted;
-use crate::serde::{deserialize_byte_buf, serialize_byte_buf};
-use bson::oid::ObjectId;
 use serde::{Deserialize, Serialize};
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct CreateUserRequest {
@@ -38,14 +35,12 @@ pub struct DegreeProofRequest {
 }
 
 pub struct RequestDriver {
-    pub url: String
+    pub url: String,
 }
 
 impl RequestDriver {
     pub fn new(url: String) -> RequestDriver {
-        RequestDriver {
-            url
-        }
+        RequestDriver { url }
     }
 
     // pub fn create_user(&self, request: CreateUserRequest) -> Result<(), reqwest::Error> {

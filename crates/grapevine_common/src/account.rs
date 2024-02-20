@@ -1,15 +1,12 @@
-use std::path::PathBuf;
-
 use crate::auth_secret::{AuthSecret, AuthSecretEncrypted, AuthSecretEncryptedUser};
-use crate::crypto::new_private_key;
+use crate::crypto::{new_private_key, nonce_hash};
 use crate::http::requests::CreateUserRequest;
 use crate::utils::{convert_username_to_fr, random_fr};
 use crate::Fr;
 use babyjubjub_rs::{Point, PrivateKey, Signature};
-use num_bigint::{BigInt, RandBigInt, Sign, ToBigInt};
+use num_bigint::{BigInt, Sign};
 use serde::{Deserialize, Serialize};
-
-pub type Nonce = u64;
+use std::path::PathBuf;
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct GrapevineAccount {
@@ -37,6 +34,8 @@ impl GrapevineAccount {
         }
     }
 
+    /// PERSISTENCE METHODS ///
+
     /**
      * Reads an account saved to the filesystem
      */
@@ -45,44 +44,56 @@ impl GrapevineAccount {
         serde_json::from_str(&account)
     }
 
-    pub fn username(&self) -> &String {
-        &self.username
+    pub fn save(self, path: PathBuf) -> Result<(), std::io::Error> {
+        let account = serde_json::to_string(&self).unwrap();
+        std::fs::write(path, account)
     }
 
-    pub fn pubkey(&self) -> Point {
-        PrivateKey::import(self.private_key.to_vec())
-            .unwrap()
-            .public()
-    }
+    /// NONCE METHODS ///
 
-    pub fn private_key_raw(&self) -> &[u8; 32] {
-        &self.private_key
-    }
-
-    pub fn private_key(&self) -> PrivateKey {
-        PrivateKey::import(self.private_key.to_vec()).unwrap()
-    }
-
-    pub fn nonce(&self) -> Nonce {
-        self.nonce
-    }
-
+    /** Increment nonce by 1 for normal actions */
     pub fn increment_nonce(&mut self) {
         self.nonce += 1;
     }
 
-    pub fn auth_secret(&self) -> &Fr {
-        &self.auth_secret
+    /**
+     * Set the nonce manually in the event nonce is desynchronized from server
+     *
+     * @param nonce - the new nonce to set for the account
+     */
+    pub fn set_nonce(&mut self, nonce: u64) {
+        self.nonce = nonce;
     }
 
+    /// AUTH SECRET METHODS ///
+
+    /**
+     * Encrypt this account's auth secret for a recipient
+     *
+     * @param recipient - the public key of the recipient
+     * @returns - the encrypted auth secret that the recipient can decrypt
+     */
     pub fn encrypt_auth_secret(&self, recipient: Point) -> AuthSecretEncrypted {
         AuthSecretEncrypted::new(self.username.clone(), self.auth_secret.clone(), recipient)
     }
 
+    /**
+     * Decrypt an encrypted auth secret that should be encrypted with this account's public key
+     *
+     * @param message - the encrypted auth secret
+     * @returns - the decrypted auth secret
+     */
     pub fn decrypt_auth_secret(&self, message: AuthSecretEncrypted) -> AuthSecret {
         message.decrypt(self.private_key())
     }
 
+    /// SIGNING METHODS ///
+
+    /**
+     * Produce a signature over the username of this account
+     *
+     * @returns - the signature over the username
+     */
     pub fn sign_username(&self) -> Signature {
         let message = BigInt::from_bytes_le(
             Sign::Plus,
@@ -91,6 +102,24 @@ impl GrapevineAccount {
         self.private_key().sign(message).unwrap()
     }
 
+    /**
+     * Produce a signature over the sha256 hash H|username, nonce| of this account
+     *
+     * @returns - the signature authorizing arbitrary gated http actions
+     */
+    pub fn sign_nonce(&self) -> Signature {
+        let message =
+            BigInt::from_bytes_le(Sign::Plus, &nonce_hash(&self.username, self.nonce)[..]);
+        self.private_key().sign(message).unwrap()
+    }
+
+    /// HTTP REQUEST BODY CONSTRUCTORS ///
+
+    /**
+     * Create the http request body for creating a new user in the Grapevine service
+     *
+     * @returns - the CreateUserRequest authorizing a new user to be added to Grapevine service
+     */
     pub fn create_user_request(&self) -> CreateUserRequest {
         // return the Create User http request struct
         CreateUserRequest {
@@ -98,6 +127,40 @@ impl GrapevineAccount {
             pubkey: self.pubkey().compress(),
             signature: self.sign_username().compress(),
         }
+    }
+
+    /// GETTERS ///
+
+    /** Return the username associated with this account */
+    pub fn username(&self) -> &String {
+        &self.username
+    }
+
+    /** Return the Baby Jubjub EdDSA public key associated with this account */
+    pub fn pubkey(&self) -> Point {
+        PrivateKey::import(self.private_key.to_vec())
+            .unwrap()
+            .public()
+    }
+
+    /** Return the raw bytes of the Baby Jubjub EdDSA private key associated with this account */
+    pub fn private_key_raw(&self) -> &[u8; 32] {
+        &self.private_key
+    }
+
+    /** Return the Baby Jubjub EdDSA private key associated with this account */
+    pub fn private_key(&self) -> PrivateKey {
+        PrivateKey::import(self.private_key.to_vec()).unwrap()
+    }
+
+    /** Return the current nonce for this account */
+    pub fn nonce(&self) -> u64 {
+        self.nonce
+    }
+
+    /** Return the auth secret used to confidentially link to proofs made by this account */
+    pub fn auth_secret(&self) -> &Fr {
+        &self.auth_secret
     }
 }
 

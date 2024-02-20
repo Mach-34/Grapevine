@@ -1,7 +1,8 @@
 use crate::catchers::ErrorMessage;
+use crate::errors::GrapevineServerError;
 use crate::mongo::GrapevineDB;
 use babyjubjub_rs::{decompress_point, decompress_signature, verify};
-use grapevine_common::{crypto::nonce_hash, errors::GrapevineServerError};
+use grapevine_common::crypto::nonce_hash;
 use num_bigint::{BigInt, Sign};
 use rocket::{
     http::Status,

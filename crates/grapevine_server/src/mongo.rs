@@ -1,13 +1,12 @@
+use crate::errors::GrapevineServerError;
 use crate::{DATABASE_NAME, MONGODB_URI};
 use futures::stream::StreamExt;
-use grapevine_common::auth_secret::AuthSecretEncrypted;
-use grapevine_common::errors::GrapevineServerError;
 use grapevine_common::http::responses::DegreeData;
 use grapevine_common::models::proof::ProvingData;
 use grapevine_common::models::{proof::DegreeProof, relationship::Relationship, user::User};
 use mongodb::bson::{self, doc, oid::ObjectId, Binary};
 use mongodb::options::{
-    AggregateOptions, ClientOptions, FindOneAndDeleteOptions, FindOneOptions, FindOptions,
+    ClientOptions, FindOneAndDeleteOptions, FindOneOptions, FindOptions,
     ServerApi, ServerApiVersion,
 };
 use mongodb::{Client, Collection};

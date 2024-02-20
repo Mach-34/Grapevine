@@ -1,4 +1,3 @@
-use crate::auth_secret::AuthSecretEncrypted;
 use bson::oid::ObjectId;
 use serde::{Deserialize, Serialize};
 

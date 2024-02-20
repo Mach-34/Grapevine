@@ -9,6 +9,7 @@ use mongodb::bson::doc;
 use rocket::fs::{relative, FileServer};
 
 mod catchers;
+mod errors;
 mod guards;
 mod mongo;
 mod routes;
@@ -300,7 +301,6 @@ mod test_rocket {
         assert_eq!(404, res.status().code);
         let message = res.into_string().await.unwrap();
         assert_eq!("User charlie not found", message);
-
     }
 
     // #[rocket::async_test]
