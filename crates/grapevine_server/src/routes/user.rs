@@ -1,8 +1,8 @@
 use crate::catchers::{ErrorMessage, GrapevineResponse};
-use crate::errors::GrapevineServerError;
 use crate::guards::AuthenticatedUser;
 use crate::mongo::GrapevineDB;
 use babyjubjub_rs::{decompress_point, decompress_signature, verify};
+use grapevine_common::errors::GrapevineServerError;
 use grapevine_common::http::{requests::CreateUserRequest, responses::DegreeData};
 use grapevine_common::utils::convert_username_to_fr;
 use grapevine_common::MAX_USERNAME_CHARS;
@@ -55,7 +55,6 @@ pub async fn create_user(
             None,
         )));
     };
-
     // check the validity of the signature over the username
     let message = BigInt::from_bytes_le(
         Sign::Plus,
@@ -74,7 +73,8 @@ pub async fn create_user(
             )));
         }
     };
-
+    println!("Username: {}", &request.username);
+    println!("Pubkey: {}", hex::encode(&request.pubkey));
     // check that the username or pubkey are not already used
     match db
         .check_creation_params(&request.username, &request.pubkey)
@@ -85,30 +85,32 @@ pub async fn create_user(
                 return Err(GrapevineResponse::Conflict(ErrorMessage(
                     Some(GrapevineServerError::UserExists(request.username.clone())),
                     None,
-                )))
+                )));
             }
             [true, false] => {
+                return Err(GrapevineResponse::Conflict(ErrorMessage(
+                    Some(GrapevineServerError::UsernameExists(
+                        request.username.clone(),
+                    )),
+                    None,
+                )));
+            }
+            [false, true] => {
                 return Err(GrapevineResponse::Conflict(ErrorMessage(
                     Some(GrapevineServerError::PubkeyExists(format!(
                         "0x{}",
                         hex::encode(request.pubkey.clone())
                     ))),
                     None,
-                )))
+                )));
             }
-            [false, true] => Err(GrapevineResponse::Conflict(ErrorMessage(
-                Some(GrapevineServerError::UsernameExists(
-                    request.username.clone(),
-                )),
-                None,
-            ))),
-            _ => Ok(()),
+            _ => (),
         },
         Err(e) => {
             return Err(GrapevineResponse::InternalError(ErrorMessage(
                 Some(e),
                 None,
-            )));
+            )))
         }
     };
     // create the new user in the database

@@ -1,5 +1,5 @@
 use crate::catchers::ErrorMessage;
-use crate::errors::GrapevineServerError;
+use grapevine_common::errors::GrapevineServerError;
 use crate::mongo::GrapevineDB;
 use babyjubjub_rs::{decompress_point, decompress_signature, verify};
 use grapevine_common::crypto::nonce_hash;

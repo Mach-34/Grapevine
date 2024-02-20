@@ -1,3 +1,4 @@
+use grapevine_common::errors::GrapevineServerError;
 use rocket::{
     http::ContentType,
     request::Request,
@@ -5,8 +6,6 @@ use rocket::{
     serde::json::Json,
 };
 use serde::{Deserialize, Serialize};
-
-use crate::errors::GrapevineServerError;
 
 // TODO: Rename to GrapvineServerError?
 

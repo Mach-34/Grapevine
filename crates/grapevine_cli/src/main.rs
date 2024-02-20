@@ -28,16 +28,16 @@ enum Commands {
     Health,
     /// Create a new Grapevine Account
     RegisterAccount(RegisterAccountArgs),
-    /// Add yourself as a connection to another Grapevine user
-    AddRelationship(AddRelationshipArgs),
-    /// Create a new phrase (degree 1 proof)
-    CreatePhrase(CreatePhrase),
-    /// Print the details of your account
-    GetAccount,
-    /// Prove all the the new degrees of separation available
-    ProveNew,
-    /// Print all of your degrees of separation
-    GetDegrees,
+    // /// Add yourself as a connection to another Grapevine user
+    // AddRelationship(AddRelationshipArgs),
+    // /// Create a new phrase (degree 1 proof)
+    // CreatePhrase(CreatePhrase),
+    // /// Print the details of your account
+    // GetAccount,
+    // /// Prove all the the new degrees of separation available
+    // ProveNew,
+    // /// Print all of your degrees of separation
+    // GetDegrees,
     // /// Manually prove a degree of separation
     // ProveSeparation(ProveSeparationArgs),
     // // View the OID's of proofs the user can build from
@@ -71,26 +71,34 @@ struct ProveSeparationArgs {
 pub async fn main() {
     let cli = Cli::parse();
 
-    _ = match &cli.command {
-        // Commands::Params(cmd) => {
-        //     controllers::gen_params(cmd.r1cs.clone().unwrap(), cmd.output.clone().unwrap())
-        // }
+    let result = match &cli.command {
         Commands::Health => controllers::health().await,
         Commands::RegisterAccount(cmd) => {
-            controllers::register(cmd.username.clone().unwrap()).await
+            controllers::register(cmd.username.clone()).await
         }
-        Commands::AddRelationship(cmd) => {
-            controllers::add_relationship(cmd.username.clone().unwrap()).await
-        }
-        Commands::CreatePhrase(cmd) => {
-            controllers::create_new_phrase(cmd.phrase.clone().unwrap()).await
-        }
-        Commands::GetAccount => controllers::account_details(),
-        Commands::ProveNew => controllers::prove_all_available().await,
-        Commands::GetDegrees => controllers::get_my_proofs().await,
+        // Commands::AddRelationship(cmd) => {
+        //     controllers::add_relationship(cmd.username.clone().unwrap()).await
+        // }
+        // Commands::CreatePhrase(cmd) => {
+        //     controllers::create_new_phrase(cmd.phrase.clone().unwrap()).await
+        // }
+        // Commands::GetAccount => controllers::account_details(),
+        // Commands::ProveNew => controllers::prove_all_available().await,
+        // Commands::GetDegrees => controllers::get_my_proofs().await,
+
+
         // Commands::ProveSeparation(cmd) => {
         //     controllers::prove_separation_degree(cmd.username.clone().unwrap()).await
         // }
         // Commands::AvailableProofs => controllers::get_available_proofs().await,
-    }
+    };
+
+    match result {
+        Ok(message) => {
+            println!("Success: {}", message);
+        }
+        Err(e) => {
+            println!("Error: {}", e);
+        }
+    };
 }

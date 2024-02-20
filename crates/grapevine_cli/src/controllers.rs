@@ -1,12 +1,13 @@
 use crate::errors::GrapevineCLIError;
+use crate::http::create_user_req;
 use crate::utils::artifacts_guard;
 use crate::utils::fs::{use_public_params, use_r1cs, use_wasm};
-use crate::http::{create_user_req};
 use babyjubjub_rs::{decompress_point, PrivateKey};
 use grapevine_circuits::nova::{continue_nova_proof, nova_proof, verify_nova_proof};
 use grapevine_circuits::utils::{compress_proof, decompress_proof};
 use grapevine_common::account::GrapevineAccount;
 use grapevine_common::auth_secret::AuthSecretEncrypted;
+use grapevine_common::errors::GrapevineServerError;
 use grapevine_common::http::requests::{
     CreateUserRequest, DegreeProofRequest, NewPhraseRequest, NewRelationshipRequest,
     TestProofCompressionRequest,
@@ -22,7 +23,12 @@ use std::path::Path;
  *
  * @param username - the username to register
  */
-pub async fn register(username: String) -> Result<(), GrapevineCLIError> {
+pub async fn register(username: Option<String>) -> Result<String, GrapevineCLIError> {
+    // check that username is provided
+    let username = match username {
+        Some(username) => username,
+        None => return Err(GrapevineCLIError::NoInput(String::from("username"))),
+    };
     // check username is < 30 chars
     if username.len() > 30 {
         return Err(GrapevineCLIError::UsernameTooLong(username));
@@ -36,22 +42,10 @@ pub async fn register(username: String) -> Result<(), GrapevineCLIError> {
     // build request body
     let body = account.create_user_request();
     // send create user request
-    let res = create_user_req(body).await?;
-    // handle response from server
-    match res.status() {
-        reqwest::StatusCode::CREATED => {
-            println!("Registered user {}", username);
-            Ok(())
-        }
-        reqwest::StatusCode::BAD_REQUEST => {
-            println!("Error: username {} already exists", username);
-            Ok(())
-        }
-        _ => {
-            let text = res.status().to_string();
-            println!("Error: {}", text);
-            Err(GrapevineCLIError::ServerError(text))
-        }
+    let res = create_user_req(body).await;
+    match res {
+        Ok(_) => Ok(format!("registered account for \"{}\"", username)),
+        Err(e) => Err(GrapevineCLIError::from(e)),
     }
 }
 
@@ -440,12 +434,11 @@ pub fn make_or_get_account(username: String) -> Result<GrapevineAccount, Grapevi
             account
         }
     };
-    get_account_info();
+    // get_account_info();
     Ok(account)
 }
 
-
-pub async fn health() -> Result<(), GrapevineCLIError> {
+pub async fn health() -> Result<String, GrapevineCLIError> {
     // ensure artifacts exist
     artifacts_guard().await.unwrap();
     // get health status
@@ -455,8 +448,7 @@ pub async fn health() -> Result<(), GrapevineCLIError> {
         .text()
         .await
         .unwrap();
-    println!("Health: {}", text);
-    return Ok(());
+    return Ok("Health check passed".to_string());
 }
 
 /**
@@ -484,7 +476,6 @@ pub fn get_account() -> Result<GrapevineAccount, GrapevineCLIError> {
         }
     }
 }
-
 
 // #[cfg(test)]
 // mod test {
