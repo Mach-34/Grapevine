@@ -25,7 +25,7 @@ hex.workspace = true
 sha3.workspace = true
 tracing-subscriber = "0.3.17"
 tracing = "0.1.40"
-rocket = { version = "0.5.0", features = ["json"] }
+rocket = { version = "0.5.0", features = ["json", "tls"] }
 futures = "0.3.30"
 lazy_static = "1.4.0"
 dotenv = "0.15.0"

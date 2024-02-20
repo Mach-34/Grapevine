@@ -5,12 +5,13 @@ use serde::{Deserialize, Serialize};
 pub struct DegreeProof {
     #[serde(rename = "_id", skip_serializing_if = "Option::is_none")]
     pub id: Option<ObjectId>,
+    pub inactive: Option<bool>,
     pub phrase_hash: Option<[u8; 32]>, // @todo: maybe track phrases?
     pub auth_hash: Option<[u8; 32]>,
     pub degree: Option<u8>,
     pub user: Option<ObjectId>,
-    pub proof: Option<Vec<u8>>, // compressed proof
-    pub preceding: Option<ObjectId>, // the proof that this proof is built on (null if first)
+    pub proof: Option<Vec<u8>>,            // compressed proof
+    pub preceding: Option<ObjectId>,       // the proof that this proof is built on (null if first)
     pub proceeding: Option<Vec<ObjectId>>, // proofs that are built on top of this proof
 }
 

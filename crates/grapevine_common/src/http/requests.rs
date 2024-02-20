@@ -1,8 +1,4 @@
-use crate::auth_secret::AuthSecretEncrypted;
-use crate::serde::{deserialize_byte_buf, serialize_byte_buf};
-use bson::oid::ObjectId;
 use serde::{Deserialize, Serialize};
-
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct CreateUserRequest {
     pub username: String,
@@ -13,7 +9,6 @@ pub struct CreateUserRequest {
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct NewPhraseRequest {
-    pub username: String,
     pub proof: Vec<u8>,
 }
 
@@ -25,7 +20,6 @@ pub struct TestProofCompressionRequest {
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct NewRelationshipRequest {
-    pub from: String,
     pub to: String,
     #[serde(with = "serde_bytes")]
     pub ephemeral_key: [u8; 32],
@@ -35,21 +29,18 @@ pub struct NewRelationshipRequest {
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct DegreeProofRequest {
-    pub username: String,
     pub proof: Vec<u8>,
     pub previous: String,
     pub degree: u8,
 }
 
 pub struct RequestDriver {
-    pub url: String
+    pub url: String,
 }
 
 impl RequestDriver {
     pub fn new(url: String) -> RequestDriver {
-        RequestDriver {
-            url
-        }
+        RequestDriver { url }
     }
 
     // pub fn create_user(&self, request: CreateUserRequest) -> Result<(), reqwest::Error> {

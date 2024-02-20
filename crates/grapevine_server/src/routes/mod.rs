@@ -1,7 +1,7 @@
 use lazy_static::lazy_static;
 use rocket::route::Route;
-mod user;
 mod proof;
+mod user;
 
 lazy_static! {
     pub(crate) static ref USER_ROUTES: Vec<Route> = routes![
@@ -15,6 +15,8 @@ lazy_static! {
         proof::create_phrase,
         proof::degree_proof,
         proof::get_available_proofs,
-        proof::get_proof_with_params
+        // proof::get_proof_chain,
+        proof::get_proof_with_params,
+        proof::get_pipeline_test
     ];
 }

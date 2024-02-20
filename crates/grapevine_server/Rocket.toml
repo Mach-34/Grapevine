@@ -4,3 +4,10 @@ file = "50 MiB"
 forms = "20 MiB"
 json = "20 MiB"
 bytes = "20 MiB"
+
+[release]
+address = "0.0.0.0"
+port = 443
+
+[release.tls]
+tls = { certs = "/etc/letsencrypt/live/grapevine.mach34.space/fullchain.pem", key = "/etc/letsencrypt/live/grapevine.mach34.space/privkey.pem" }

@@ -1,5 +1,4 @@
 use crate::crypto::gen_aes_key;
-use crate::serde::{deserialize_byte_buf, serialize_byte_buf};
 use crate::Fr;
 use aes::cipher::{block_padding::Pkcs7, BlockDecryptMut, BlockEncryptMut, KeyIvInit};
 use babyjubjub_rs::{Point, PrivateKey};

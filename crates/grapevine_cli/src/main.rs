@@ -2,12 +2,20 @@ use clap::{Args, Parser, Subcommand};
 
 mod controllers;
 mod errors;
+mod http;
 mod utils;
 
 pub const SERVER_URL: &str = "http://localhost:8000";
 
+///    ______                           _           
+///   / ____/________ _____  ___ _   __(_)___  ___  
+///  / / __/ ___/ __ `/ __ \/ _ \ | / / / __ \/ _ \
+/// / /_/ / /  / /_/ / /_/ /  __/ |/ / / / / /  __/
+/// \____/_/   \__,_/ .___/\___/|___/_/_/ /_/\___/  
+///                /_/                              
+///                                                 
 #[derive(Parser)]
-#[command(author, version, about, long_about = None)]
+#[command(author, version, about, long_about = None, verbatim_doc_comment)]
 #[command(propagate_version = true)]
 struct Cli {
     #[command(subcommand)]
@@ -16,22 +24,24 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
-    // dummy health check command
+    /// Test the connection to the Grapevine server
     Health,
-    // Create a new Grapevine Account
+    /// Create a new Grapevine Account
     RegisterAccount(RegisterAccountArgs),
-    // Add yourself as a connection to another Grapevine Account
+    /// Add yourself as a connection to another Grapevine user
     AddRelationship(AddRelationshipArgs),
-    // Create a new phrase (degree 1 proof)
+    /// Create a new phrase (degree 1 proof)
     CreatePhrase(CreatePhrase),
-    // Prove a degree of separation
-    ProveSeparation(ProveSeparationArgs),
-    // View the OID's of proofs the user can build from
-    AvailableProofs,
-    // Get account details
+    /// Print the details of your account
     GetAccount,
-    ProveAll,
-    MyDegrees,
+    /// Prove all the the new degrees of separation available
+    ProveNew,
+    /// Print all of your degrees of separation
+    GetDegrees,
+    // /// Manually prove a degree of separation
+    // ProveSeparation(ProveSeparationArgs),
+    // // View the OID's of proofs the user can build from
+    // AvailableProofs,
 }
 
 #[derive(Args)]
@@ -75,12 +85,12 @@ pub async fn main() {
         Commands::CreatePhrase(cmd) => {
             controllers::create_new_phrase(cmd.phrase.clone().unwrap()).await
         }
-        Commands::ProveSeparation(cmd) => {
-            controllers::prove_separation_degree(cmd.username.clone().unwrap()).await
-        }
-        Commands::AvailableProofs => controllers::get_available_proofs().await,
         Commands::GetAccount => controllers::account_details(),
-        Commands::ProveAll => controllers::prove_all_available().await,
-        Commands::MyDegrees => controllers::get_my_proofs().await,
+        Commands::ProveNew => controllers::prove_all_available().await,
+        Commands::GetDegrees => controllers::get_my_proofs().await,
+        // Commands::ProveSeparation(cmd) => {
+        //     controllers::prove_separation_degree(cmd.username.clone().unwrap()).await
+        // }
+        // Commands::AvailableProofs => controllers::get_available_proofs().await,
     }
 }

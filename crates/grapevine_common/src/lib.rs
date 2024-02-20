@@ -5,10 +5,7 @@ pub mod account;
 pub mod auth_secret;
 pub mod compat;
 pub mod crypto;
-pub mod errors;
 pub mod http;
-pub mod serde;
-pub mod session_key;
 pub mod utils;
 pub mod models;
 

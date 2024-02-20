@@ -1,7 +1,3 @@
-pub enum GrapevineServerErrorStatus {
-    NotFound(String),
-}
-
 #[derive(Debug)]
 pub enum GrapevineServerError {
     Signature(String),
@@ -10,6 +6,7 @@ pub enum GrapevineServerError {
     UsernameTooLong(String),
     UsernameNotAscii(String),
     MongoError(String),
+    HeaderError(String),
 }
 
 impl std::fmt::Display for GrapevineServerError {
@@ -25,6 +22,7 @@ impl std::fmt::Display for GrapevineServerError {
                 write!(f, "Username {} is not ascii", msg)
             }
             GrapevineServerError::MongoError(msg) => write!(f, "Mongo error: {}", msg),
+            GrapevineServerError::HeaderError(msg) => write!(f, "HTTP error: bad header `{}`", msg),
         }
     }
 }

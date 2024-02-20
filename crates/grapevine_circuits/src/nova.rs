@@ -1,7 +1,7 @@
 use super::{
     start_input,
     utils::{build_step_inputs, read_public_params},
-    z0_secondary, DEFAULT_PUBLIC_PARAMS_PATH, DEFAULT_R1CS_PATH, DEFAULT_WC_PATH,
+    z0_secondary, DEFAULT_PUBLIC_PARAMS_PATH, DEFAULT_R1CS_PATH,
 };
 use grapevine_common::{Fq, Fr, NovaProof, Params, G1, G2};
 use nova_scotia::{

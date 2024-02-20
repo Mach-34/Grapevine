@@ -1,4 +1,5 @@
 use crate::catchers::Response;
+use crate::guards::AuthenticatedUser;
 use crate::mongo::GrapevineDB;
 use babyjubjub_rs::{decompress_point, decompress_signature, verify};
 use grapevine_common::http::{requests::CreateUserRequest, responses::DegreeData};
@@ -123,22 +124,23 @@ pub async fn create_user(
  */
 #[post("/relationship", format = "json", data = "<request>")]
 pub async fn add_relationship(
+    user: AuthenticatedUser,
     request: Json<NewRelationshipRequest>,
     db: &State<GrapevineDB>,
 ) -> Result<Status, Response> {
     // ensure from != to
-    if &request.from == &request.to {
+    if &user.0 == &request.to {
         return Err(Response::BadRequest(String::from(
             "Cannot add relationship to self.",
         )));
     }
     // ensure user exists
-    let sender = match db.get_user(&request.from).await {
+    let sender = match db.get_user(&user.0).await {
         Some(user) => user.id.unwrap(),
         None => {
             return Err(Response::NotFound(format!(
                 "Sending user {} not found",
-                request.from
+                user.0
             )))
         }
     };
@@ -221,12 +223,12 @@ pub async fn get_pubkey(
  *            * 404 if user not found
  *            * 500 if db fails or other unknown issue
  */
-#[get("/<username>/degrees")]
+#[get("/degrees")]
 pub async fn get_all_degrees(
-    username: String,
+    user: AuthenticatedUser,
     db: &State<GrapevineDB>,
 ) -> Result<Json<Vec<DegreeData>>, Response> {
-    match db.get_all_degrees(username).await {
+    match db.get_all_degrees(user.0).await {
         Some(proofs) => Ok(Json(proofs)),
         None => Err(Response::InternalError(String::from("Error retrieving degrees in db"))),
     }
