@@ -1,5 +1,8 @@
 use crate::errors::GrapevineCLIError;
-use crate::http::{add_relationship_req, create_user_req, get_pubkey_req, get_nonce_req};
+use crate::http::{
+    add_relationship_req, create_user_req, degree_proof_req, get_available_proofs_req,
+    get_nonce_req, get_proof_with_params_req, get_pubkey_req, new_phrase_req,
+};
 use crate::utils::artifacts_guard;
 use crate::utils::fs::{use_public_params, use_r1cs, use_wasm, ACCOUNT_PATH};
 use babyjubjub_rs::{decompress_point, PrivateKey};
@@ -112,14 +115,19 @@ pub async fn synchronize_nonce() -> Result<String, GrapevineCLIError> {
         Err(e) => return Err(GrapevineCLIError::from(e)),
     };
     match expected_nonce == account.nonce() {
-        true => Ok(format!("Nonce is already synchronized at \"{}\"", expected_nonce)),
+        true => Ok(format!(
+            "Nonce is already synchronized at \"{}\"",
+            expected_nonce
+        )),
         false => {
             let msg = format!(
                 "Local nonce of \"{}\" synchronized to \"{}\" from server",
                 account.nonce(),
                 expected_nonce
             );
-            account.set_nonce(expected_nonce, Some((&**ACCOUNT_PATH).to_path_buf())).unwrap();
+            account
+                .set_nonce(expected_nonce, Some((&**ACCOUNT_PATH).to_path_buf()))
+                .unwrap();
             Ok(msg)
         }
     }
@@ -127,71 +135,48 @@ pub async fn synchronize_nonce() -> Result<String, GrapevineCLIError> {
 
 /**
  * Create a new phrase and post the proof
- * 
+ *
  * @param phrase - the phrase to create
  */
-// pub async fn create_new_phrase(phrase: String) -> Result<String, GrapevineCLIError> {
-//     // check that phrase is > 180 chars
-//     if phrase.len() > 180 {
-//         return Err(GrapevineCLIError::PhraseTooLong);
-//     }
-//     // ensure artifacts are present
-//     artifacts_guard().await.unwrap();
-//     // get account
-//     let account = get_account()?;
-//     // get proving artifacts
-//     let params = use_public_params().unwrap();
-//     let r1cs = use_r1cs().unwrap();
-//     let wc_path = use_wasm().unwrap();
-//     // check phrase length
-//     if phrase.len() > 180 {
-//         return Err(GrapevineCLIError::PhraseTooLong);
-//     }
-//     // @todo: check if phrase is ascii
-//     // get proof inputs
-//     let username = vec![account.username().clone()];
-//     let auth_secret = vec![account.auth_secret().clone()];
-//     // create proof
-//     // println!("Auth Secret: {:?}", auth_secret_input[0].to_bytes);
-//     let res = nova_proof(wc_path, &r1cs, &params, &phrase, &username, &auth_secret);
-//     let proof = match res {
-//         Ok(proof) => proof,
-//         Err(e) => {
-//             return Err(GrapevineCLIError::PhraseCreationProofFailed(phrase));
-//         }
-//     };
-//     let compressed = compress_proof(&proof);
+pub async fn create_new_phrase(phrase: String) -> Result<String, GrapevineCLIError> {
+    // check that phrase is > 180 chars
+    if phrase.len() > 180 {
+        return Err(GrapevineCLIError::PhraseTooLong);
+    }
+    // ensure artifacts are present
+    artifacts_guard().await.unwrap();
+    // get account
+    let mut account = get_account()?;
+    // get proving artifacts
+    let params = use_public_params().unwrap();
+    let r1cs = use_r1cs().unwrap();
+    let wc_path = use_wasm().unwrap();
+    // @todo: check if phrase is ascii
+    // get proof inputs
+    let username = vec![account.username().clone()];
+    let auth_secret = vec![account.auth_secret().clone()];
+    // create proof
+    let res = nova_proof(wc_path, &r1cs, &params, &phrase, &username, &auth_secret);
+    let proof = match res {
+        Ok(proof) => proof,
+        Err(e) => {
+            return Err(GrapevineCLIError::PhraseCreationProofFailed(phrase));
+        }
+    };
+    let compressed = compress_proof(&proof);
 
-//     // build request body
-//     let body = NewPhraseRequest {
-//         proof: compressed,
-//     };
-//     let serialized: Vec<u8> = bincode::serialize(&body).unwrap();
+    // build request body
+    let body = NewPhraseRequest { proof: compressed };
+    // send request
+    let res = new_phrase_req(&mut account, body).await;
+    match res {
+        Ok(_) => Ok(format!("Created new phrase: \"{}\"", phrase)),
+        Err(e) => Err(GrapevineCLIError::from(e)),
+    }
+}
 
-//     // send request
-//     let url = format!("{}/phrase/create", crate::SERVER_URL);
-//     let client = reqwest::Client::new();
-//     let res = client.post(&url).body(serialized).send().await.unwrap();
-//     // handle response from server
-//     match res.status() {
-//         reqwest::StatusCode::CREATED => {
-//             println!("Created new phrase");
-//             Ok(())
-//         }
-//         _ => {
-//             let text = res.status().to_string();
-//             println!("Error: {}", text);
-//             Err(GrapevineCLIError::ServerError(text))
-//         }
-//     }
-// }
-
-
-
-
-// DEV: Remove later
-
-pub async fn prove_separation_degree(oid: String) -> Result<(), GrapevineCLIError> {
+// DEV: move to utils file
+async fn prove_separation_degree(oid: String) -> Result<(), GrapevineCLIError> {
     // ensure proving artifacts are downloaded
     artifacts_guard().await.unwrap();
     let public_params = use_public_params().unwrap();
@@ -270,7 +255,7 @@ pub async fn prove_separation_degree(oid: String) -> Result<(), GrapevineCLIErro
     let url = format!("{}/phrase/continue", crate::SERVER_URL);
     let client = reqwest::Client::new();
     let res = client.post(&url).body(serialized).send().await.unwrap();
-    // // handle response from server
+    // handle response from server
     match res.status() {
         reqwest::StatusCode::CREATED => {
             println!("Created new phrase");
@@ -284,59 +269,103 @@ pub async fn prove_separation_degree(oid: String) -> Result<(), GrapevineCLIErro
     }
 }
 
-pub async fn prove_all_available() -> Result<(), GrapevineCLIError> {
+pub async fn prove_all_available() -> Result<String, GrapevineCLIError> {
+    /// GETTING
     // get account
-    let account = get_account()?;
+    let mut account = get_account()?;
     // get available proofs
-    let url = format!(
-        "{}/proof/{}/available",
-        crate::SERVER_URL,
-        account.username()
-    );
-    let res = reqwest::get(&url)
-        .await
-        .unwrap()
-        .json::<Vec<String>>()
-        .await
-        .unwrap();
-    // prove each available proof
-    println!("Found {} available proofs", res.len());
-    for oid in res {
-        println!("Proving {}", oid);
-        prove_separation_degree(oid).await.unwrap();
-    }
-    println!("Finished updating available proofs");
-    Ok(())
-}
-
-pub async fn get_available_proofs() -> Result<(), GrapevineCLIError> {
-    // get account
-    let account = get_account()?;
-    // send request
-    println!("Attempting to get proofs");
-    let url = format!(
-        "{}/proof/{}/available",
-        crate::SERVER_URL,
-        account.username()
-    );
-    let res = reqwest::get(&url)
-        .await
-        .unwrap()
-        .json::<Vec<String>>()
-        .await;
+    let res = get_available_proofs_req(&mut account).await;
     // handle result
-    match res {
-        Ok(proofs) => {
-            println!("Available proofs: {:#?}", proofs);
-            Ok(())
-        }
+    let proofs = match res {
+        Ok(proofs) => proofs,
         Err(e) => {
-            println!("Failed to get proofs");
+            println!("Failed to get available proofs");
             return Err(GrapevineCLIError::ServerError(String::from(
                 "Couldn't get available proofs",
             )));
         }
+    };
+    match proofs.len() {
+        0 => {
+            println!();
+            return Ok(format!(
+                "No new degree proofs found for user \"{}\"",
+                account.username()
+            ));
+        }
+        _ => (),
     }
+    /// PROVING
+    // ensure proving artifacts are downloaded
+    artifacts_guard().await.unwrap();
+    let public_params = use_public_params().unwrap();
+    let r1cs = use_r1cs().unwrap();
+    let wc_path = use_wasm().unwrap();
+    for i in 0..proofs.len() {
+        let oid = proofs[i].clone();
+        println!("Proving #{}: {}", i, oid);
+        // get proof and encrypted auth secret
+        let res = get_proof_with_params_req(&mut account, oid.clone()).await;
+        let proving_data = match res {
+            Ok(proving_data) => proving_data,
+            Err(e) => return Err(GrapevineCLIError::from(e)),
+        };
+        // prepare inputs
+        let auth_secret_encrypted = AuthSecretEncrypted {
+            ephemeral_key: proving_data.ephemeral_key,
+            ciphertext: proving_data.ciphertext,
+            username: proving_data.username,
+            recipient: account.pubkey().compress(),
+        };
+        let auth_secret = account.decrypt_auth_secret(auth_secret_encrypted);
+        let mut proof = decompress_proof(&proving_data.proof);
+        let verified =
+            verify_nova_proof(&proof, &public_params, (proving_data.degree * 2) as usize);
+        let previous_output = match verified {
+            Ok(data) => data.0,
+            Err(e) => {
+                println!("Verification Failed");
+                return Err(GrapevineCLIError::DegreeProofVerificationFailed);
+            }
+        };
+        // build nova proof
+        let username_input = vec![auth_secret.username, account.username().clone()];
+        let auth_secret_input = vec![auth_secret.auth_secret, account.auth_secret().clone()];
+        match continue_nova_proof(
+            &username_input,
+            &auth_secret_input,
+            &mut proof,
+            previous_output,
+            wc_path.clone(),
+            &r1cs,
+            &public_params,
+        ) {
+            Ok(_) => (),
+            Err(e) => {
+                println!("Proof continuation failed");
+                return Err(GrapevineCLIError::DegreeProofVerificationFailed);
+            }
+        }
+        let compressed = compress_proof(&proof);
+        // build request body
+        let body = DegreeProofRequest {
+            proof: compressed,
+            // username: account.username().clone(),
+            previous: oid,
+            degree: proving_data.degree + 1,
+        };
+        // handle response from server
+        let res: Result<(), GrapevineServerError> = degree_proof_req(&mut account, body).await;
+        match res {
+            Ok(_) => (),
+            Err(e) => return Err(GrapevineCLIError::from(e)),
+        }
+    }
+    Ok(format!("Success: proved {} new degree proofs", proofs.len()))
+}
+
+pub async fn get_available_proofs() -> Result<(), GrapevineCLIError> {
+    Ok(())
 }
 
 pub async fn get_my_proofs() -> Result<(), GrapevineCLIError> {
@@ -488,15 +517,3 @@ pub fn get_account() -> Result<GrapevineAccount, GrapevineCLIError> {
         }
     }
 }
-
-// #[cfg(test)]
-// mod test {
-
-//     use super::*;
-
-//     #[test]
-//     fn test_wallet() {
-//         let key = make_or_get_key().unwrap();
-//         println!("Key: 0x{}", hex::encode(key.scalar_key().to_bytes_le().1));
-//     }
-// }

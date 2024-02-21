@@ -31,7 +31,7 @@ use std::str::FromStr;
  *             * 404 if user not found
  *             * 500 if db fails or other unknown issue
  */
-#[post("/phrase/create", data = "<data>")]
+#[post("/create", data = "<data>")]
 pub async fn create_phrase(
     user: AuthenticatedUser,
     data: Data<'_>,
@@ -125,7 +125,7 @@ pub async fn create_phrase(
  *             * 404 if user or previous proof not found not found
  *             * 500 if db fails or other unknown issue
  */
-#[post("/phrase/continue", data = "<data>")]
+#[post("/continue", data = "<data>")]
 pub async fn degree_proof(
     user: AuthenticatedUser,
     data: Data<'_>,
@@ -218,20 +218,12 @@ pub async fn degree_proof(
  *         - 404 if user not found
  *         - 500 if db fails or other unknown issue
  */
-#[get("/proof/available")]
+#[get("/available")]
 pub async fn get_available_proofs(
     user: AuthenticatedUser,
     db: &State<GrapevineDB>,
 ) -> Result<Json<Vec<String>>, Status> {
     Ok(Json(db.find_available_degrees(user.0).await))
-}
-
-#[get("/<username>/pipeline-test")]
-pub async fn get_pipeline_test(
-    username: String,
-    db: &State<GrapevineDB>,
-) -> Result<Json<Vec<String>>, Status> {
-    Ok(Json(db.pipeline_test(username).await))
 }
 
 /**
@@ -252,7 +244,7 @@ pub async fn get_pipeline_test(
  *         - 404 if username or proof not found
  *         - 500 if db fails or other unknown issue
  */
-#[get("/proof/<oid>/params")]
+#[get("/params/<oid>")]
 pub async fn get_proof_with_params(
     user: AuthenticatedUser,
     oid: String,

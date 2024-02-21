@@ -34,11 +34,10 @@ enum Commands {
     RegisterAccount(RegisterAccountArgs),
     /// Add yourself as a connection to another Grapevine user
     AddRelationship(AddRelationshipArgs),
-    // /// Create a new phrase (degree 1 proof)
-    // CreatePhrase(CreatePhrase),
-
-    // /// Prove all the the new degrees of separation available
-    // ProveNew,
+    /// Create a new phrase (degree 1 proof)
+    CreatePhrase(CreatePhrase),
+    /// Prove all the the new degrees of separation available
+    ProveNew,
     // /// Print all of your degrees of separation
     // GetDegrees,
     // /// Manually prove a degree of separation
@@ -81,10 +80,11 @@ pub async fn main() {
         Commands::RegisterAccount(cmd) => controllers::register(cmd.username.clone()).await,
         Commands::AddRelationship(cmd) => {
             controllers::add_relationship(cmd.username.clone().unwrap()).await
-        } // Commands::CreatePhrase(cmd) => {
-          //     controllers::create_new_phrase(cmd.phrase.clone().unwrap()).await
-          // }
-          // Commands::ProveNew => controllers::prove_all_available().await,
+        }
+        Commands::CreatePhrase(cmd) => {
+            controllers::create_new_phrase(cmd.phrase.clone().unwrap()).await
+        }
+        Commands::ProveNew => controllers::prove_all_available().await,
           // Commands::GetDegrees => controllers::get_my_proofs().await,
 
           // Commands::ProveSeparation(cmd) => {
