@@ -79,10 +79,12 @@ impl<'r> Responder<'r, 'static> for ErrorMessage {
             false => Json(GrapevineServerError::InternalError),
         };
         let mut res = Response::build_from(body.respond_to(req)?);
+
         // optionally add nonce to header
         if self.1.is_some() {
             println!("Nonce: {}", self.1.clone().unwrap());
-            res.raw_header("X-Nonce", self.1.unwrap().to_string()).status(Status::Unauthorized);
+            res.raw_header("X-Nonce", self.1.unwrap().to_string())
+                .status(Status::Unauthorized);
         };
         res.header(ContentType::JSON).ok()
     }

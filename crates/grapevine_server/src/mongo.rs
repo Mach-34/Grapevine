@@ -215,26 +215,6 @@ impl GrapevineDB {
             .map(|x| *x as i32)
             .collect();
 
-        // let query = doc! { "user": user, "phrase_hash":  phrase_hash_bson.clone() };
-        // let update = doc! { "$set": { "inactive": true } };
-        // let projection = doc! { "_id": 1 };
-        // let options = FindOneAndUpdateOptions::builder()
-        //     .projection(projection)
-        //     .build();
-
-        // // If old degree proof exists it will be removed if it is the lowest in the chain, this will then
-        // // be repeated up the chain as long as a proof has no proofs that proceed it. If a proof has proceeding
-        // // proofs then it will simply be marked as inactive
-        // let oid = match self
-        //     .degree_proofs
-        //     .find_one_and_update(query, update, Some(options))
-        //     .await
-        //     .unwrap()
-        // {
-        //     Some(document) => document.id,
-        //     None => None,
-        // };
-
         let mut proof_chain: Vec<DegreeProof> = vec![];
         // fetch all proofs preceding this one
         let mut cursor = self
@@ -372,29 +352,6 @@ impl GrapevineDB {
             .update_one(update_filter, update, None)
             .await
             .expect("Error updating degree proof");
-        // for i in 0..proof_chain.len() - 1 {
-        //     // Base proof will always be marked as inactive
-        //     let inactive = proof_chain[i].inactive.unwrap() || i == 0;
-
-        //     let proceeding = proof_chain[i].proceeding.clone();
-
-        //     // Check if proof can be deleted
-        //     let can_delete =
-        //         (!proceeding.is_some() || proceeding.clone().unwrap().is_empty()) && inactive;
-
-        //     if can_delete {
-        //         delete_entities.push(proof_chain[i].id.unwrap());
-        //         // If proof is deleted then remove it from proceeding array in next proof
-        //         let pos = proo
-        //             .iter()
-        //             .position(|&doc| doc == proof_chain[i].id.unwrap());
-        //         update_entities.push((Some(inactive), proceeding));
-        //         proof_chain[i].id.unwrap()
-        //     } else {
-        //         // @todo: Can we tweak this? update entities will always be inactive except in first case
-        //         update_entities.push((Some(inactive), proceeding));
-        //     }
-        // }
 
         // create new proof document
         let proof_oid = self

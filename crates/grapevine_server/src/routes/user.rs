@@ -162,16 +162,8 @@ pub async fn add_relationship(
             None,
         )));
     }
-    // ensure user exists
-    let sender = match db.get_user(&user.0).await {
-        Some(user) => user.id.unwrap(),
-        None => {
-            return Err(GrapevineResponse::NotFound(format!(
-                "Sending user {} not found",
-                user.0
-            )));
-        }
-    };
+
+    let sender = db.get_user(&user.0).await.unwrap();
     // would be nice to have a zk proof of correct encryption to recipient...
     let recipient = match db.get_user(&request.to).await {
         Some(user) => user.id.unwrap(),
@@ -185,7 +177,7 @@ pub async fn add_relationship(
     // add relationship doc and push to recipient array
     let relationship_doc = Relationship {
         id: None,
-        sender: Some(sender),
+        sender: Some(sender.id.unwrap()),
         recipient: Some(recipient),
         ephemeral_key: Some(request.ephemeral_key.clone()),
         ciphertext: Some(request.ciphertext.clone()),
@@ -232,9 +224,11 @@ pub async fn get_nonce(
     // get pubkey & nonce for user
     let (nonce, pubkey) = match db.get_nonce(&request.username).await {
         Some((nonce, pubkey)) => (nonce, pubkey),
-        None => return Err(GrapevineResponse::NotFound(String::from(
-            "User not does not exist.",
-        ))),
+        None => {
+            return Err(GrapevineResponse::NotFound(String::from(
+                "User not does not exist.",
+            )))
+        }
     };
     // check the validity of the signature over the username
     let message = BigInt::from_bytes_le(

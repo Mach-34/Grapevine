@@ -36,11 +36,12 @@ pub async fn create_phrase(
     user: AuthenticatedUser,
     data: Data<'_>,
     db: &State<GrapevineDB>,
-) -> Result<Status, GrapevineResponse> {
+) -> Result<GrapevineResponse, GrapevineResponse> {
     // stream in data
     // todo: implement FromData trait on NewPhraseRequest
     let mut buffer = Vec::new();
     let mut stream = data.open(2.mebibytes()); // Adjust size limit as needed
+                                               // @TODO: Stream in excess of 2 megabytes not actually throwing error
     if let Err(e) = stream.read_to_end(&mut buffer).await {
         println!("Error reading request body: {:?}", e);
         return Err(GrapevineResponse::TooLarge(
@@ -62,6 +63,7 @@ pub async fn create_phrase(
             )));
         }
     };
+    // @TODO: No decompression error set up in case invalid proof
     let decompressed_proof = decompress_proof(&request.proof);
     // verify the proof
     let verify_res = verify_nova_proof(&decompressed_proof, &*PUBLIC_PARAMS, 2);
@@ -80,7 +82,6 @@ pub async fn create_phrase(
             )));
         }
     };
-    println!("User: {:?}", user);
     // get user doc
     let user = db.get_user(&user.0).await.unwrap();
     // build DegreeProof model
@@ -97,7 +98,9 @@ pub async fn create_phrase(
     };
 
     match db.add_proof(&user.id.unwrap(), &proof_doc).await {
-        Ok(_) => Ok(Status::Created),
+        Ok(_) => Ok(GrapevineResponse::Created(
+            "Phrase successfully created".to_string(),
+        )),
         Err(e) => {
             println!("Error adding proof: {:?}", e);
             Err(GrapevineResponse::InternalError(ErrorMessage(
