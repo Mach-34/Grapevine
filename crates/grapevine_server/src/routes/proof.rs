@@ -144,7 +144,7 @@ pub async fn degree_proof(
     }
     let request = match bincode::deserialize::<DegreeProofRequest>(&buffer) {
         Ok(req) => req,
-        Err(e) => {
+        Err(_) => {
             return Err(GrapevineResponse::BadRequest(ErrorMessage(
                 Some(GrapevineServerError::SerdeError(String::from(
                     "DegreeProofRequest",
