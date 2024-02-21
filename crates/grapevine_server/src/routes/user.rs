@@ -168,9 +168,8 @@ pub async fn add_relationship(
     let recipient = match db.get_user(&request.to).await {
         Some(user) => user.id.unwrap(),
         None => {
-            return Err(GrapevineResponse::NotFound(format!(
-                "Target user {} not found",
-                user.0
+            return Err(GrapevineResponse::NotFound(String::from(
+                "Recipient does not exist.".to_string(),
             )));
         }
     };

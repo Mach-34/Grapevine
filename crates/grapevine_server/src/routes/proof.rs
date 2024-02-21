@@ -36,7 +36,7 @@ pub async fn create_phrase(
     user: AuthenticatedUser,
     data: Data<'_>,
     db: &State<GrapevineDB>,
-) -> Result<GrapevineResponse, GrapevineResponse> {
+) -> Result<Status, GrapevineResponse> {
     // stream in data
     // todo: implement FromData trait on NewPhraseRequest
     let mut buffer = Vec::new();
@@ -63,7 +63,7 @@ pub async fn create_phrase(
             )));
         }
     };
-    // @TODO: No decompression error set up in case invalid proof
+    // @TODO: No decompression error set up in case invalid
     let decompressed_proof = decompress_proof(&request.proof);
     // verify the proof
     let verify_res = verify_nova_proof(&decompressed_proof, &*PUBLIC_PARAMS, 2);
@@ -98,9 +98,7 @@ pub async fn create_phrase(
     };
 
     match db.add_proof(&user.id.unwrap(), &proof_doc).await {
-        Ok(_) => Ok(GrapevineResponse::Created(
-            "Phrase successfully created".to_string(),
-        )),
+        Ok(_) => Ok(Status::Created),
         Err(e) => {
             println!("Error adding proof: {:?}", e);
             Err(GrapevineResponse::InternalError(ErrorMessage(
@@ -222,20 +220,12 @@ pub async fn degree_proof(
  *         - 404 if user not found
  *         - 500 if db fails or other unknown issue
  */
-#[get("/proof/available")]
+#[get("/available")]
 pub async fn get_available_proofs(
     user: AuthenticatedUser,
     db: &State<GrapevineDB>,
 ) -> Result<Json<Vec<String>>, Status> {
     Ok(Json(db.find_available_degrees(user.0).await))
-}
-
-#[get("/<username>/pipeline-test")]
-pub async fn get_pipeline_test(
-    username: String,
-    db: &State<GrapevineDB>,
-) -> Result<Json<Vec<String>>, Status> {
-    Ok(Json(db.pipeline_test(username).await))
 }
 
 /**
@@ -256,7 +246,7 @@ pub async fn get_pipeline_test(
  *         - 404 if username or proof not found
  *         - 500 if db fails or other unknown issue
  */
-#[get("/proof/<oid>/params")]
+#[get("/<oid>/params")]
 pub async fn get_proof_with_params(
     user: AuthenticatedUser,
     oid: String,
