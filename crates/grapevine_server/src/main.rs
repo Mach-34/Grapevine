@@ -1,7 +1,7 @@
 #[macro_use]
 extern crate rocket;
 use crate::guards::AuthenticatedUser;
-use catchers::{bad_request, not_found, unauthorized};
+// use catchers::{bad_request, not_found, unauthorized};
 use dotenv::dotenv;
 use lazy_static::lazy_static;
 use mongo::GrapevineDB;
@@ -9,7 +9,6 @@ use mongodb::bson::doc;
 use rocket::fs::{relative, FileServer};
 
 mod catchers;
-mod errors;
 mod guards;
 mod mongo;
 mod routes;
@@ -51,7 +50,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         // mount test methods (TO BE REMOVED)
         .mount("/test", routes![action, health])
         // register request guards
-        .register("/", catchers![bad_request, not_found, unauthorized])
+        // .register("/", catchers![bad_request, not_found, unauthorized])
         .launch()
         .await?;
     Ok(())
@@ -126,8 +125,8 @@ mod test_rocket {
                 // mount test routes
                 .mount("/", routes![action, health])
                 // mount artifact file server
-                .mount("/static", FileServer::from(relative!("static")))
-                .register("/", catchers![bad_request, not_found, unauthorized]);
+                .mount("/static", FileServer::from(relative!("static")));
+                // .register("/", catchers![bad_request, not_found, unauthorized]);
 
             GrapevineTestContext {
                 client: Client::tracked(rocket).await.unwrap(),

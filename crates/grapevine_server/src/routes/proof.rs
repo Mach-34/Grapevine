@@ -1,7 +1,9 @@
+use crate::catchers::ErrorMessage;
 use crate::mongo::GrapevineDB;
 use crate::utils::PUBLIC_PARAMS;
-use crate::{catchers::Response, guards::AuthenticatedUser};
+use crate::{catchers::GrapevineResponse, guards::AuthenticatedUser};
 use grapevine_circuits::{nova::verify_nova_proof, utils::decompress_proof};
+use grapevine_common::errors::GrapevineServerError;
 use grapevine_common::{
     http::requests::{DegreeProofRequest, NewPhraseRequest},
     models::proof::{DegreeProof, ProvingData},
@@ -12,7 +14,7 @@ use rocket::{
 };
 use std::str::FromStr;
 
-/// POST REQUESTS ///
+// /// POST REQUESTS ///
 
 /**
  * Create a new phrase and (a degree 1 proof) and add it to the database
@@ -34,14 +36,14 @@ pub async fn create_phrase(
     user: AuthenticatedUser,
     data: Data<'_>,
     db: &State<GrapevineDB>,
-) -> Result<Status, Response> {
+) -> Result<Status, GrapevineResponse> {
     // stream in data
     // todo: implement FromData trait on NewPhraseRequest
     let mut buffer = Vec::new();
     let mut stream = data.open(2.mebibytes()); // Adjust size limit as needed
     if let Err(e) = stream.read_to_end(&mut buffer).await {
         println!("Error reading request body: {:?}", e);
-        return Err(Response::TooLarge(
+        return Err(GrapevineResponse::TooLarge(
             "Request body execeeds 2 MiB".to_string(),
         ));
     }
@@ -52,8 +54,11 @@ pub async fn create_phrase(
                 "Error deserializing body from binary to NewPhraseRequest: {:?}",
                 e
             );
-            return Err(Response::BadRequest(String::from(
-                "Error deserializing body from binary to NewPhraseRequest",
+            return Err(GrapevineResponse::BadRequest(ErrorMessage(
+                Some(GrapevineServerError::SerdeError(String::from(
+                    "NewPhraseRequest",
+                ))),
+                None,
             )));
         }
     };
@@ -69,7 +74,10 @@ pub async fn create_phrase(
         }
         Err(e) => {
             println!("Proof verification failed: {:?}", e);
-            return Err(Response::BadRequest(String::from("Failed to verify proof")));
+            return Err(GrapevineResponse::BadRequest(ErrorMessage(
+                Some(GrapevineServerError::DegreeProofVerificationFailed),
+                None,
+            )));
         }
     };
     println!("User: {:?}", user);
@@ -92,8 +100,11 @@ pub async fn create_phrase(
         Ok(_) => Ok(Status::Created),
         Err(e) => {
             println!("Error adding proof: {:?}", e);
-            Err(Response::InternalError(String::from(
-                "Failed to add proof to db",
+            Err(GrapevineResponse::InternalError(ErrorMessage(
+                Some(GrapevineServerError::MongoError(String::from(
+                    "Failed to add proof to db",
+                ))),
+                None,
             )))
         }
     }
@@ -120,21 +131,24 @@ pub async fn degree_proof(
     user: AuthenticatedUser,
     data: Data<'_>,
     db: &State<GrapevineDB>,
-) -> Result<Status, Response> {
+) -> Result<Status, GrapevineResponse> {
     // stream in data
-    // todo: implement FromData trait on NewPhraseRequest
+    // todo: implement FromData trait on DegreeProofRequest
     let mut buffer = Vec::new();
     let mut stream = data.open(2.mebibytes()); // Adjust size limit as needed
     if let Err(_) = stream.read_to_end(&mut buffer).await {
-        return Err(Response::TooLarge(
+        return Err(GrapevineResponse::TooLarge(
             "Request body execeeds 2 MiB".to_string(),
         ));
     }
     let request = match bincode::deserialize::<DegreeProofRequest>(&buffer) {
         Ok(req) => req,
         Err(e) => {
-            return Err(Response::BadRequest(String::from(
-                "Error deserializing body from binary to DegreeProofRequest",
+            return Err(GrapevineResponse::BadRequest(ErrorMessage(
+                Some(GrapevineServerError::SerdeError(String::from(
+                    "DegreeProofRequest",
+                ))),
+                None,
             )))
         }
     };
@@ -153,7 +167,10 @@ pub async fn degree_proof(
         }
         Err(e) => {
             println!("Proof verification failed: {:?}", e);
-            return Err(Response::BadRequest(String::from("Failed to verify proof")));
+            return Err(GrapevineResponse::BadRequest(ErrorMessage(
+                Some(GrapevineServerError::DegreeProofVerificationFailed),
+                None,
+            )));
         }
     };
     // get user doc
@@ -177,8 +194,11 @@ pub async fn degree_proof(
         Ok(_) => Ok(Status::Created),
         Err(e) => {
             println!("Error adding proof: {:?}", e);
-            Err(Response::InternalError(String::from(
-                "Failed to add proof to db",
+            Err(GrapevineResponse::InternalError(ErrorMessage(
+                Some(GrapevineServerError::MongoError(String::from(
+                    "Failed to add proof to db",
+                ))),
+                None,
             )))
         }
     }
@@ -238,36 +258,36 @@ pub async fn get_proof_with_params(
     user: AuthenticatedUser,
     oid: String,
     db: &State<GrapevineDB>,
-) -> Result<Json<ProvingData>, Response> {
+) -> Result<Json<ProvingData>, GrapevineResponse> {
     let oid = ObjectId::from_str(&oid).unwrap();
     match db.get_proof_and_data(user.0, oid).await {
         Some(data) => Ok(Json(data)),
-        None => Err(Response::NotFound(format!(
+        None => Err(GrapevineResponse::NotFound(format!(
             "No proof found with oid {}",
             oid
         ))),
     }
 }
 
-// /**
-//  * Return a list of all proofs linked to a given phrase hash
-//  *
-//  *
-//  * @param phrase hash - the hash of the phrase creating the proof chain
-//  * @return - a vector of stringified OIDs of proofs within the given chain
-//  * @return status:
-//  *         - 200 if successful retrieval
-//  *         - 401 if signature mismatch or nonce mismatch
-//  *         - 404 if user not found
-//  *         - 500 if db fails or other unknown issue
-//  */
-// #[get("/chain/<phrase_hash>")]
-// pub async fn get_proof_chain(
-//     phrase_hash: String,
-//     db: &State<GrapevineDB>,
-// ) -> Result<Json<Vec<DegreeProof>>, Status> {
-//     Ok(Json(db.get_proof_chain(&phrase_hash).await))
-// }
+/**
+ * Return a list of all proofs linked to a given phrase hash
+ *
+ *
+ * @param phrase hash - the hash of the phrase creating the proof chain
+ * @return - a vector of stringified OIDs of proofs within the given chain
+ * @return status:
+ *         - 200 if successful retrieval
+ *         - 401 if signature mismatch or nonce mismatch
+ *         - 404 if user not found
+ *         - 500 if db fails or other unknown issue
+ */
+#[get("/chain/<phrase_hash>")]
+pub async fn get_proof_chain(
+    phrase_hash: String,
+    db: &State<GrapevineDB>,
+) -> Result<Json<Vec<DegreeProof>>, Status> {
+    Ok(Json(db.get_proof_chain(&phrase_hash).await))
+}
 
 // /**
 //  * Returns all the information needed to construct a proof of degree of separation from a given user

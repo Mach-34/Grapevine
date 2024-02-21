@@ -5,8 +5,31 @@ use nova_scotia::FileLocation;
 use std::env::{var, VarError};
 use std::fs::write;
 use std::path::{Path, PathBuf};
-
+use lazy_static::lazy_static;
+use crate::errors::GrapevineCLIError;
 use crate::SERVER_URL;
+
+lazy_static! {
+    pub static ref ACCOUNT_PATH: PathBuf = get_account_path().unwrap();
+}
+
+/**
+ * Gets the path to the grapevine account file
+ *
+ * @returns {PathBuf} path to the grapevine account file   
+ */
+pub fn get_account_path() -> Result<PathBuf, GrapevineCLIError> {
+    // get grapevine path
+    let grapevine_dir_path = match std::env::var("HOME") {
+        Ok(home) => Path::new(&home).join(".grapevine"),
+        Err(e) => {
+            return Err(GrapevineCLIError::FsError(String::from(
+                "Couldn't find home directory??",
+            )))
+        }
+    };
+    Ok(grapevine_dir_path.join("grapevine.key"))
+}
 
 pub fn use_public_params() -> Result<Params, Box<dyn std::error::Error>> {
     // get the path to grapevine (will create if it does not exist)
