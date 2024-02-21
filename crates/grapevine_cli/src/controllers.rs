@@ -1,11 +1,13 @@
 use crate::errors::GrapevineCLIError;
+use crate::http::{add_relationship_req, create_user_req, get_pubkey_req, get_nonce_req};
 use crate::utils::artifacts_guard;
-use crate::utils::fs::{use_public_params, use_r1cs, use_wasm};
+use crate::utils::fs::{use_public_params, use_r1cs, use_wasm, ACCOUNT_PATH};
 use babyjubjub_rs::{decompress_point, PrivateKey};
 use grapevine_circuits::nova::{continue_nova_proof, nova_proof, verify_nova_proof};
 use grapevine_circuits::utils::{compress_proof, decompress_proof};
 use grapevine_common::account::GrapevineAccount;
 use grapevine_common::auth_secret::AuthSecretEncrypted;
+use grapevine_common::errors::GrapevineServerError;
 use grapevine_common::http::requests::{
     CreateUserRequest, DegreeProofRequest, NewPhraseRequest, NewRelationshipRequest,
     TestProofCompressionRequest,
@@ -17,36 +19,55 @@ use grapevine_common::utils::random_fr;
 use std::path::Path;
 
 /**
+ * Get the details of the current account
+ */
+pub fn account_details() -> Result<String, GrapevineCLIError> {
+    // get account
+    let account = match get_account() {
+        Ok(account) => account,
+        Err(e) => return Err(e),
+    };
+    let auth_secret = hex::encode(account.auth_secret().to_bytes());
+    let pk = hex::encode(account.private_key_raw());
+    let pubkey = hex::encode(account.pubkey().compress());
+    let res = format!(
+        "Username: {}\nAuth secret: 0x{}\nPrivate key: 0x{}\nPublic key: 0x{}",
+        account.username(),
+        auth_secret,
+        pk,
+        pubkey
+    );
+    Ok(res)
+}
+
+/**
  * Register a new user on Grapevine
  *
  * @param username - the username to register
  */
-pub async fn register(username: String) -> Result<(), GrapevineCLIError> {
-    // make account
+pub async fn register(username: Option<String>) -> Result<String, GrapevineCLIError> {
+    // check that username is provided
+    let username = match username {
+        Some(username) => username,
+        None => return Err(GrapevineCLIError::NoInput(String::from("username"))),
+    };
+    // check username is < 30 chars
+    if username.len() > 30 {
+        return Err(GrapevineCLIError::UsernameTooLong(username));
+    }
+    // check username is ascii
+    if !username.is_ascii() {
+        return Err(GrapevineCLIError::UsernameNotAscii(username));
+    }
+    // make account (or retrieve from fs)
     let account = make_or_get_account(username.clone())?;
-    // sign the username
-    let signature = account.sign_username();
     // build request body
     let body = account.create_user_request();
     // send create user request
-    let url = format!("{}/user/create", crate::SERVER_URL);
-    let client = reqwest::Client::new();
-    let res = client.post(&url).json(&body).send().await.unwrap();
-    // handle response from server
-    match res.status() {
-        reqwest::StatusCode::CREATED => {
-            println!("Registered user {}", username);
-            Ok(())
-        }
-        reqwest::StatusCode::BAD_REQUEST => {
-            println!("Error: username {} already exists", username);
-            Ok(())
-        }
-        _ => {
-            let text = res.status().to_string();
-            println!("Error: {}", text);
-            Err(GrapevineCLIError::ServerError(text))
-        }
+    let res = create_user_req(body).await;
+    match res {
+        Ok(_) => Ok(format!("Success: registered account for \"{}\"", username)),
+        Err(e) => Err(GrapevineCLIError::from(e)),
     }
 }
 
@@ -55,115 +76,118 @@ pub async fn register(username: String) -> Result<(), GrapevineCLIError> {
  *
  * @param username - the username of the user to add a connection to
  */
-pub async fn add_relationship(username: String) -> Result<(), GrapevineCLIError> {
+pub async fn add_relationship(username: String) -> Result<String, GrapevineCLIError> {
     // get own account
-    let account = get_account()?;
+    let mut account = get_account()?;
     // get pubkey for recipient
-    let url = format!("{}/user/{}/pubkey", crate::SERVER_URL, username);
-    let pubkey = match reqwest::get(&url).await.unwrap().text().await {
-        Ok(pubkey) => decompress_point(hex::decode(pubkey).unwrap().try_into().unwrap()).unwrap(),
-        Err(e) => {
-            return Err(GrapevineCLIError::ServerError(format!(
-                "Couldn't get pubkey for user {}",
-                username
-            )))
-        }
+    let pubkey = match get_pubkey_req(username.clone()).await {
+        Ok(pubkey) => pubkey,
+        Err(e) => return Err(GrapevineCLIError::from(e)),
     };
-    // encrypt auth secret with recipient's pubkey
-    let encrypted_auth_secret = account.encrypt_auth_secret(pubkey);
-    // build relationship request body
-    let body = NewRelationshipRequest {
-        // from: account.username().clone(),
-        to: username.clone(),
-        ephemeral_key: encrypted_auth_secret.ephemeral_key,
-        ciphertext: encrypted_auth_secret.ciphertext,
+    // build relationship request body with encrypted auth secret payload
+    let body = account.new_relationship_request(&username, &pubkey);
+    // send add relationship request
+    let res = add_relationship_req(&mut account, body).await;
+    match res {
+        Ok(_) => Ok(format!(
+            "Success: added this account as a relationship for \"{}\"",
+            &username
+        )),
+        Err(e) => Err(GrapevineCLIError::from(e)),
+    }
+}
+
+/**
+ * Retrieve the current nonce for the account and synchronize it with the locally stored account
+ */
+pub async fn synchronize_nonce() -> Result<String, GrapevineCLIError> {
+    // get the account
+    let mut account = get_account()?;
+    // build nonce request body
+    let body = account.get_nonce_request();
+    // send nonce request
+    let res = get_nonce_req(body).await;
+    let expected_nonce = match res {
+        Ok(nonce) => nonce,
+        Err(e) => return Err(GrapevineCLIError::from(e)),
     };
-    // send request
-    let url = format!("{}/user/relationship", crate::SERVER_URL);
-    let client = reqwest::Client::new();
-    let res = client.post(&url).json(&body).send().await.unwrap();
-    // handle response from server
-    match res.status() {
-        reqwest::StatusCode::CREATED => {
-            println!("Added relationship with {}", username);
-            Ok(())
-        }
-        _ => {
-            let text = res.status().to_string();
-            println!("Error: {}", text);
-            Err(GrapevineCLIError::ServerError(text))
+    match expected_nonce == account.nonce() {
+        true => Ok(format!("Nonce is already synchronized at \"{}\"", expected_nonce)),
+        false => {
+            let msg = format!(
+                "Local nonce of \"{}\" synchronized to \"{}\" from server",
+                account.nonce(),
+                expected_nonce
+            );
+            account.set_nonce(expected_nonce, Some((&**ACCOUNT_PATH).to_path_buf())).unwrap();
+            Ok(msg)
         }
     }
 }
 
-pub async fn create_new_phrase(phrase: String) -> Result<(), GrapevineCLIError> {
-    // ensure artifacts are present
-    artifacts_guard().await.unwrap();
-    // get account
-    let account = get_account()?;
-    // get proving artifacts
-    let params = use_public_params().unwrap();
-    let r1cs = use_r1cs().unwrap();
-    let wc_path = use_wasm().unwrap();
-    // check phrase length
-    if phrase.len() > 180 {
-        return Err(GrapevineCLIError::PhraseTooLong);
-    }
-    // @todo: check if phrase is ascii
-    // get proof inputs
-    let username = vec![account.username().clone()];
-    let auth_secret = vec![account.auth_secret().clone()];
-    // create proof
-    // println!("Auth Secret: {:?}", auth_secret_input[0].to_bytes);
-    let res = nova_proof(wc_path, &r1cs, &params, &phrase, &username, &auth_secret);
-    let proof = match res {
-        Ok(proof) => proof,
-        Err(e) => {
-            return Err(GrapevineCLIError::PhraseCreationProofFailed(phrase));
-        }
-    };
-    // verify the correctness of the folding proof DO THIS ON SERVER SIDE
-    // let res = verify_nova_proof(&proof, &params, 2);
-    // let (phrase_hash, auth_has) = match res {
-    //     Ok(data) => {
-    //         let phrase_hash = data.0[1].to_bytes();
-    //         let auth_hash = data.0[2].to_bytes();
-    //         (phrase_hash, auth_hash)
-    //     },
-    //     Err(e) => {
-    //         println!("Verification Failed");
-    //         return Err(GrapevineCLIError::PhraseCreationProofFailed(phrase));
-    //     }
-    // };
-    // println!("Phrase hash: {:?}", phrase_hash);
-    // println!("Auth hash: {:?}", auth_has);
-    // compress the proof
-    let compressed = compress_proof(&proof);
+/**
+ * Create a new phrase and post the proof
+ * 
+ * @param phrase - the phrase to create
+ */
+// pub async fn create_new_phrase(phrase: String) -> Result<String, GrapevineCLIError> {
+//     // check that phrase is > 180 chars
+//     if phrase.len() > 180 {
+//         return Err(GrapevineCLIError::PhraseTooLong);
+//     }
+//     // ensure artifacts are present
+//     artifacts_guard().await.unwrap();
+//     // get account
+//     let account = get_account()?;
+//     // get proving artifacts
+//     let params = use_public_params().unwrap();
+//     let r1cs = use_r1cs().unwrap();
+//     let wc_path = use_wasm().unwrap();
+//     // check phrase length
+//     if phrase.len() > 180 {
+//         return Err(GrapevineCLIError::PhraseTooLong);
+//     }
+//     // @todo: check if phrase is ascii
+//     // get proof inputs
+//     let username = vec![account.username().clone()];
+//     let auth_secret = vec![account.auth_secret().clone()];
+//     // create proof
+//     // println!("Auth Secret: {:?}", auth_secret_input[0].to_bytes);
+//     let res = nova_proof(wc_path, &r1cs, &params, &phrase, &username, &auth_secret);
+//     let proof = match res {
+//         Ok(proof) => proof,
+//         Err(e) => {
+//             return Err(GrapevineCLIError::PhraseCreationProofFailed(phrase));
+//         }
+//     };
+//     let compressed = compress_proof(&proof);
 
-    // build request body
-    let body = NewPhraseRequest {
-        proof: compressed,
-        // username: account.username().clone(),
-    };
-    let serialized: Vec<u8> = bincode::serialize(&body).unwrap();
+//     // build request body
+//     let body = NewPhraseRequest {
+//         proof: compressed,
+//     };
+//     let serialized: Vec<u8> = bincode::serialize(&body).unwrap();
 
-    // send request
-    let url = format!("{}/phrase/create", crate::SERVER_URL);
-    let client = reqwest::Client::new();
-    let res = client.post(&url).body(serialized).send().await.unwrap();
-    // handle response from server
-    match res.status() {
-        reqwest::StatusCode::CREATED => {
-            println!("Created new phrase");
-            Ok(())
-        }
-        _ => {
-            let text = res.status().to_string();
-            println!("Error: {}", text);
-            Err(GrapevineCLIError::ServerError(text))
-        }
-    }
-}
+//     // send request
+//     let url = format!("{}/phrase/create", crate::SERVER_URL);
+//     let client = reqwest::Client::new();
+//     let res = client.post(&url).body(serialized).send().await.unwrap();
+//     // handle response from server
+//     match res.status() {
+//         reqwest::StatusCode::CREATED => {
+//             println!("Created new phrase");
+//             Ok(())
+//         }
+//         _ => {
+//             let text = res.status().to_string();
+//             println!("Error: {}", text);
+//             Err(GrapevineCLIError::ServerError(text))
+//         }
+//     }
+// }
+
+
+
 
 // DEV: Remove later
 
@@ -354,19 +378,6 @@ pub async fn get_my_proofs() -> Result<(), GrapevineCLIError> {
     Ok(())
 }
 
-pub fn account_details() -> Result<(), GrapevineCLIError> {
-    // get account
-    let account = get_account().unwrap();
-    let auth_secret = hex::encode(account.auth_secret().to_bytes());
-    let pk = hex::encode(account.private_key_raw());
-    let pubkey = hex::encode(account.pubkey().compress());
-    println!("Username: {}", account.username());
-    println!("Auth Secret: {}", auth_secret);
-    println!("Private Key: {}", pk);
-    println!("Pubkey: {}", pubkey);
-    Ok(())
-}
-
 pub fn get_account_info() {
     // @TODO: pass info in
     // get grapevine path
@@ -435,12 +446,11 @@ pub fn make_or_get_account(username: String) -> Result<GrapevineAccount, Grapevi
             account
         }
     };
-    get_account_info();
+    // get_account_info();
     Ok(account)
 }
 
-
-pub async fn health() -> Result<(), GrapevineCLIError> {
+pub async fn health() -> Result<String, GrapevineCLIError> {
     // ensure artifacts exist
     artifacts_guard().await.unwrap();
     // get health status
@@ -450,8 +460,7 @@ pub async fn health() -> Result<(), GrapevineCLIError> {
         .text()
         .await
         .unwrap();
-    println!("Health: {}", text);
-    return Ok(());
+    return Ok("Health check passed".to_string());
 }
 
 /**
@@ -479,7 +488,6 @@ pub fn get_account() -> Result<GrapevineAccount, GrapevineCLIError> {
         }
     }
 }
-
 
 // #[cfg(test)]
 // mod test {

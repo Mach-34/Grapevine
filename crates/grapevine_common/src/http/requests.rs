@@ -10,6 +10,13 @@ pub struct CreateUserRequest {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct NewPhraseRequest {
     pub proof: Vec<u8>,
+
+}
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct GetNonceRequest {
+    pub username: String,
+    #[serde(with = "serde_bytes")]
+    pub signature: [u8; 64],
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]

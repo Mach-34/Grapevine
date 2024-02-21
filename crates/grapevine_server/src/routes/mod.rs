@@ -8,6 +8,7 @@ lazy_static! {
         user::create_user,
         user::add_relationship,
         user::get_user,
+        user::get_nonce,
         user::get_pubkey,
         user::get_all_degrees
     ];
@@ -15,7 +16,7 @@ lazy_static! {
         proof::create_phrase,
         proof::degree_proof,
         proof::get_available_proofs,
-        // proof::get_proof_chain,
+        proof::get_proof_chain,
         proof::get_proof_with_params,
         proof::get_pipeline_test
     ];

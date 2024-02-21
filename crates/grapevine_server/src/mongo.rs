@@ -1,17 +1,11 @@
-use crate::errors::GrapevineServerError;
 use crate::{DATABASE_NAME, MONGODB_URI};
 use futures::stream::StreamExt;
-
-use futures::TryStreamExt;
-use grapevine_common::auth_secret::AuthSecretEncrypted;
+use grapevine_common::errors::GrapevineServerError;
 use grapevine_common::http::responses::DegreeData;
 use grapevine_common::models::proof::ProvingData;
 use grapevine_common::models::{proof::DegreeProof, relationship::Relationship, user::User};
 use mongodb::bson::{self, doc, oid::ObjectId, Binary};
-use mongodb::options::{
-    AggregateOptions, ClientOptions, DeleteOptions, FindOneAndDeleteOptions,
-    FindOneAndUpdateOptions, FindOneOptions, FindOptions, ServerApi, ServerApiVersion,
-};
+use mongodb::options::{ClientOptions, FindOneOptions, FindOptions, ServerApi, ServerApiVersion};
 use mongodb::{Client, Collection};
 
 pub struct GrapevineDB {
@@ -101,7 +95,7 @@ impl GrapevineDB {
                 { "pubkey": pubkey_binary }
             ]
         };
-        let projection = doc! { "username": 1 };
+        let projection = doc! { "username": 1, "pubkey": 1 };
         let find_options = FindOptions::builder().projection(projection).build();
         let mut cursor = self.users.find(query, Some(find_options)).await.unwrap();
         let mut found = [false; 2];
@@ -117,10 +111,12 @@ impl GrapevineDB {
                         found[1] = true;
                     }
                 }
-                Err(e) => return Err(GrapevineServerError::MongoError(String::from("todo"))),
+                Err(e) => {
+                    println!("Error: {}", e);
+                    return Err(GrapevineServerError::MongoError(String::from("todo")));
+                }
             }
         }
-
         Ok(found)
     }
 

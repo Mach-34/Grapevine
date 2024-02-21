@@ -1314,6 +1314,7 @@ dependencies = [
  "grapevine_circuits",
  "grapevine_common",
  "hex",
+ "lazy_static",
  "nova-scotia",
  "nova-snark",
  "num-bigint 0.4.4",
