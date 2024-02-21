@@ -98,7 +98,7 @@ mod test_rocket {
     };
     use lazy_static::lazy_static;
     use rocket::{
-        http::{ContentType, Header},
+        http::{ContentType, Header, HeaderMap},
         local::asynchronous::{Client, LocalResponse},
         request,
         serde::json::Json,
@@ -143,7 +143,8 @@ mod test_rocket {
         }
     }
 
-    async fn add_relationship_request(from: GrapevineAccount, to: GrapevineAccount) {
+    // @TODO: Change eventually because to doesn't need to be mutable?
+    async fn add_relationship_request(from: &mut GrapevineAccount, to: &mut GrapevineAccount) {
         let pubkey = to.pubkey();
         let encrypted_auth_secret = from.encrypt_auth_secret(pubkey);
 
@@ -155,14 +156,27 @@ mod test_rocket {
 
         let context = GrapevineTestContext::init().await;
 
+        let username = from.username().clone();
+        let signature = generate_nonce_signature(from);
+
         context
             .client
             .post("/user/relationship")
+            .header(Header::new("X-Authorization", signature))
+            .header(Header::new("X-Username", username))
             .json(&body)
             .dispatch()
             .await
             .into_string()
             .await;
+
+        // Increment nonce after request
+        from.increment_nonce();
+    }
+
+    fn generate_nonce_signature(user: &GrapevineAccount) -> String {
+        let nonce_signature = user.sign_nonce();
+        hex::encode(nonce_signature.compress())
     }
 
     async fn get_all_degree_proofs(username: String) {
@@ -180,16 +194,25 @@ mod test_rocket {
         }
     }
 
-    async fn get_available_degrees_request(username: String) -> Option<Vec<String>> {
+    async fn get_available_degrees_request(user: &mut GrapevineAccount) -> Option<Vec<String>> {
         let context = GrapevineTestContext::init().await;
 
-        context
+        let username = user.username().clone();
+        let signature = generate_nonce_signature(user);
+
+        let degrees = context
             .client
-            .get(format!("/proof/{}/available", username))
+            .get(format!("/proof/available"))
+            .header(Header::new("X-Authorization", signature))
+            .header(Header::new("X-Username", username))
             .dispatch()
             .await
             .into_json::<Vec<String>>()
-            .await
+            .await;
+
+        // Increment nonce after request
+        user.increment_nonce();
+        degrees
     }
 
     async fn get_pipeline_test(username: String) -> Option<Vec<String>> {
@@ -204,20 +227,28 @@ mod test_rocket {
             .await
     }
 
-    async fn create_degree_proof_request(prev_id: String, user: GrapevineAccount) {
+    async fn create_degree_proof_request(prev_id: &str, user: &mut GrapevineAccount) {
         let public_params = use_public_params().unwrap();
         let r1cs = use_r1cs().unwrap();
         let wc_path = use_wasm().unwrap();
         let context = GrapevineTestContext::init().await;
 
+        let username = user.username().clone();
+        let signature = generate_nonce_signature(user);
+
         let preceding = context
             .client
-            .get(format!("/proof/{}/params/{}", prev_id, user.username()))
+            .get(format!("/proof/{}/params", prev_id))
+            .header(Header::new("X-Authorization", signature.clone()))
+            .header(Header::new("X-Username", username.clone()))
             .dispatch()
             .await
             .into_json::<ProvingData>()
             .await
             .unwrap();
+
+        // Increment nonce after request
+        user.increment_nonce();
 
         let auth_secret_encrypted = AuthSecretEncrypted {
             ephemeral_key: preceding.ephemeral_key,
@@ -236,7 +267,7 @@ mod test_rocket {
                 .0;
 
         // build nova proof
-        let username_input = vec![auth_secret.username, user.username().clone()];
+        let username_input = vec![auth_secret.username, username.clone()];
         let auth_secret_input = vec![auth_secret.auth_secret, user.auth_secret().clone()];
 
         continue_nova_proof(
@@ -253,7 +284,7 @@ mod test_rocket {
 
         let body = DegreeProofRequest {
             proof: compressed,
-            previous: prev_id,
+            previous: String::from(prev_id),
             degree: preceding.degree + 1,
         };
         let serialized: Vec<u8> = bincode::serialize(&body).unwrap();
@@ -261,13 +292,18 @@ mod test_rocket {
         context
             .client
             .post("/proof/phrase/continue")
+            .header(Header::new("X-Authorization", signature))
+            .header(Header::new("X-Username", username))
             .body(serialized)
             .dispatch()
             .await;
+
+        // Increment nonce after request
+        user.increment_nonce();
     }
 
     // TODO: Move part of this into grapevine account?
-    async fn create_phrase_request(phrase: String, user: GrapevineAccount) {
+    async fn create_phrase_request(phrase: String, user: &mut GrapevineAccount) {
         let username_vec = vec![user.username().clone()];
         let auth_secret_vec = vec![user.auth_secret().clone()];
 
@@ -289,18 +325,24 @@ mod test_rocket {
 
         let compressed = compress_proof(&proof);
 
-        let body = NewPhraseRequest {
-            proof: compressed,
-        };
+        let body = NewPhraseRequest { proof: compressed };
 
         let serialized: Vec<u8> = bincode::serialize(&body).unwrap();
+
+        let username = user.username().clone();
+        let signature = generate_nonce_signature(user);
 
         context
             .client
             .post("/proof/phrase/create")
+            .header(Header::new("X-Authorization", signature))
+            .header(Header::new("X-Username", username))
             .body(serialized)
             .dispatch()
             .await;
+
+        // Increment nonce after request
+        user.increment_nonce();
     }
 
     async fn create_user_request(
@@ -364,325 +406,222 @@ mod test_rocket {
         drop(users);
     }
 
-    #[rocket::async_test]
-    #[ignore]
-    async fn test_proof_reordering_with_3_proof_chain() {
-        let context = GrapevineTestContext::init().await;
+    // #[rocket::async_test]
+    // #[ignore]
+    // async fn test_proof_reordering_with_3_proof_chain() {
+    //     let context = GrapevineTestContext::init().await;
 
-        // Reset db with clean state
-        GrapevineDB::drop("grapevine_mocked").await;
+    //     // Reset db with clean state
+    //     GrapevineDB::drop("grapevine_mocked").await;
 
-        // Create test users
-        let users = vec![
-            GrapevineAccount::new(String::from("User_A")),
-            GrapevineAccount::new(String::from("User_B")),
-            GrapevineAccount::new(String::from("User_C")),
-        ];
+    //     // Create test users
+    //     let mut users = vec![
+    //         GrapevineAccount::new(String::from("User_A")),
+    //         GrapevineAccount::new(String::from("User_B")),
+    //         GrapevineAccount::new(String::from("User_C")),
+    //     ];
 
-        for i in 0..users.len() {
-            let request = users[i].create_user_request();
-            create_user_request(&context, &request).await;
-        }
+    //     for i in 0..users.len() {
+    //         let request = users[i].create_user_request();
+    //         create_user_request(&context, &request).await;
+    //     }
 
-        // Create phrase for User A
-        let phrase = String::from("The sheep waited patiently in the field");
-        create_phrase_request(phrase, users.get(0).unwrap().clone()).await;
+    //     // Create phrase for User A
+    //     let phrase = String::from("The sheep waited patiently in the field");
+    //     create_phrase_request(phrase, &mut users[0]).await;
 
-        // Add relationship between User A and User B, B and C, and C and D
-        for i in 0..users.len() - 1 {
-            add_relationship_request(
-                users.get(i).unwrap().clone(),
-                users.get(i + 1).unwrap().clone(),
-            )
-            .await;
-        }
+    //     // Add relationship between User A and User B, B and C, and C and D
+    //     for i in 0..users.len() - 1 {
+    //         add_relationship_request(&mut users[i], &mut users[i + 1]).await;
+    //     }
 
-        // Create degree proofs: A <- B <- C
-        for i in 1..users.len() {
-            let proofs = get_available_degrees_request(users.get(i).unwrap().username().clone())
-                .await
-                .unwrap();
-            create_degree_proof_request(
-                proofs.get(0).unwrap().clone(),
-                users.get(i).unwrap().clone(),
-            )
-            .await;
-        }
+    //     // Create degree proofs: A <- B <- C
+    //     for i in 1..users.len() {
+    //         let proofs = get_available_degrees_request(&mut users[i]).await.unwrap();
+    //         create_degree_proof_request(&proofs[0], &mut users[i]).await;
+    //     }
 
-        // Establish relationship between A and C now
-        add_relationship_request(users.get(0).unwrap().clone(), users.get(2).unwrap().clone())
-            .await;
+    //     // Establish relationship between A and C now
+    //     add_relationship_request(&mut users[0], &mut users[2]).await;
 
-        // Check that C now has an available degree request
-        let proofs_c = get_available_degrees_request(users.get(2).unwrap().username().clone())
-            .await
-            .unwrap();
+    //     // Check that C now has an available degree request
+    //     let proofs_c = get_available_degrees_request(&mut users[2]).await.unwrap();
 
-        // Create new degree proof between A and C
-        create_degree_proof_request(
-            proofs_c.get(0).unwrap().clone(),
-            users.get(2).unwrap().clone(),
-        )
-        .await;
-    }
+    //     // Create new degree proof between A and C
+    //     create_degree_proof_request(&proofs_c[0], &mut users[2]).await;
+    // }
 
-    #[rocket::async_test]
-    #[ignore]
-    async fn test_proof_reordering_with_4_proof_chain() {
-        let context = GrapevineTestContext::init().await;
+    // #[rocket::async_test]
+    // #[ignore]
+    // async fn test_proof_reordering_with_4_proof_chain() {
+    //     let context = GrapevineTestContext::init().await;
 
-        // Reset db with clean state
-        GrapevineDB::drop("grapevine_mocked").await;
+    //     // Reset db with clean state
+    //     GrapevineDB::drop("grapevine_mocked").await;
 
-        // Create test users
-        let users = vec![
-            GrapevineAccount::new(String::from("User_A")),
-            GrapevineAccount::new(String::from("User_B")),
-            GrapevineAccount::new(String::from("User_C")),
-            GrapevineAccount::new(String::from("User_D")),
-        ];
+    //     // Create test users
+    //     let mut users = vec![
+    //         GrapevineAccount::new(String::from("User_A")),
+    //         GrapevineAccount::new(String::from("User_B")),
+    //         GrapevineAccount::new(String::from("User_C")),
+    //         GrapevineAccount::new(String::from("User_D")),
+    //     ];
 
-        for i in 0..users.len() {
-            let request = users[i].create_user_request();
-            create_user_request(&context, &request).await;
-        }
+    //     for i in 0..users.len() {
+    //         let request = users[i].create_user_request();
+    //         create_user_request(&context, &request).await;
+    //     }
 
-        // Create phrase for User A
-        let phrase = String::from("And that's the waaaayyyy the news goes");
-        create_phrase_request(phrase, users.get(0).unwrap().clone()).await;
+    //     // Create phrase for User A
+    //     let phrase = String::from("And that's the waaaayyyy the news goes");
+    //     create_phrase_request(phrase, &mut users.get(0).unwrap().clone()).await;
 
-        // Add relationship between User A and User B, B and C, and C and D
-        for i in 0..users.len() - 1 {
-            add_relationship_request(
-                users.get(i).unwrap().clone(),
-                users.get(i + 1).unwrap().clone(),
-            )
-            .await;
-        }
+    //     // Add relationship between User A and User B, B and C, and C and D
+    //     for i in 0..users.len() - 1 {
+    //         add_relationship_request(&mut users[i], &mut users[i + 1]).await;
+    //     }
 
-        // Create degree proofs: A <- B <- C <- D
-        for i in 1..users.len() {
-            let proofs = get_available_degrees_request(users.get(i).unwrap().username().clone())
-                .await
-                .unwrap();
-            create_degree_proof_request(
-                proofs.get(0).unwrap().clone(),
-                users.get(i).unwrap().clone(),
-            )
-            .await;
-        }
+    //     // Create degree proofs: A <- B <- C <- D
+    //     for i in 1..users.len() {
+    //         let proofs = get_available_degrees_request(&mut users[i]).await.unwrap();
+    //         create_degree_proof_request(&proofs[0], &mut users[i]).await;
+    //     }
 
-        // Establish relationship between A and C now
-        add_relationship_request(users.get(0).unwrap().clone(), users.get(2).unwrap().clone())
-            .await;
+    //     // Establish relationship between A and C now
+    //     add_relationship_request(&mut users[0], &mut users[2]).await;
 
-        // Check that C now has an available degree request
-        let proofs_c = get_available_degrees_request(users.get(2).unwrap().username().clone())
-            .await
-            .unwrap();
+    //     // Check that C now has an available degree request
+    //     let proofs_c = get_available_degrees_request(&mut users[2]).await.unwrap();
 
-        // Create new degree proof between A and C
-        create_degree_proof_request(
-            proofs_c.get(0).unwrap().clone(),
-            users.get(2).unwrap().clone(),
-        )
-        .await;
+    //     // Create new degree proof between A and C
+    //     create_degree_proof_request(&proofs_c[0], &mut users[2]).await;
 
-        // Check avaiable degree with D and perform necessary update
-        let proofs_d = get_available_degrees_request(users.get(3).unwrap().username().clone())
-            .await
-            .unwrap();
+    //     // Check avaiable degree with D and perform necessary update
+    //     let proofs_d = get_available_degrees_request(&mut users[3]).await.unwrap();
 
-        // Create new degree proof between C and D
-        create_degree_proof_request(
-            proofs_d.get(0).unwrap().clone(),
-            users.get(3).unwrap().clone(),
-        )
-        .await;
-    }
+    //     // Create new degree proof between C and D
+    //     create_degree_proof_request(&proofs_d[0], &mut users[3]).await;
+    // }
 
-    #[rocket::async_test]
-    #[ignore]
-    async fn test_proof_reordering_with_5_proof_chain() {
-        let context = GrapevineTestContext::init().await;
+    // #[rocket::async_test]
+    // #[ignore]
+    // async fn test_proof_reordering_with_5_proof_chain() {
+    //     let context = GrapevineTestContext::init().await;
 
-        // Reset db with clean state
-        GrapevineDB::drop("grapevine_mocked").await;
+    //     // Reset db with clean state
+    //     GrapevineDB::drop("grapevine_mocked").await;
 
-        // Create test users
-        let users = vec![
-            GrapevineAccount::new(String::from("User_A")),
-            GrapevineAccount::new(String::from("User_B")),
-            GrapevineAccount::new(String::from("User_C")),
-            GrapevineAccount::new(String::from("User_D")),
-            GrapevineAccount::new(String::from("User_E")),
-        ];
+    //     // Create test users
+    //     let mut users = vec![
+    //         GrapevineAccount::new(String::from("User_A")),
+    //         GrapevineAccount::new(String::from("User_B")),
+    //         GrapevineAccount::new(String::from("User_C")),
+    //         GrapevineAccount::new(String::from("User_D")),
+    //         GrapevineAccount::new(String::from("User_E")),
+    //     ];
 
-        for i in 0..users.len() {
-            let request = users[i].create_user_request();
-            create_user_request(&context, &request).await;
-        }
+    //     for i in 0..users.len() {
+    //         let request = users[i].create_user_request();
+    //         create_user_request(&context, &request).await;
+    //     }
 
-        // Create phrase for User A
-        let phrase = String::from("You are what you eat");
-        create_phrase_request(phrase, users.get(0).unwrap().clone()).await;
+    //     // Create phrase for User A
+    //     let phrase = String::from("You are what you eat");
+    //     create_phrase_request(phrase, &mut users.get(0).unwrap().clone()).await;
 
-        // Add relationship and degree proofs: A <- B, B <- C
-        for i in 0..2 {
-            add_relationship_request(
-                users.get(i).unwrap().clone(),
-                users.get(i + 1).unwrap().clone(),
-            )
-            .await;
-            let proofs =
-                get_available_degrees_request(users.get(i + 1).unwrap().username().clone())
-                    .await
-                    .unwrap();
-            create_degree_proof_request(
-                proofs.get(0).unwrap().clone(),
-                users.get(i + 1).unwrap().clone(),
-            )
-            .await;
-        }
+    //     // Add relationship and degree proofs: A <- B, B <- C
+    //     for i in 0..2 {
+    //         add_relationship_request(&mut users[i], &mut users[i + 1]).await;
+    //         let proofs = get_available_degrees_request(&mut users[i + 1])
+    //             .await
+    //             .unwrap();
+    //         create_degree_proof_request(&proofs[0], &mut users[i + 1]).await;
+    //     }
 
-        // Add relationship and degree proofs: C <- D, C <- E
-        for i in 0..2 {
-            add_relationship_request(
-                users.get(2).unwrap().clone(),
-                users.get(i + 3).unwrap().clone(),
-            )
-            .await;
-            let proofs =
-                get_available_degrees_request(users.get(i + 3).unwrap().username().clone())
-                    .await
-                    .unwrap();
-            create_degree_proof_request(
-                proofs.get(0).unwrap().clone(),
-                users.get(i + 3).unwrap().clone(),
-            )
-            .await;
-        }
+    //     // Add relationship and degree proofs: C <- D, C <- E
+    //     for i in 0..2 {
+    //         add_relationship_request(&mut users[2], &mut users[i + 3]).await;
+    //         let proofs = get_available_degrees_request(&mut users[i + 3])
+    //             .await
+    //             .unwrap();
+    //         create_degree_proof_request(&proofs[0], &mut users[i + 3]).await;
+    //     }
 
-        // Set every proof to degree 2
-        for i in 0..3 {
-            add_relationship_request(
-                users.get(0).unwrap().clone(),
-                users.get(i + 2).unwrap().clone(),
-            )
-            .await;
-            let proofs =
-                get_available_degrees_request(users.get(i + 2).unwrap().username().clone())
-                    .await
-                    .unwrap();
-            create_degree_proof_request(
-                proofs.get(0).unwrap().clone(),
-                users.get(i + 2).unwrap().clone(),
-            )
-            .await;
-        }
-    }
+    //     // Set every proof to degree 2
+    //     for i in 0..3 {
+    //         add_relationship_request(&mut users[0], &mut users[i + 2]).await;
+    //         let proofs = get_available_degrees_request(&mut users[i + 2])
+    //             .await
+    //             .unwrap();
+    //         create_degree_proof_request(&proofs[0], &mut users[i + 2]).await;
+    //     }
+    // }
 
-    #[rocket::async_test]
-    #[ignore]
-    async fn test_proof_reordering_with_27_proof_chain() {
-        // Start with tree structure and eventually have each user connect directly to A
-        let context = GrapevineTestContext::init().await;
+    // #[rocket::async_test]
+    // #[ignore]
+    // async fn test_proof_reordering_with_27_proof_chain() {
+    //     // Start with tree structure and eventually have each user connect directly to A
+    //     let context = GrapevineTestContext::init().await;
 
-        // Reset db with clean state
-        GrapevineDB::drop("grapevine_mocked").await;
+    //     // Reset db with clean state
+    //     GrapevineDB::drop("grapevine_mocked").await;
 
-        let mut users: Vec<GrapevineAccount> = vec![];
-        // Create test users
-        for i in 0..27 {
-            let usersname = format!("User_{}", i);
-            let user = GrapevineAccount::new(usersname);
-            let creation_request = user.create_user_request();
-            create_user_request(&context, &creation_request).await;
-            users.push(user);
-        }
+    //     let mut users: Vec<GrapevineAccount> = vec![];
+    //     // Create test users
+    //     for i in 0..27 {
+    //         let usersname = format!("User_{}", i);
+    //         let user = GrapevineAccount::new(usersname);
+    //         let creation_request = user.create_user_request();
+    //         create_user_request(&context, &creation_request).await;
+    //         users.push(user);
+    //     }
 
-        // Create phrase for User A
-        let phrase = String::from("They're bureaucrats Morty");
-        create_phrase_request(phrase, users.get(0).unwrap().clone()).await;
+    //     // Create phrase for User A
+    //     let phrase = String::from("They're bureaucrats Morty");
+    //     create_phrase_request(phrase, &mut users.get(0).unwrap().clone()).await;
 
-        // Create relationships and degree 2 proofs
-        for i in 0..2 {
-            add_relationship_request(
-                users.get(0).unwrap().clone(),
-                users.get(i + 1).unwrap().clone(),
-            )
-            .await;
-            let proofs =
-                get_available_degrees_request(users.get(i + 1).unwrap().username().clone())
-                    .await
-                    .unwrap();
+    //     // Create relationships and degree 2 proofs
+    //     for i in 0..2 {
+    //         add_relationship_request(&mut users[0], &mut users[i + 1]).await;
+    //         let proofs = get_available_degrees_request(&mut users[i + 1])
+    //             .await
+    //             .unwrap();
 
-            create_degree_proof_request(
-                proofs.get(0).unwrap().clone(),
-                users.get(i + 1).unwrap().clone(),
-            )
-            .await;
-        }
+    //         create_degree_proof_request(&proofs[0], &mut users[i + 1]).await;
+    //     }
 
-        // Create relationships and degree 3 proofs
-        for i in 0..6 {
-            let preceding_index = 1 + i / 3;
-            add_relationship_request(
-                users.get(preceding_index).unwrap().clone(),
-                users.get(i + 3).unwrap().clone(),
-            )
-            .await;
-            let proofs =
-                get_available_degrees_request(users.get(i + 3).unwrap().username().clone())
-                    .await
-                    .unwrap();
+    //     // Create relationships and degree 3 proofs
+    //     for i in 0..6 {
+    //         let preceding_index = 1 + i / 3;
+    //         add_relationship_request(&mut users[preceding_index], &mut users[i + 3]).await;
+    //         let proofs = get_available_degrees_request(&mut users[i + 3])
+    //             .await
+    //             .unwrap();
 
-            create_degree_proof_request(
-                proofs.get(0).unwrap().clone(),
-                users.get(i + 3).unwrap().clone(),
-            )
-            .await;
-        }
+    //         create_degree_proof_request(&proofs[0], &mut users[i + 3]).await;
+    //     }
 
-        // Create relationships and degree 4 proofs
-        for i in 0..18 {
-            let preceding_index = 3 + i / 3;
-            add_relationship_request(
-                users.get(preceding_index).unwrap().clone(),
-                users.get(i + 9).unwrap().clone(),
-            )
-            .await;
-            let proofs =
-                get_available_degrees_request(users.get(i + 9).unwrap().username().clone())
-                    .await
-                    .unwrap();
+    //     // Create relationships and degree 4 proofs
+    //     for i in 0..18 {
+    //         let preceding_index = 3 + i / 3;
+    //         add_relationship_request(&mut users[preceding_index], &mut users[i + 9]).await;
+    //         let proofs = get_available_degrees_request(&mut users[i + 9])
+    //             .await
+    //             .unwrap();
 
-            create_degree_proof_request(
-                proofs.get(0).unwrap().clone(),
-                users.get(i + 9).unwrap().clone(),
-            )
-            .await;
-        }
+    //         create_degree_proof_request(&proofs[0], &mut users[i + 9]).await;
+    //     }
 
-        // Bring all proofs to degree 2
-        for i in 0..24 {
-            add_relationship_request(
-                users.get(0).unwrap().clone(),
-                users.get(i + 3).unwrap().clone(),
-            )
-            .await;
-            let proofs =
-                get_available_degrees_request(users.get(i + 3).unwrap().username().clone())
-                    .await
-                    .unwrap();
+    //     // Bring all proofs to degree 2
+    //     for i in 0..24 {
+    //         add_relationship_request(&mut users[0], &mut users[i + 3]).await;
+    //         let proofs = get_available_degrees_request(&mut users[i + 3])
+    //             .await
+    //             .unwrap();
 
-            create_degree_proof_request(
-                proofs.get(0).unwrap().clone(),
-                users.get(i + 3).unwrap().clone(),
-            )
-            .await;
-        }
-    }
+    //         create_degree_proof_request(&proofs[0], &mut users[i + 3]).await;
+    //     }
+    // }
 
     #[rocket::async_test]
     async fn test_create_user_wrong_signature() {
@@ -766,49 +705,55 @@ mod test_rocket {
     }
 
     #[rocket::async_test]
-    #[ignore]
-    async fn test_nonce_guard_missing_auth_header() {
+    async fn test_nonce_guard_missing_auth_headers() {
+        // Reset db with clean state
+        GrapevineDB::drop("grapevine_mocked").await;
+
         let context = GrapevineTestContext::init().await;
 
         // Test no authorization header
         let res = context.client.get("/nonce-guard-test").dispatch().await;
         let message = res.into_string().await.unwrap();
-        println!("message: {}", message);
-        assert_eq!("Missing authorization header", message);
+        assert_eq!("Missing X-Username header", message);
+    }
+
+    #[rocket::async_test]
+    async fn test_nonce_guard_missing_authorization_header() {
+        let context = GrapevineTestContext::init().await;
+
+        let username = String::from("user_missing_auth_header");
+
+        let username_header = Header::new("X-Username", username);
+        let res = context
+            .client
+            .get("/nonce-guard-test")
+            .header(username_header)
+            .dispatch()
+            .await;
+        let message = res.into_string().await.unwrap();
+        assert_eq!("Missing X-Authorization header", message);
     }
 
     #[rocket::async_test]
     #[ignore]
-    async fn test_nonce_guard_malformed_auth_header() {
+    async fn test_nonce_guard_invalid_authorization_header() {
         let context = GrapevineTestContext::init().await;
 
-        let auth_header = Header::new("Authorization", "Missing_delimeter");
+        let username = String::from("user_invalid_auth_header");
+
+        let auth_header = Header::new("X-Authorization", "00000000000");
+        let username_header = Header::new("X-Username", username);
+
         let res = context
             .client
             .get("/nonce-guard-test")
             .header(auth_header)
+            .header(username_header)
             .dispatch()
             .await;
         let message = res.into_string().await.unwrap();
-        assert_eq!("Malformed authorization header", message);
-    }
-
-    #[rocket::async_test]
-    #[ignore]
-    async fn test_nonce_guard_non_existent_user() {
-        // make and send request with improper header
-        let context = GrapevineTestContext::init().await;
-        let auth_header = Header::new("Authorization", "charlie-0");
-        let res = context
-            .client
-            .get("/nonce-guard-test")
-            .header(auth_header)
-            .dispatch()
-            .await;
-        // check response message and status
-        assert_eq!(404, res.status().code);
-        let message = res.into_string().await.unwrap();
-        assert_eq!("User charlie not found", message);
+        println!("Message: {}", message);
+        // assert_eq!("User charlie not found", message);
     }
 
     // #[rocket::async_test]

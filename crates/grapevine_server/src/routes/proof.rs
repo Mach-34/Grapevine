@@ -72,6 +72,7 @@ pub async fn create_phrase(
             return Err(Response::BadRequest(String::from("Failed to verify proof")));
         }
     };
+    println!("User: {:?}", user);
     // get user doc
     let user = db.get_user(&user.0).await.unwrap();
     // build DegreeProof model
