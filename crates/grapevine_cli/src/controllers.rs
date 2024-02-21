@@ -125,74 +125,66 @@ pub async fn synchronize_nonce() -> Result<String, GrapevineCLIError> {
     }
 }
 
-pub async fn create_new_phrase(phrase: String) -> Result<(), GrapevineCLIError> {
-    // ensure artifacts are present
-    artifacts_guard().await.unwrap();
-    // get account
-    let account = get_account()?;
-    // get proving artifacts
-    let params = use_public_params().unwrap();
-    let r1cs = use_r1cs().unwrap();
-    let wc_path = use_wasm().unwrap();
-    // check phrase length
-    if phrase.len() > 180 {
-        return Err(GrapevineCLIError::PhraseTooLong);
-    }
-    // @todo: check if phrase is ascii
-    // get proof inputs
-    let username = vec![account.username().clone()];
-    let auth_secret = vec![account.auth_secret().clone()];
-    // create proof
-    // println!("Auth Secret: {:?}", auth_secret_input[0].to_bytes);
-    let res = nova_proof(wc_path, &r1cs, &params, &phrase, &username, &auth_secret);
-    let proof = match res {
-        Ok(proof) => proof,
-        Err(e) => {
-            return Err(GrapevineCLIError::PhraseCreationProofFailed(phrase));
-        }
-    };
-    // verify the correctness of the folding proof DO THIS ON SERVER SIDE
-    // let res = verify_nova_proof(&proof, &params, 2);
-    // let (phrase_hash, auth_has) = match res {
-    //     Ok(data) => {
-    //         let phrase_hash = data.0[1].to_bytes();
-    //         let auth_hash = data.0[2].to_bytes();
-    //         (phrase_hash, auth_hash)
-    //     },
-    //     Err(e) => {
-    //         println!("Verification Failed");
-    //         return Err(GrapevineCLIError::PhraseCreationProofFailed(phrase));
-    //     }
-    // };
-    // println!("Phrase hash: {:?}", phrase_hash);
-    // println!("Auth hash: {:?}", auth_has);
-    // compress the proof
-    let compressed = compress_proof(&proof);
+/**
+ * Create a new phrase and post the proof
+ * 
+ * @param phrase - the phrase to create
+ */
+// pub async fn create_new_phrase(phrase: String) -> Result<String, GrapevineCLIError> {
+//     // check that phrase is > 180 chars
+//     if phrase.len() > 180 {
+//         return Err(GrapevineCLIError::PhraseTooLong);
+//     }
+//     // ensure artifacts are present
+//     artifacts_guard().await.unwrap();
+//     // get account
+//     let account = get_account()?;
+//     // get proving artifacts
+//     let params = use_public_params().unwrap();
+//     let r1cs = use_r1cs().unwrap();
+//     let wc_path = use_wasm().unwrap();
+//     // check phrase length
+//     if phrase.len() > 180 {
+//         return Err(GrapevineCLIError::PhraseTooLong);
+//     }
+//     // @todo: check if phrase is ascii
+//     // get proof inputs
+//     let username = vec![account.username().clone()];
+//     let auth_secret = vec![account.auth_secret().clone()];
+//     // create proof
+//     // println!("Auth Secret: {:?}", auth_secret_input[0].to_bytes);
+//     let res = nova_proof(wc_path, &r1cs, &params, &phrase, &username, &auth_secret);
+//     let proof = match res {
+//         Ok(proof) => proof,
+//         Err(e) => {
+//             return Err(GrapevineCLIError::PhraseCreationProofFailed(phrase));
+//         }
+//     };
+//     let compressed = compress_proof(&proof);
 
-    // build request body
-    let body = NewPhraseRequest {
-        proof: compressed,
-        // username: account.username().clone(),
-    };
-    let serialized: Vec<u8> = bincode::serialize(&body).unwrap();
+//     // build request body
+//     let body = NewPhraseRequest {
+//         proof: compressed,
+//     };
+//     let serialized: Vec<u8> = bincode::serialize(&body).unwrap();
 
-    // send request
-    let url = format!("{}/phrase/create", crate::SERVER_URL);
-    let client = reqwest::Client::new();
-    let res = client.post(&url).body(serialized).send().await.unwrap();
-    // handle response from server
-    match res.status() {
-        reqwest::StatusCode::CREATED => {
-            println!("Created new phrase");
-            Ok(())
-        }
-        _ => {
-            let text = res.status().to_string();
-            println!("Error: {}", text);
-            Err(GrapevineCLIError::ServerError(text))
-        }
-    }
-}
+//     // send request
+//     let url = format!("{}/phrase/create", crate::SERVER_URL);
+//     let client = reqwest::Client::new();
+//     let res = client.post(&url).body(serialized).send().await.unwrap();
+//     // handle response from server
+//     match res.status() {
+//         reqwest::StatusCode::CREATED => {
+//             println!("Created new phrase");
+//             Ok(())
+//         }
+//         _ => {
+//             let text = res.status().to_string();
+//             println!("Error: {}", text);
+//             Err(GrapevineCLIError::ServerError(text))
+//         }
+//     }
+// }
 
 
 

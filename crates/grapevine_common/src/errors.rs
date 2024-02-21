@@ -14,6 +14,8 @@ pub enum GrapevineServerError {
     MongoError(String),
     HeaderError(String),
     InternalError,
+    SerdeError(String),
+    DegreeProofVerificationFailed
 }
 
 impl std::fmt::Display for GrapevineServerError {
@@ -47,6 +49,8 @@ impl std::fmt::Display for GrapevineServerError {
             GrapevineServerError::MongoError(msg) => write!(f, "Mongo error: {}", msg),
             GrapevineServerError::HeaderError(msg) => write!(f, "Bad http header error: `{}`", msg),
             GrapevineServerError::InternalError => write!(f, "Unknown internal server error"),
+            GrapevineServerError::SerdeError(msg) => write!(f, "Error deserializing {}", msg),
+            GrapevineServerError::DegreeProofVerificationFailed => write!(f, "Failed to verify degree proof"),
         }
     }
 }

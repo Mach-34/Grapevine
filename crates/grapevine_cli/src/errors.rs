@@ -15,6 +15,7 @@ pub enum GrapevineCLIError {
     PhraseTooLong,
     ServerError(String),
     FsError(String),
+    SerdeError(String),
     PhraseCreationProofFailed(String),
     DegreeProofFailed,
     DegreeProofVerificationFailed,
@@ -36,6 +37,7 @@ impl std::fmt::Display for GrapevineCLIError {
             GrapevineCLIError::NonceMismatch(expected, actual) => write!(f, "Nonce mismatch: expected {}, got {}. Retry this call", expected, actual),
             GrapevineCLIError::ServerError(msg) => write!(f, "Server error: {}", msg),
             GrapevineCLIError::FsError(msg) => write!(f, "Filesystem error: {}", msg),
+            GrapevineCLIError::SerdeError(msg) => write!(f, "Error deserializing {}", msg),
             GrapevineCLIError::PhraseTooLong => write!(f, "Phrase must be <= 180 characters"),
             GrapevineCLIError::PhraseCreationProofFailed(msg) => write!(f, "Failed to create proof for new phrase {}", msg),
             GrapevineCLIError::DegreeProofFailed => write!(f, "Failed to create degree proof"),
@@ -57,6 +59,8 @@ impl From<GrapevineServerError> for GrapevineCLIError {
             GrapevineServerError::UserNotFound(msg) => GrapevineCLIError::UserNotFound(msg),
             GrapevineServerError::RelationshipSenderIsTarget => GrapevineCLIError::RelationshipSenderIsTarget,
             GrapevineServerError::NonceMismatch(expected, actual) => GrapevineCLIError::NonceMismatch(expected, actual),
+            GrapevineServerError::SerdeError(msg) => GrapevineCLIError::SerdeError(msg),
+            GrapevineServerError::DegreeProofVerificationFailed => GrapevineCLIError::DegreeProofVerificationFailed,
             _ => GrapevineCLIError::UnknownServerError,
         }
     }
