@@ -2,7 +2,6 @@
 extern crate rocket;
 use crate::guards::AuthenticatedUser;
 // use catchers::{bad_request, not_found, unauthorized};
-use dotenv::dotenv;
 use lazy_static::lazy_static;
 use mongo::GrapevineDB;
 use mongodb::bson::doc;
@@ -15,20 +14,8 @@ mod routes;
 mod utils;
 
 lazy_static! {
-    static ref MONGODB_URI: String = {
-        dotenv().ok();
-        match std::env::var("MONGODB_URI") {
-            Ok(uri) => uri,
-            Err(_) => "mongodb://localhost:27017".to_string(),
-        }
-    };
-    static ref DATABASE_NAME: String = {
-        dotenv().ok();
-        match std::env::var("DATABASE_NAME") {
-            Ok(db) => db,
-            Err(_) => "grapevine".to_string(),
-        }
-    };
+    static ref MONGODB_URI: String = String::from(env!("MONGODB_URI"));
+    static ref DATABASE_NAME: String = String::from(env!("DATABASE_NAME"));
 }
 
 #[tokio::main]
