@@ -372,7 +372,7 @@ pub async fn health() -> Result<String, GrapevineCLIError> {
     // ensure artifacts exist
     artifacts_guard().await.unwrap();
     // get health status
-    let text = reqwest::get("http://localhost:8000/test/health")
+    let text = reqwest::get(&**crate::http::SERVER_URL)
         .await
         .unwrap()
         .text()
