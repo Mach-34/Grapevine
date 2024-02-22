@@ -10,8 +10,9 @@ pub struct DegreeProof {
     pub auth_hash: Option<[u8; 32]>,
     pub degree: Option<u8>,
     pub user: Option<ObjectId>,
-    pub proof: Option<Vec<u8>>,            // compressed proof
-    pub preceding: Option<ObjectId>,       // the proof that this proof is built on (null if first)
+    #[serde(default, with = "serde_bytes")]
+    pub proof: Option<Vec<u8>>, // compressed proof
+    pub preceding: Option<ObjectId>, // the proof that this proof is built on (null if first)
     pub proceeding: Option<Vec<ObjectId>>, // proofs that are built on top of this proof
 }
 

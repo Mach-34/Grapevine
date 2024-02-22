@@ -178,7 +178,7 @@ mod test_rocket {
         let msg = res.into_string().await;
 
         // Increment nonce after request
-        from.increment_nonce(None);
+        let _ = from.increment_nonce(None);
 
         (code, msg)
     }
@@ -528,59 +528,122 @@ mod test_rocket {
     //     create_degree_proof_request(&proofs_d[0], &mut users[3]).await;
     // }
 
-    // #[rocket::async_test]
-    // #[ignore]
-    // async fn test_proof_reordering_with_5_proof_chain() {
-    //     let context = GrapevineTestContext::init().await;
+    #[rocket::async_test]
+    #[ignore]
+    async fn test_proof_reordering_with_5_proof_chain() {
+        let context = GrapevineTestContext::init().await;
 
-    //     // Reset db with clean state
-    //     GrapevineDB::drop("grapevine_mocked").await;
+        // Reset db with clean state
+        GrapevineDB::drop("grapevine_mocked").await;
 
-    //     // Create test users
-    //     let mut users = vec![
-    //         GrapevineAccount::new(String::from("User_A")),
-    //         GrapevineAccount::new(String::from("User_B")),
-    //         GrapevineAccount::new(String::from("User_C")),
-    //         GrapevineAccount::new(String::from("User_D")),
-    //         GrapevineAccount::new(String::from("User_E")),
-    //     ];
+        // Create test users
+        let mut users = vec![
+            GrapevineAccount::new(String::from("User_A")),
+            GrapevineAccount::new(String::from("User_B")),
+            GrapevineAccount::new(String::from("User_C")),
+            GrapevineAccount::new(String::from("User_D")),
+            GrapevineAccount::new(String::from("User_E")),
+        ];
 
-    //     for i in 0..users.len() {
-    //         let request = users[i].create_user_request();
-    //         create_user_request(&context, &request).await;
-    //     }
+        for i in 0..users.len() {
+            let request = users[i].create_user_request();
+            create_user_request(&context, &request).await;
+        }
 
-    //     // Create phrase for User A
-    //     let phrase = String::from("You are what you eat");
-    //     create_phrase_request(phrase, &mut users.get(0).unwrap().clone()).await;
+        // Create phrase for User A
+        let phrase = String::from("You are what you eat");
+        create_phrase_request(phrase, &mut users[0]).await;
 
-    //     // Add relationship and degree proofs: A <- B, B <- C
-    //     for i in 0..2 {
-    //         add_relationship_request(&mut users[i], &mut users[i + 1]).await;
-    //         let proofs = get_available_degrees_request(&mut users[i + 1])
-    //             .await
-    //             .unwrap();
-    //         create_degree_proof_request(&proofs[0], &mut users[i + 1]).await;
-    //     }
+        // Add relationship and degree proofs: A <- B, B <- C
+        for i in 0..2 {
+            // Remove users from vector to reference
+            let mut preceding = users.remove(i);
+            // Proceeding is now an index below after removal
+            let mut proceeding = users.remove(i);
 
-    //     // Add relationship and degree proofs: C <- D, C <- E
-    //     for i in 0..2 {
-    //         add_relationship_request(&mut users[2], &mut users[i + 3]).await;
-    //         let proofs = get_available_degrees_request(&mut users[i + 3])
-    //             .await
-    //             .unwrap();
-    //         create_degree_proof_request(&proofs[0], &mut users[i + 3]).await;
-    //     }
+            add_relationship_request(&mut preceding, &mut proceeding).await;
+            let proofs = get_available_degrees_request(&mut proceeding)
+                .await
+                .unwrap();
+            create_degree_proof_request(&proofs[0], &mut proceeding).await;
 
-    //     // Set every proof to degree 2
-    //     for i in 0..3 {
-    //         add_relationship_request(&mut users[0], &mut users[i + 2]).await;
-    //         let proofs = get_available_degrees_request(&mut users[i + 2])
-    //             .await
-    //             .unwrap();
-    //         create_degree_proof_request(&proofs[0], &mut users[i + 2]).await;
-    //     }
-    // }
+            // Add users back to vector
+            users.insert(i, preceding);
+            users.insert(i + 1, proceeding);
+        }
+
+        // Add relationship and degree proofs: C <- D, C <- E
+        for i in 0..2 {
+            let mut preceding = users.remove(2);
+            // Proceeding is now an index below after removal
+            let mut proceeding = users.remove(i + 2);
+
+            add_relationship_request(&mut preceding, &mut proceeding).await;
+            let proofs = get_available_degrees_request(&mut proceeding)
+                .await
+                .unwrap();
+            create_degree_proof_request(&proofs[0], &mut proceeding).await;
+
+            users.insert(2, preceding);
+            users.insert(i + 3, proceeding);
+        }
+
+        // Set every proof to degree 2
+        for i in 0..3 {
+            let mut preceding = users.remove(0);
+            // Proceeding is now an index below after removal
+            let mut proceeding = users.remove(i + 1);
+
+            add_relationship_request(&mut preceding, &mut proceeding).await;
+            let proofs = get_available_degrees_request(&mut proceeding)
+                .await
+                .unwrap();
+            create_degree_proof_request(&proofs[0], &mut proceeding).await;
+
+            users.insert(0, preceding);
+            users.insert(i + 2, proceeding);
+        }
+    }
+
+    #[rocket::async_test]
+    async fn test_proof_reordering_with_20_proof_chain() {
+        let context = GrapevineTestContext::init().await;
+
+        // Reset db with clean state
+        GrapevineDB::drop("grapevine_mocked").await;
+
+        let mut users: Vec<GrapevineAccount> = vec![];
+
+        // Create test users
+        for i in 0..20 {
+            let user = GrapevineAccount::new(String::from(format!("User_{}", i)));
+            let request = user.create_user_request();
+            create_user_request(&context, &request).await;
+            users.push(user);
+        }
+
+        // Create phrase for User A
+        let phrase = String::from("You are what you eat");
+        create_phrase_request(phrase, &mut users[0]).await;
+
+        // Add relationship and degree proofs: A <- B, B <- C
+        for i in 0..users.len() - 1 {
+            // Remove users from vector to reference
+            let mut preceding = users.remove(i);
+            // Proceeding is now an index below after removal
+            let mut proceeding = users.remove(i);
+
+            add_relationship_request(&mut preceding, &mut proceeding).await;
+            let proofs = get_available_degrees_request(&mut proceeding)
+                .await
+                .unwrap();
+            create_degree_proof_request(&proofs[0], &mut proceeding).await;
+
+            // Add users back to vector
+            users.insert(i, preceding);
+            users.insert(i + 1, proceeding);
+        }
+    }
 
     // #[rocket::async_test]
     // #[ignore]
