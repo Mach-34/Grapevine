@@ -111,10 +111,7 @@ impl GrapevineDB {
                         found[1] = true;
                     }
                 }
-                Err(e) => {
-                    println!("Error: {}", e);
-                    return Err(GrapevineServerError::MongoError(String::from("todo")));
-                }
+                Err(e) => return Err(GrapevineServerError::MongoError(e.to_string())),
             }
         }
         Ok(found)
@@ -183,6 +180,8 @@ impl GrapevineDB {
         &self,
         relationship: &Relationship,
     ) -> Result<ObjectId, GrapevineServerError> {
+        // @TODO: check to see whether relation already exists between the two users
+
         // create new relationship document
         let relationship_oid = self
             .relationships
@@ -192,12 +191,15 @@ impl GrapevineDB {
             .inserted_id
             .as_object_id()
             .unwrap();
+
         // push the relationship to the user's list of relationships
         let query = doc! { "_id": relationship.recipient };
         let update =
             doc! { "$push": { "relationships": bson::to_bson(&relationship_oid).unwrap()} };
-        self.users.update_one(query, update, None).await.unwrap();
-        Ok(relationship_oid)
+        match self.users.update_one(query, update, None).await {
+            Ok(_) => Ok(relationship_oid),
+            Err(e) => Err(GrapevineServerError::MongoError(e.to_string())),
+        }
     }
 
     pub async fn add_proof(
@@ -214,26 +216,6 @@ impl GrapevineDB {
             .iter()
             .map(|x| *x as i32)
             .collect();
-
-        // let query = doc! { "user": user, "phrase_hash":  phrase_hash_bson.clone() };
-        // let update = doc! { "$set": { "inactive": true } };
-        // let projection = doc! { "_id": 1 };
-        // let options = FindOneAndUpdateOptions::builder()
-        //     .projection(projection)
-        //     .build();
-
-        // // If old degree proof exists it will be removed if it is the lowest in the chain, this will then
-        // // be repeated up the chain as long as a proof has no proofs that proceed it. If a proof has proceeding
-        // // proofs then it will simply be marked as inactive
-        // let oid = match self
-        //     .degree_proofs
-        //     .find_one_and_update(query, update, Some(options))
-        //     .await
-        //     .unwrap()
-        // {
-        //     Some(document) => document.id,
-        //     None => None,
-        // };
 
         let mut proof_chain: Vec<DegreeProof> = vec![];
         // fetch all proofs preceding this one
@@ -372,29 +354,6 @@ impl GrapevineDB {
             .update_one(update_filter, update, None)
             .await
             .expect("Error updating degree proof");
-        // for i in 0..proof_chain.len() - 1 {
-        //     // Base proof will always be marked as inactive
-        //     let inactive = proof_chain[i].inactive.unwrap() || i == 0;
-
-        //     let proceeding = proof_chain[i].proceeding.clone();
-
-        //     // Check if proof can be deleted
-        //     let can_delete =
-        //         (!proceeding.is_some() || proceeding.clone().unwrap().is_empty()) && inactive;
-
-        //     if can_delete {
-        //         delete_entities.push(proof_chain[i].id.unwrap());
-        //         // If proof is deleted then remove it from proceeding array in next proof
-        //         let pos = proo
-        //             .iter()
-        //             .position(|&doc| doc == proof_chain[i].id.unwrap());
-        //         update_entities.push((Some(inactive), proceeding));
-        //         proof_chain[i].id.unwrap()
-        //     } else {
-        //         // @todo: Can we tweak this? update entities will always be inactive except in first case
-        //         update_entities.push((Some(inactive), proceeding));
-        //     }
-        // }
 
         // create new proof document
         let proof_oid = self
@@ -538,95 +497,6 @@ impl GrapevineDB {
                         .and_then(|id| id.as_object_id())
                         .unwrap();
                     proofs.push(oid.to_string());
-                }
-                Err(e) => println!("Error: {}", e),
-            }
-        }
-
-        proofs
-    }
-
-    pub async fn pipeline_test(&self, username: String) -> Vec<String> {
-        // find degree chains they are not a part of
-        let pipeline = vec![
-            // find the user to find available proofs for
-            doc! { "$match": { "username": username } },
-            doc! { "$project": { "relationships": 1, "degree_proofs": 1, "_id": 0 } },
-            // look up the degree proofs made by this user
-            doc! {
-                "$lookup": {
-                    "from": "degree_proofs",
-                    "localField": "degree_proofs",
-                    "foreignField": "_id",
-                    "as": "userDegreeProofs",
-                    "pipeline": [doc! { "$project": { "degree": 1, "phrase_hash": 1 } }]
-                }
-            },
-            // look up the relationships made by this user
-            doc! {
-                "$lookup": {
-                    "from": "relationships",
-                    "localField": "relationships",
-                    "foreignField": "_id",
-                    "as": "userRelationships",
-                    "pipeline": [doc! { "$project": { "sender": 1 } }]
-                }
-            },
-            // look up the degree proofs made by relationships
-            // @todo: allow limitation of degrees of separation here
-            doc! {
-                "$lookup": {
-                    "from": "degree_proofs",
-                    "localField": "userRelationships.sender",
-                    "foreignField": "user",
-                    "as": "relationshipDegreeProofs",
-                    "pipeline": [
-                        doc! { "$match": { "inactive": { "$ne": true } } },
-                        doc! { "$project": { "degree": 1, "phrase_hash": 1 } }
-                    ]
-                }
-            },
-            // unwind the results
-            doc! { "$project": { "userDegreeProofs": 1, "relationshipDegreeProofs": 1 } },
-            doc! { "$unwind": "$relationshipDegreeProofs" },
-            // find the lowest degree proof in each chain from relationship proofs and reference user proofs in this chain if exists
-            doc! {
-                "$group": {
-                    "_id": "$relationshipDegreeProofs.phrase_hash",
-                    "originalId": { "$first": "$relationshipDegreeProofs._id" },
-                    "degree": { "$min": "$relationshipDegreeProofs.degree" },
-                    "userProof": {
-                        "$first": {
-                            "$arrayElemAt": [{
-                                "$filter": {
-                                    "input": "$userDegreeProofs",
-                                    "as": "userProof",
-                                    "cond": { "$eq": ["$$userProof.phrase_hash", "$relationshipDegreeProofs.phrase_hash"] }
-                                }
-                            }, 0]
-                        }
-                    }
-                }
-            },
-        ];
-        // get the OID's of degree proofs the user can build from
-        let mut proofs: Vec<String> = vec![];
-        let mut cursor = self.users.aggregate(pipeline, None).await.unwrap();
-        // let count = cursor.count().await;
-        // println!("Count: {}", count);
-        while let Some(result) = cursor.next().await {
-            match result {
-                Ok(document) => {
-                    for key in document.keys() {
-                        println!("{}", key);
-                    }
-                    // let oid = document
-                    //     .get("_id")
-                    //     .and_then(|id| id.as_object_id())
-                    //     .unwrap();
-                    // proofs.push(oid.to_string());
-                    println!("Document: {:?}\n\n", document);
-                    // println!("ID: {:?}", oid);
                 }
                 Err(e) => println!("Error: {}", e),
             }

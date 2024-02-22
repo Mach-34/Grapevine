@@ -41,6 +41,7 @@ pub async fn create_phrase(
     // todo: implement FromData trait on NewPhraseRequest
     let mut buffer = Vec::new();
     let mut stream = data.open(2.mebibytes()); // Adjust size limit as needed
+                                               // @TODO: Stream in excess of 2 megabytes not actually throwing error
     if let Err(e) = stream.read_to_end(&mut buffer).await {
         println!("Error reading request body: {:?}", e);
         return Err(GrapevineResponse::TooLarge(
@@ -62,6 +63,7 @@ pub async fn create_phrase(
             )));
         }
     };
+    // @TODO: No decompression error set up in case invalid
     let decompressed_proof = decompress_proof(&request.proof);
     // verify the proof
     let verify_res = verify_nova_proof(&decompressed_proof, &*PUBLIC_PARAMS, 2);
@@ -142,7 +144,7 @@ pub async fn degree_proof(
     }
     let request = match bincode::deserialize::<DegreeProofRequest>(&buffer) {
         Ok(req) => req,
-        Err(e) => {
+        Err(_) => {
             return Err(GrapevineResponse::BadRequest(ErrorMessage(
                 Some(GrapevineServerError::SerdeError(String::from(
                     "DegreeProofRequest",
@@ -244,6 +246,7 @@ pub async fn get_available_proofs(
  *         - 404 if username or proof not found
  *         - 500 if db fails or other unknown issue
  */
+
 #[get("/params/<oid>")]
 pub async fn get_proof_with_params(
     user: AuthenticatedUser,
