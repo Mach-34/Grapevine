@@ -174,100 +174,6 @@ pub async fn create_new_phrase(phrase: String) -> Result<String, GrapevineCLIErr
     }
 }
 
-// DEV: move to utils file
-async fn prove_separation_degree(oid: String) -> Result<(), GrapevineCLIError> {
-    // ensure proving artifacts are downloaded
-    artifacts_guard().await.unwrap();
-    let public_params = use_public_params().unwrap();
-    let r1cs = use_r1cs().unwrap();
-    let wc_path = use_wasm().unwrap();
-    // get account
-    let account = get_account()?;
-    // get proof and encrypted auth secret
-    let url = format!(
-        "{}/proof/{}/params/{}",
-        crate::SERVER_URL,
-        oid,
-        account.username()
-    );
-    let res = reqwest::get(&url).await.unwrap();
-    let proving_data = match res.status() {
-        reqwest::StatusCode::OK => {
-            let proving_data = res.json::<ProvingData>().await.unwrap();
-            proving_data
-        }
-        _ => {
-            let text = res.status().to_string();
-            println!("Error: {}", text);
-            return Err(GrapevineCLIError::ServerError(text));
-        }
-    };
-    // decrypt auth secret
-    let auth_secret_encrypted = AuthSecretEncrypted {
-        ephemeral_key: proving_data.ephemeral_key,
-        ciphertext: proving_data.ciphertext,
-        username: proving_data.username,
-        recipient: account.pubkey().compress(),
-    };
-    let auth_secret = account.decrypt_auth_secret(auth_secret_encrypted);
-    // decompress proof
-    let mut proof = decompress_proof(&proving_data.proof);
-    // verify proof
-    let res = verify_nova_proof(&proof, &public_params, (proving_data.degree * 2) as usize);
-    let previous_output = match res {
-        Ok(data) => data.0,
-        Err(e) => {
-            println!("Verification Failed");
-            return Err(GrapevineCLIError::DegreeProofVerificationFailed);
-        }
-    };
-    // build nova proof
-    let username_input = vec![auth_secret.username, account.username().clone()];
-    let auth_secret_input = vec![auth_secret.auth_secret, account.auth_secret().clone()];
-    match continue_nova_proof(
-        &username_input,
-        &auth_secret_input,
-        &mut proof,
-        previous_output,
-        wc_path,
-        &r1cs,
-        &public_params,
-    ) {
-        Ok(_) => (),
-        Err(e) => {
-            println!("Proof continuation failed");
-            return Err(GrapevineCLIError::DegreeProofVerificationFailed);
-        }
-    };
-
-    // compress the proof
-    let compressed = compress_proof(&proof);
-
-    // build request body
-    let body = DegreeProofRequest {
-        proof: compressed,
-        // username: account.username().clone(),
-        previous: oid,
-        degree: proving_data.degree + 1,
-    };
-    let serialized: Vec<u8> = bincode::serialize(&body).unwrap();
-    let url = format!("{}/phrase/continue", crate::SERVER_URL);
-    let client = reqwest::Client::new();
-    let res = client.post(&url).body(serialized).send().await.unwrap();
-    // handle response from server
-    match res.status() {
-        reqwest::StatusCode::CREATED => {
-            println!("Created new phrase");
-            Ok(())
-        }
-        _ => {
-            let text = res.status().to_string();
-            println!("Error: {}", text);
-            Err(GrapevineCLIError::ServerError(text))
-        }
-    }
-}
-
 pub async fn prove_all_available() -> Result<String, GrapevineCLIError> {
     /// GETTING
     // get account
@@ -363,7 +269,7 @@ pub async fn prove_all_available() -> Result<String, GrapevineCLIError> {
     Ok(format!("Success: proved {} new degree proofs", proofs.len()))
 }
 
-pub async fn get_my_proofs() -> Result<(), GrapevineCLIError> {
+pub async fn get_my_proofs() -> Result<String, GrapevineCLIError> {
     // get account
     let mut account = get_account()?;
     // send request
@@ -386,9 +292,7 @@ pub async fn get_my_proofs() -> Result<(), GrapevineCLIError> {
             println!("Your relation: {}", degree.relation.unwrap());
         }
     }
-    println!("=-=-=-=-=-=-=-=-=-=-=-=-=");
-
-    Ok(())
+    Ok(String::from(""))
 }
 
 pub fn get_account_info() {
@@ -464,6 +368,7 @@ pub fn make_or_get_account(username: String) -> Result<GrapevineAccount, Grapevi
 }
 
 pub async fn health() -> Result<String, GrapevineCLIError> {
+    println!("SERVER URL IS: {}", &**crate::http::SERVER_URL);
     // ensure artifacts exist
     artifacts_guard().await.unwrap();
     // get health status

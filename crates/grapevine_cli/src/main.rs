@@ -5,8 +5,6 @@ mod errors;
 mod http;
 mod utils;
 
-pub const SERVER_URL: &str = "http://localhost:8000";
-
 ///    ______                           _           
 ///   / ____/________ _____  ___ _   __(_)___  ___  
 ///  / / __/ ___/ __ `/ __ \/ _ \ | / / / __ \/ _ \
@@ -23,22 +21,39 @@ struct Cli {
 }
 
 #[derive(Subcommand)]
+#[command(verbatim_doc_comment)]
 enum Commands {
     /// Test the connection to the Grapevine server
+    /// usage: `grapevine health`
+    #[command(verbatim_doc_comment)]
     Health,
     /// Print the details of your account
+    /// usage: `grapevine get-account`
+    #[command(verbatim_doc_comment)]
     GetAccount,
-    /// Synchronize the local account nonce with expected nonce from server
+    /// Synchronize the local account nonce with expected nonce
+    /// usage: `grapevine sync-nonce`
+    #[command(verbatim_doc_comment)]
     SyncNonce,
     /// Create a new Grapevine Account
+    /// usage: `grapevine register-account <username>`
+    #[command(verbatim_doc_comment)]
     RegisterAccount(RegisterAccountArgs),
     /// Add yourself as a connection to another Grapevine user
+    /// usage: `grapevine add-relationship <username>`
+    #[command(verbatim_doc_comment)]
     AddRelationship(AddRelationshipArgs),
     /// Create a new phrase (degree 1 proof)
+    /// usage: `grapevine create-phrase <phrase>`
+    #[command(verbatim_doc_comment)]
     CreatePhrase(CreatePhrase),
     /// Prove all the the new degrees of separation available
+    /// usage: `grapevine prove-new`
+    #[command(verbatim_doc_comment)]
     ProveNew,
     /// Print all of your degrees of separation
+    /// usage: `grapevine get-degrees`
+    #[command(verbatim_doc_comment)]
     GetDegrees,
     // /// Manually prove a degree of separation
     // ProveSeparation(ProveSeparationArgs),

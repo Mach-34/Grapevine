@@ -720,14 +720,16 @@ impl GrapevineDB {
                         .collect::<Vec<u8>>()
                         .try_into()
                         .unwrap();
-                    let originator = document.get_str("originator").unwrap();
                     degrees.push(DegreeData {
                         degree,
                         relation,
                         phrase_hash,
                     });
                 }
-                Err(e) => return None,
+                Err(e) => {
+                    println!("Error: {}", e);
+                    return None
+                },
             }
         }
         Some(degrees)

@@ -9,8 +9,12 @@ use grapevine_common::http::responses::DegreeData;
 use grapevine_common::models::proof::ProvingData;
 use grapevine_common::{account::GrapevineAccount, errors::GrapevineServerError};
 use reqwest::{Client, StatusCode};
+use lazy_static::lazy_static;
 
-pub const SERVER_URL: &str = "http://localhost:8000";
+lazy_static! {
+    pub static ref SERVER_URL: String = String::from(env!("SERVER_URL"));
+}
+// pub const SERVER_URL: &str = "http://localhost:8000";
 
 /// GET REQUESTS ///
 
@@ -21,7 +25,7 @@ pub const SERVER_URL: &str = "http://localhost:8000";
  * @returns - the public key of the user
  */
 pub async fn get_pubkey_req(username: String) -> Result<Point, GrapevineServerError> {
-    let url = format!("{}/user/{}/pubkey", SERVER_URL, username);
+    let url = format!("{}/user/{}/pubkey", &**SERVER_URL, username);
     let res = reqwest::get(&url).await.unwrap();
     match res.status() {
         StatusCode::OK => {
@@ -34,7 +38,7 @@ pub async fn get_pubkey_req(username: String) -> Result<Point, GrapevineServerEr
 }
 
 pub async fn get_nonce_req(body: GetNonceRequest) -> Result<u64, GrapevineServerError> {
-    let url = format!("{}/user/nonce", SERVER_URL);
+    let url = format!("{}/user/nonce", &**SERVER_URL);
     let client = Client::new();
     let res = client.post(&url).json(&body).send().await.unwrap();
     match res.status() {
@@ -49,7 +53,7 @@ pub async fn get_nonce_req(body: GetNonceRequest) -> Result<u64, GrapevineServer
 pub async fn get_available_proofs_req(
     account: &mut GrapevineAccount,
 ) -> Result<Vec<String>, GrapevineServerError> {
-    let url = format!("{}/proof/available", SERVER_URL);
+    let url = format!("{}/proof/available", &**SERVER_URL);
     // produce signature over current nonce
     let signature = hex::encode(account.sign_nonce().compress());
     let client = Client::new();
@@ -77,7 +81,7 @@ pub async fn get_proof_with_params_req(
     account: &mut GrapevineAccount,
     oid: String,
 ) -> Result<ProvingData, GrapevineServerError> {
-    let url = format!("{}/proof/params/{}", SERVER_URL, oid);
+    let url = format!("{}/proof/params/{}", &**SERVER_URL, oid);
     // produce signature over current nonce
     let signature = hex::encode(account.sign_nonce().compress());
     let client = Client::new();
@@ -109,7 +113,7 @@ pub async fn get_proof_with_params_req(
  * @returns - Ok if 201, or the error type otherwise
  */
 pub async fn create_user_req(body: CreateUserRequest) -> Result<(), GrapevineServerError> {
-    let url = format!("{}/user/create", SERVER_URL);
+    let url = format!("{}/user/create", &**SERVER_URL);
     let client = Client::new();
     let res = client.post(&url).json(&body).send().await.unwrap();
     match res.status() {
@@ -128,7 +132,7 @@ pub async fn add_relationship_req(
     account: &mut GrapevineAccount,
     body: NewRelationshipRequest,
 ) -> Result<(), GrapevineServerError> {
-    let url = format!("{}/user/relationship", SERVER_URL);
+    let url = format!("{}/user/relationship", &**SERVER_URL);
     // produce signature over current nonce
     let signature = hex::encode(account.sign_nonce().compress());
     let client = Client::new();
@@ -162,7 +166,7 @@ pub async fn new_phrase_req(
     account: &mut GrapevineAccount,
     body: NewPhraseRequest,
 ) -> Result<(), GrapevineServerError> {
-    let url = format!("{}/proof/create", SERVER_URL);
+    let url = format!("{}/proof/create", &**SERVER_URL);
     // serialize the proof
     let serialized: Vec<u8> = bincode::serialize(&body).unwrap();
     // produce signature over current nonce
@@ -196,7 +200,7 @@ pub async fn new_phrase_req(
 pub async fn get_degrees_req(
     account: &mut GrapevineAccount,
 ) -> Result<Vec<DegreeData>, GrapevineServerError> {
-    let url = format!("{}/user/degrees", SERVER_URL);
+    let url = format!("{}/user/degrees", &**SERVER_URL);
     // produce signature over current nonce
     let signature = hex::encode(account.sign_nonce().compress());
     let client = Client::new();
@@ -232,7 +236,7 @@ pub async fn degree_proof_req(
     account: &mut GrapevineAccount,
     body: DegreeProofRequest,
 ) -> Result<(), GrapevineServerError> {
-    let url = format!("{}/proof/continue", SERVER_URL);
+    let url = format!("{}/proof/continue", &**SERVER_URL);
     // serialize the proof
     let serialized: Vec<u8> = bincode::serialize(&body).unwrap();
     // produce signature over current nonce
