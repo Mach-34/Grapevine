@@ -31,7 +31,7 @@ use std::str::FromStr;
  *             * 404 if user not found
  *             * 500 if db fails or other unknown issue
  */
-#[post("/phrase/create", data = "<data>")]
+#[post("/create", data = "<data>")]
 pub async fn create_phrase(
     user: AuthenticatedUser,
     data: Data<'_>,
@@ -127,7 +127,7 @@ pub async fn create_phrase(
  *             * 404 if user or previous proof not found not found
  *             * 500 if db fails or other unknown issue
  */
-#[post("/phrase/continue", data = "<data>")]
+#[post("/continue", data = "<data>")]
 pub async fn degree_proof(
     user: AuthenticatedUser,
     data: Data<'_>,
@@ -246,7 +246,8 @@ pub async fn get_available_proofs(
  *         - 404 if username or proof not found
  *         - 500 if db fails or other unknown issue
  */
-#[get("/<oid>/params")]
+
+#[get("/params/<oid>")]
 pub async fn get_proof_with_params(
     user: AuthenticatedUser,
     oid: String,

@@ -78,13 +78,13 @@ impl AuthSecretEncryptedUser for AuthSecretEncrypted {
         let (aes_key, aes_iv) = gen_aes_key(recipient, ephm_pk);
         // decrypt the auth secret
         let mut buf = self.ciphertext;
-        let mut pt: [u8; 32] = Aes128CbcDec::new(aes_key[..].into(), aes_iv[..].into())
+        let ptr: [u8; 32] = Aes128CbcDec::new(aes_key[..].into(), aes_iv[..].into())
             .decrypt_padded_mut::<Pkcs7>(&mut buf)
             .unwrap()
             .try_into()
             .unwrap();
         // convert the auth secret into an Fr
-        let auth_secret = Fr::from_bytes(&pt).unwrap();
+        let auth_secret = Fr::from_bytes(&ptr).unwrap();
         AuthSecret {
             username: self.username.clone(),
             auth_secret,
