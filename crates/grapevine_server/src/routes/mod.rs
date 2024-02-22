@@ -18,6 +18,5 @@ lazy_static! {
         proof::get_available_proofs,
         proof::get_proof_chain,
         proof::get_proof_with_params,
-        proof::get_pipeline_test
     ];
 }

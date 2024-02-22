@@ -1,8 +1,10 @@
 use crate::auth_secret::{AuthSecret, AuthSecretEncrypted, AuthSecretEncryptedUser};
 use crate::crypto::{new_private_key, nonce_hash};
-use crate::http::requests::{CreateUserRequest, GetNonceRequest, NewRelationshipRequest};
+use crate::http::requests::{
+    CreateUserRequest, GetNonceRequest, NewPhraseRequest, NewRelationshipRequest,
+};
 use crate::utils::{convert_username_to_fr, random_fr};
-use crate::Fr;
+use crate::{Fr, Params};
 use babyjubjub_rs::{Point, PrivateKey, Signature};
 use num_bigint::{BigInt, Sign};
 use serde::{Deserialize, Serialize};
@@ -175,6 +177,26 @@ impl GrapevineAccount {
             signature: self.sign_username().compress(),
         }
     }
+
+    // pub fn new_phrase_request(
+    //     &self,
+    //     phrase: String,
+    //     wc_path: String,
+    //     r1cs: &R1CS<Fr>,
+    //     params: Params,
+    // ) -> NewPhraseRequest {
+    //     let username = vec![account.username().clone()];
+    //     let auth_secret = vec![account.auth_secret().clone()];
+    //     // create proof
+    //     // println!("Auth Secret: {:?}", auth_secret_input[0].to_bytes);
+    //     let res = nova_proof(wc_path, &r1cs, &params, &phrase, &username, &auth_secret);
+    //     let proof = match res {
+    //         Ok(proof) => proof,
+    //         Err(e) => {
+    //             return Err(GrapevineCLIError::PhraseCreationProofFailed(phrase));
+    //         }
+    //     };
+    // }
 
     /// GETTERS ///
 

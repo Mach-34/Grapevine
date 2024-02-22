@@ -7,7 +7,7 @@ use std::fs::write;
 use std::path::{Path, PathBuf};
 use lazy_static::lazy_static;
 use crate::errors::GrapevineCLIError;
-use crate::SERVER_URL;
+use crate::http::SERVER_URL;
 
 lazy_static! {
     pub static ref ACCOUNT_PATH: PathBuf = get_account_path().unwrap();
@@ -102,7 +102,7 @@ pub async fn get_artifacts() -> Result<(), Box<dyn std::error::Error>> {
     for artifact in artifacts {
         println!("Downloading {}...", artifact);
         let path = get_storage_path().unwrap().join(artifact);
-        let url = format!("{}/static/{}", SERVER_URL, artifact);
+        let url = format!("{}/static/{}", &**SERVER_URL, artifact);
         download_file(url, path.clone()).await.unwrap();
         println!("Downloaded {} to {}", artifact, path.display());
     }

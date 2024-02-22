@@ -1309,6 +1309,7 @@ dependencies = [
  "bincode",
  "bson",
  "clap",
+ "dotenv",
  "ff",
  "ff_ce",
  "grapevine_circuits",

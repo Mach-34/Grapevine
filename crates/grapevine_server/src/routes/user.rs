@@ -301,6 +301,7 @@ pub async fn get_all_degrees(
     user: AuthenticatedUser,
     db: &State<GrapevineDB>,
 ) -> Result<Json<Vec<DegreeData>>, GrapevineResponse> {
+    println!("in");
     match db.get_all_degrees(user.0).await {
         Some(proofs) => Ok(Json(proofs)),
         None => Err(GrapevineResponse::InternalError(ErrorMessage(
