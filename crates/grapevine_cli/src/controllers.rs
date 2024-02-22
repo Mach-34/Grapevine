@@ -1,7 +1,6 @@
 use crate::errors::GrapevineCLIError;
 use crate::http::{
-    add_relationship_req, create_user_req, degree_proof_req, get_available_proofs_req,
-    get_nonce_req, get_proof_with_params_req, get_pubkey_req, new_phrase_req,
+    add_relationship_req, create_user_req, degree_proof_req, get_available_proofs_req, get_degrees_req, get_nonce_req, get_proof_with_params_req, get_pubkey_req, new_phrase_req
 };
 use crate::utils::artifacts_guard;
 use crate::utils::fs::{use_public_params, use_r1cs, use_wasm, ACCOUNT_PATH};
@@ -364,35 +363,20 @@ pub async fn prove_all_available() -> Result<String, GrapevineCLIError> {
     Ok(format!("Success: proved {} new degree proofs", proofs.len()))
 }
 
-pub async fn get_available_proofs() -> Result<(), GrapevineCLIError> {
-    Ok(())
-}
-
 pub async fn get_my_proofs() -> Result<(), GrapevineCLIError> {
     // get account
-    let account = get_account()?;
+    let mut account = get_account()?;
     // send request
-    let url = format!("{}/user/{}/degrees", crate::SERVER_URL, account.username());
-    let res = reqwest::get(&url)
-        .await
-        .unwrap()
-        .json::<Vec<DegreeData>>()
-        .await;
-    // handle result
-    let degree_data = match res {
-        Ok(proofs) => proofs,
-        Err(e) => {
-            println!("Failed to get proofs");
-            return Err(GrapevineCLIError::ServerError(String::from(
-                "Couldn't get available proofs",
-            )));
-        }
+    let res = get_degrees_req(&mut account).await;
+    let data = match res {
+        Ok(data) => data,
+        Err(e) => return Err(GrapevineCLIError::from(e)),
     };
     println!(
         "Proofs of {}'s degrees of separation from phrases/ users:",
         account.username()
     );
-    for degree in degree_data {
+    for degree in data {
         println!("=-=-=-=-=-=-=-=-=-=-=-=-=");
         println!("Phrase hash: 0x{}", hex::encode(degree.phrase_hash));
         if degree.relation.is_none() {

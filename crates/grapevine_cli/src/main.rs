@@ -38,8 +38,8 @@ enum Commands {
     CreatePhrase(CreatePhrase),
     /// Prove all the the new degrees of separation available
     ProveNew,
-    // /// Print all of your degrees of separation
-    // GetDegrees,
+    /// Print all of your degrees of separation
+    GetDegrees,
     // /// Manually prove a degree of separation
     // ProveSeparation(ProveSeparationArgs),
     // // View the OID's of proofs the user can build from
@@ -85,7 +85,7 @@ pub async fn main() {
             controllers::create_new_phrase(cmd.phrase.clone().unwrap()).await
         }
         Commands::ProveNew => controllers::prove_all_available().await,
-          // Commands::GetDegrees => controllers::get_my_proofs().await,
+        Commands::GetDegrees => controllers::get_my_proofs().await,
 
           // Commands::ProveSeparation(cmd) => {
           //     controllers::prove_separation_degree(cmd.username.clone().unwrap()).await

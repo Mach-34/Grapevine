@@ -5,6 +5,7 @@ use grapevine_common::http::requests::{
     CreateUserRequest, DegreeProofRequest, GetNonceRequest, NewPhraseRequest,
     NewRelationshipRequest,
 };
+use grapevine_common::http::responses::DegreeData;
 use grapevine_common::models::proof::ProvingData;
 use grapevine_common::{account::GrapevineAccount, errors::GrapevineServerError};
 use reqwest::{Client, StatusCode};
@@ -182,6 +183,38 @@ pub async fn new_phrase_req(
                 .increment_nonce(Some((&**ACCOUNT_PATH).to_path_buf()))
                 .unwrap();
             return Ok(());
+        }
+        _ => {
+            // let y = &res.;
+            println!("res: {:#?}", res.text().await.unwrap());
+            // Err(res.json::<GrapevineServerError>().await.unwrap())
+            Err(GrapevineServerError::InternalError)
+        },
+    }
+}
+
+pub async fn get_degrees_req(
+    account: &mut GrapevineAccount,
+) -> Result<Vec<DegreeData>, GrapevineServerError> {
+    let url = format!("{}/user/degrees", SERVER_URL);
+    // produce signature over current nonce
+    let signature = hex::encode(account.sign_nonce().compress());
+    let client = Client::new();
+    let res = client
+        .get(&url)
+        .header("X-Username", account.username())
+        .header("X-Authorization", signature)
+        .send()
+        .await
+        .unwrap();
+    match res.status() {
+        StatusCode::OK => {
+            // increment nonce
+            account
+                .increment_nonce(Some((&**ACCOUNT_PATH).to_path_buf()))
+                .unwrap();
+            let degrees = res.json::<Vec<DegreeData>>().await.unwrap();
+            Ok(degrees)
         }
         _ => Err(res.json::<GrapevineServerError>().await.unwrap()),
     }
