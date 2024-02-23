@@ -166,7 +166,7 @@ pub async fn add_relationship(
     let sender = db.get_user(&user.0).await.unwrap();
     // would be nice to have a zk proof of correct encryption to recipient...
     let recipient = match db.get_user(&request.to).await {
-        Some(user) => user.id.unwrap(),
+        Some(user) => user,
         None => {
             return Err(GrapevineResponse::NotFound(String::from(
                 "Recipient does not exist.".to_string(),
@@ -177,10 +177,32 @@ pub async fn add_relationship(
     let relationship_doc = Relationship {
         id: None,
         sender: Some(sender.id.unwrap()),
-        recipient: Some(recipient),
+        recipient: Some(recipient.id.unwrap()),
         ephemeral_key: Some(request.ephemeral_key.clone()),
         ciphertext: Some(request.ciphertext.clone()),
     };
+
+    // ensure relationship does not alreaday exist between two users
+    match db.check_relationship_exists(&relationship_doc).await {
+        Ok(exists) => match exists {
+            true => {
+                return Err(GrapevineResponse::Conflict(ErrorMessage(
+                    Some(GrapevineServerError::RelationshipExists(
+                        sender.username.unwrap(),
+                        recipient.username.unwrap(),
+                    )),
+                    None,
+                )))
+            }
+            false => (),
+        },
+        Err(e) => {
+            return Err(GrapevineResponse::InternalError(ErrorMessage(
+                Some(e),
+                None,
+            )))
+        }
+    }
 
     match db.add_relationship(&relationship_doc).await {
         Ok(_) => Ok(Status::Created),
@@ -294,7 +316,6 @@ pub async fn get_all_degrees(
     user: AuthenticatedUser,
     db: &State<GrapevineDB>,
 ) -> Result<Json<Vec<DegreeData>>, GrapevineResponse> {
-    println!("in");
     match db.get_all_degrees(user.0).await {
         Some(proofs) => Ok(Json(proofs)),
         None => Err(GrapevineResponse::InternalError(ErrorMessage(

@@ -383,11 +383,11 @@ impl GrapevineDB {
             .await
             .unwrap();
 
-        // If a proof is marked inactive
-        // if oid.is_some() {
-        //     let update = doc! { "$pull": { "degree_proofs": oid.unwrap() } };
-        //     self.users.update_one(query, update, None).await.unwrap();
-        // }
+        // If a proof is marked inactive then remove from user's list of degree proofs
+        if update_entitity.1 {
+            let update = doc! { "$pull": { "degree_proofs": update_entitity.0 } };
+            self.users.update_one(query, update, None).await.unwrap();
+        }
         Ok(proof_oid)
     }
 
@@ -598,8 +598,8 @@ impl GrapevineDB {
                 }
                 Err(e) => {
                     println!("Error: {}", e);
-                    return None
-                },
+                    return None;
+                }
             }
         }
         Some(degrees)
@@ -712,5 +712,64 @@ impl GrapevineDB {
             }
         }
         proofs
+    }
+
+    /**
+     * Check to see if degree already exists between two accounts
+     *
+     * @param proof - Degree proof to be inserted
+     */
+    pub async fn check_degree_exists(
+        &self,
+        proof: &DegreeProof,
+    ) -> Result<bool, GrapevineServerError> {
+        let query = doc! {"preceding": proof.preceding.unwrap(), "user": proof.user.unwrap()};
+        let projection = doc! { "_id": 1 };
+        let find_options = FindOneOptions::builder().projection(projection).build();
+
+        match self.degree_proofs.find_one(query, find_options).await {
+            Ok(res) => Ok(res.is_some()),
+            Err(e) => Err(GrapevineServerError::MongoError(e.to_string())),
+        }
+    }
+
+    /**
+     * Check to see if phrase hash already exists
+     *
+     * @param phrase_hash - hash of the phrase linking the proof
+     */
+    pub async fn check_phrase_exists(
+        &self,
+        phrase_hash: [u8; 32],
+    ) -> Result<bool, GrapevineServerError> {
+        let phrase_hash_bson: Vec<i32> = phrase_hash.to_vec().iter().map(|x| *x as i32).collect();
+
+        let query = doc! {"phrase_hash": phrase_hash_bson};
+        let projection = doc! { "_id": 1 };
+        let find_options = FindOneOptions::builder().projection(projection).build();
+
+        match self.degree_proofs.find_one(query, find_options).await {
+            Ok(res) => Ok(res.is_some()),
+            Err(e) => Err(GrapevineServerError::MongoError(e.to_string())),
+        }
+    }
+
+    /**
+     * Check to see if a relationship already exists between two users
+     *
+     * @param relationship - relationship between two users
+     */
+    pub async fn check_relationship_exists(
+        &self,
+        relationship: &Relationship,
+    ) -> Result<bool, GrapevineServerError> {
+        let query = doc! { "recipient": relationship.recipient, "sender": relationship.sender };
+        let projection = doc! { "_id": 1 };
+        let find_options = FindOneOptions::builder().projection(projection).build();
+
+        match self.relationships.find_one(query, find_options).await {
+            Ok(res) => Ok(res.is_some()),
+            Err(e) => Err(GrapevineServerError::MongoError(e.to_string())),
+        }
     }
 }

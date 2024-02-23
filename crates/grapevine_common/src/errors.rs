@@ -9,13 +9,16 @@ pub enum GrapevineServerError {
     UsernameNotAscii(String),
     PubkeyExists(String),
     UserExists(String),
+    RelationshipExists(String, String),
     RelationshipSenderIsTarget,
+    PhraseExists,
     NonceMismatch(u64, u64),
     MongoError(String),
     HeaderError(String),
     InternalError,
     SerdeError(String),
-    DegreeProofVerificationFailed
+    DegreeProofExists,
+    DegreeProofVerificationFailed,
 }
 
 impl std::fmt::Display for GrapevineServerError {
@@ -38,19 +41,37 @@ impl std::fmt::Display for GrapevineServerError {
             GrapevineServerError::UserExists(msg) => {
                 write!(f, "User {} already exists with the supplied pubkey", msg)
             }
+            GrapevineServerError::RelationshipExists(sender, recipient) => {
+                write!(
+                    f,
+                    "Relationship already exists between {} and {}",
+                    sender, recipient
+                )
+            }
             GrapevineServerError::RelationshipSenderIsTarget => {
                 write!(f, "Relationship sender and target are the same")
-            },
+            }
             &GrapevineServerError::NonceMismatch(expected, actual) => write!(
                 f,
                 "Nonce mismatch: expected {}, got {}. Retry this call",
                 expected, actual
             ),
+            GrapevineServerError::PhraseExists => {
+                write!(f, "This phrase has already added used by another account")
+            }
             GrapevineServerError::MongoError(msg) => write!(f, "Mongo error: {}", msg),
             GrapevineServerError::HeaderError(msg) => write!(f, "Bad http header error: `{}`", msg),
             GrapevineServerError::InternalError => write!(f, "Unknown internal server error"),
             GrapevineServerError::SerdeError(msg) => write!(f, "Error deserializing {}", msg),
-            GrapevineServerError::DegreeProofVerificationFailed => write!(f, "Failed to verify degree proof"),
+            GrapevineServerError::DegreeProofExists => {
+                write!(
+                    f,
+                    "Degree proof already exists between these accounts for this phrase"
+                )
+            }
+            GrapevineServerError::DegreeProofVerificationFailed => {
+                write!(f, "Failed to verify degree proof")
+            }
         }
     }
 }
