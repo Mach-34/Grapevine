@@ -53,7 +53,9 @@ pub fn use_r1cs() -> Result<R1CS<Fr>, Box<dyn std::error::Error>> {
 
 pub fn use_wasm() -> Result<PathBuf, Box<dyn std::error::Error>> {
     // get the path to grapevine (will create if it does not exist)
-    Ok(get_storage_path().unwrap().join("grapevine.wasm"))
+    let path = get_storage_path().unwrap().join("grapevine.wasm");
+    println!("grapevine.wasm path: {}", &path.display());
+    Ok(path)
 }
 
 /**
