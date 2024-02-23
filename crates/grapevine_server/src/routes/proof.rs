@@ -82,6 +82,26 @@ pub async fn create_phrase(
             )));
         }
     };
+
+    // check if phrase already exists in db
+    match db.check_phrase_exists(phrase_hash).await {
+        Ok(exists) => match exists {
+            true => {
+                return Err(GrapevineResponse::BadRequest(ErrorMessage(
+                    Some(GrapevineServerError::PhraseExists),
+                    None,
+                )))
+            }
+            false => (),
+        },
+        Err(e) => {
+            return Err(GrapevineResponse::InternalError(ErrorMessage(
+                Some(e),
+                None,
+            )));
+        }
+    }
+
     // get user doc
     let user = db.get_user(&user.0).await.unwrap();
     // build DegreeProof model
