@@ -480,57 +480,66 @@ mod test_rocket {
         create_degree_proof_request(&proofs_c[0], &mut user_c).await;
     }
 
-    // #[rocket::async_test]
-    // #[ignore]
-    // async fn test_proof_reordering_with_4_proof_chain() {
-    //     let context = GrapevineTestContext::init().await;
+    #[rocket::async_test]
+    #[ignore]
+    async fn test_proof_reordering_with_4_proof_chain() {
+        let context = GrapevineTestContext::init().await;
 
-    //     // Reset db with clean state
-    //     GrapevineDB::drop("grapevine_mocked").await;
+        // Reset db with clean state
+        GrapevineDB::drop("grapevine_mocked").await;
 
-    //     // Create test users
-    //     let mut users = vec![
-    //         GrapevineAccount::new(String::from("User_A")),
-    //         GrapevineAccount::new(String::from("User_B")),
-    //         GrapevineAccount::new(String::from("User_C")),
-    //         GrapevineAccount::new(String::from("User_D")),
-    //     ];
+        // Create test users
+        let mut users = vec![
+            GrapevineAccount::new(String::from("User_A")),
+            GrapevineAccount::new(String::from("User_B")),
+            GrapevineAccount::new(String::from("User_C")),
+            GrapevineAccount::new(String::from("User_D")),
+        ];
 
-    //     for i in 0..users.len() {
-    //         let request = users[i].create_user_request();
-    //         create_user_request(&context, &request).await;
-    //     }
+        for i in 0..users.len() {
+            let request = users[i].create_user_request();
+            create_user_request(&context, &request).await;
+        }
 
-    //     // Create phrase for User A
-    //     let phrase = String::from("And that's the waaaayyyy the news goes");
-    //     create_phrase_request(phrase, &mut users.get(0).unwrap().clone()).await;
+        // Create phrase for User A
+        let phrase = String::from("And that's the waaaayyyy the news goes");
+        create_phrase_request(phrase, &mut users[0]).await;
 
-    //     // Add relationship between User A and User B, B and C, and C and D
-    //     for i in 0..users.len() - 1 {
-    //         add_relationship_request(&mut users[i], &mut users[i + 1]).await;
-    //     }
+        // Create relationships and degree proofs: A <- B <- C <- D
+        for i in 0..users.len() - 1 {
+            // Remove users from vector to reference
+            let mut preceding = users.remove(i);
+            // Proceeding is now an index below after removal
+            let mut proceeding = users.remove(i);
 
-    //     // Create degree proofs: A <- B <- C <- D
-    //     for i in 1..users.len() {
-    //         let proofs = get_available_degrees_request(&mut users[i]).await.unwrap();
-    //         create_degree_proof_request(&proofs[0], &mut users[i]).await;
-    //     }
+            add_relationship_request(&mut preceding, &mut proceeding).await;
+            let proofs = get_available_degrees_request(&mut proceeding)
+                .await
+                .unwrap();
+            create_degree_proof_request(&proofs[0], &mut proceeding).await;
 
-    //     // Establish relationship between A and C now
-    //     add_relationship_request(&mut users[0], &mut users[2]).await;
+            // Add users back to vector
+            users.insert(i, preceding);
+            users.insert(i + 1, proceeding);
+        }
 
-    //     // Check that C now has an available degree request
-    //     let proofs_c = get_available_degrees_request(&mut users[2]).await.unwrap();
+        let mut user_a = users.remove(0);
+        let mut user_c = users.remove(1);
+        // Establish relationship between A and C now
+        add_relationship_request(&mut user_a, &mut user_c).await;
+        // Check that C now has an available degree request
+        let proofs_c = get_available_degrees_request(&mut user_c).await.unwrap();
+        // Create new deree proof between A and C
+        create_degree_proof_request(&proofs_c[0], &mut user_c).await;
 
-    //     // Create new degree proof between A and C
-    //     create_degree_proof_request(&proofs_c[0], &mut users[2]).await;
+        users.insert(0, user_a);
+        users.insert(2, user_c);
 
-    //     // Check avaiable degree with D and perform necessary update
-    //     let proofs_d = get_available_degrees_request(&mut users[3]).await.unwrap();
-
-    //     // Create new degree proof between C and D
-    //     create_degree_proof_request(&proofs_d[0], &mut users[3]).await;
-    // }
+        // Check avaiable degree with D and perform necessary update
+        let proofs_d = get_available_degrees_request(&mut users[3]).await.unwrap();
+        // Create new degree proof between C and D
+        create_degree_proof_request(&proofs_d[0], &mut users[3]).await;
+    }
 
     #[rocket::async_test]
     #[ignore]
@@ -650,71 +659,106 @@ mod test_rocket {
         }
     }
 
-    // #[rocket::async_test]
-    // #[ignore]
-    // async fn test_proof_reordering_with_27_proof_chain() {
-    //     // Start with tree structure and eventually have each user connect directly to A
-    //     let context = GrapevineTestContext::init().await;
+    #[rocket::async_test]
+    #[ignore]
+    async fn test_proof_reordering_with_27_proof_chain() {
+        // Start with tree structure and eventually have each user connect directly to A
+        let context = GrapevineTestContext::init().await;
 
-    //     // Reset db with clean state
-    //     GrapevineDB::drop("grapevine_mocked").await;
+        // Reset db with clean state
+        GrapevineDB::drop("grapevine_mocked").await;
 
-    //     let mut users: Vec<GrapevineAccount> = vec![];
-    //     // Create test users
-    //     for i in 0..27 {
-    //         let usersname = format!("User_{}", i);
-    //         let user = GrapevineAccount::new(usersname);
-    //         let creation_request = user.create_user_request();
-    //         create_user_request(&context, &creation_request).await;
-    //         users.push(user);
-    //     }
+        let mut users: Vec<GrapevineAccount> = vec![];
+        // Create test users
+        for i in 0..27 {
+            let usersname = format!("User_{}", i);
+            let user = GrapevineAccount::new(usersname);
+            let creation_request = user.create_user_request();
+            create_user_request(&context, &creation_request).await;
+            users.push(user);
+        }
 
-    //     // Create phrase for User A
-    //     let phrase = String::from("They're bureaucrats Morty");
-    //     create_phrase_request(phrase, &mut users.get(0).unwrap().clone()).await;
+        // Create phrase for User A
+        let phrase = String::from("They're bureaucrats Morty");
+        create_phrase_request(phrase, &mut users[0]).await;
 
-    //     // Create relationships and degree 2 proofs
-    //     for i in 0..2 {
-    //         add_relationship_request(&mut users[0], &mut users[i + 1]).await;
-    //         let proofs = get_available_degrees_request(&mut users[i + 1])
-    //             .await
-    //             .unwrap();
+        // Create relationships and degree 2 proofs
+        for i in 0..2 {
+            // Remove users from vector to reference
+            let mut preceding = users.remove(0);
+            // Proceeding is now an index below after removal
+            let mut proceeding = users.remove(i);
 
-    //         create_degree_proof_request(&proofs[0], &mut users[i + 1]).await;
-    //     }
+            add_relationship_request(&mut preceding, &mut proceeding).await;
+            let proofs = get_available_degrees_request(&mut proceeding)
+                .await
+                .unwrap();
 
-    //     // Create relationships and degree 3 proofs
-    //     for i in 0..6 {
-    //         let preceding_index = 1 + i / 3;
-    //         add_relationship_request(&mut users[preceding_index], &mut users[i + 3]).await;
-    //         let proofs = get_available_degrees_request(&mut users[i + 3])
-    //             .await
-    //             .unwrap();
+            create_degree_proof_request(&proofs[0], &mut proceeding).await;
+            // Add users back to vector
+            users.insert(0, preceding);
+            users.insert(i + 1, proceeding);
+        }
 
-    //         create_degree_proof_request(&proofs[0], &mut users[i + 3]).await;
-    //     }
+        // Create relationships and degree 3 proofs
+        for i in 0..6 {
+            let preceding_index = 1 + i / 3;
 
-    //     // Create relationships and degree 4 proofs
-    //     for i in 0..18 {
-    //         let preceding_index = 3 + i / 3;
-    //         add_relationship_request(&mut users[preceding_index], &mut users[i + 9]).await;
-    //         let proofs = get_available_degrees_request(&mut users[i + 9])
-    //             .await
-    //             .unwrap();
+            // Remove users from vector to reference
+            let mut preceding = users.remove(preceding_index);
+            // Proceeding is now an index below after removal
+            let mut proceeding = users.remove(i + 2);
 
-    //         create_degree_proof_request(&proofs[0], &mut users[i + 9]).await;
-    //     }
+            add_relationship_request(&mut preceding, &mut proceeding).await;
+            let proofs = get_available_degrees_request(&mut proceeding)
+                .await
+                .unwrap();
 
-    //     // Bring all proofs to degree 2
-    //     for i in 0..24 {
-    //         add_relationship_request(&mut users[0], &mut users[i + 3]).await;
-    //         let proofs = get_available_degrees_request(&mut users[i + 3])
-    //             .await
-    //             .unwrap();
+            create_degree_proof_request(&proofs[0], &mut proceeding).await;
+            // Add users back to vector
+            users.insert(preceding_index, preceding);
+            users.insert(i + 2, proceeding);
+        }
 
-    //         create_degree_proof_request(&proofs[0], &mut users[i + 3]).await;
-    //     }
-    // }
+        // Create relationships and degree 4 proofs
+        for i in 0..18 {
+            let preceding_index = 3 + i / 3;
+
+            // Remove users from vector to reference
+            let mut preceding = users.remove(preceding_index);
+            // Proceeding is now an index below after removal
+            let mut proceeding = users.remove(i + 8);
+
+            add_relationship_request(&mut preceding, &mut proceeding).await;
+            let proofs = get_available_degrees_request(&mut proceeding)
+                .await
+                .unwrap();
+
+            create_degree_proof_request(&proofs[0], &mut proceeding).await;
+
+            // Add users back to vector
+            users.insert(preceding_index, preceding);
+            users.insert(i + 9, proceeding);
+        }
+
+        // Bring all proofs to degree 2
+        for i in 0..24 {
+            // Remove users from vector to reference
+            let mut preceding = users.remove(0);
+            // Proceeding is now an index below after removal
+            let mut proceeding = users.remove(i + 2);
+            add_relationship_request(&mut preceding, &mut proceeding).await;
+            let proofs = get_available_degrees_request(&mut proceeding)
+                .await
+                .unwrap();
+
+            create_degree_proof_request(&proofs[0], &mut proceeding).await;
+
+            // Add users back to vector
+            users.insert(0, preceding);
+            users.insert(i + 3, proceeding);
+        }
+    }
 
     #[rocket::async_test]
     async fn test_inactive_relationshionships_hidden_in_degree_return() {
@@ -871,6 +915,27 @@ mod test_rocket {
         // Check that user was stored in DB
         let user = get_user_request(&context, username).await;
         assert!(user.is_some(), "User should be stored inside of MongoDB");
+    }
+
+    #[rocket::async_test]
+    async fn test_duplicate_user() {
+        // Reset db with clean state
+        GrapevineDB::drop("grapevine_mocked").await;
+
+        let username = String::from("username_duplicate_user");
+
+        let context = GrapevineTestContext::init().await;
+
+        let account = GrapevineAccount::new(username.clone());
+
+        let request = account.create_user_request();
+
+        create_user_request(&context, &request).await;
+        let msg = create_user_request(&context, &request).await;
+
+        let condition = msg.contains("UserExists") && msg.contains("username_duplicate_user");
+
+        assert!(condition, "Users should be enforced to be unique.")
     }
 
     #[rocket::async_test]
@@ -1228,7 +1293,7 @@ mod test_rocket {
         let mut user_a = GrapevineAccount::new(String::from("user_degree_proof_2_a"));
         let mut user_b = GrapevineAccount::new(String::from("user_degree_proof_2_b"));
 
-        // Create user
+        // Create users
         let user_a_request = user_a.create_user_request();
         let user_b_request = user_b.create_user_request();
         create_user_request(&context, &user_a_request).await;
@@ -1248,6 +1313,38 @@ mod test_rocket {
             code,
             Status::Created.code,
             "Degree proof should have been created"
+        );
+    }
+
+    #[rocket::async_test]
+    async fn test_duplicate_degree_proof() {
+        // Reset db with clean state
+        GrapevineDB::drop("grapevine_mocked").await;
+
+        let context = GrapevineTestContext::init().await;
+
+        let mut user_a = GrapevineAccount::new(String::from("user_degree_proof_3_a"));
+        let mut user_b = GrapevineAccount::new(String::from("user_degree_proof_3_b"));
+
+        // Create users
+        let user_a_request = user_a.create_user_request();
+        let user_b_request = user_b.create_user_request();
+        create_user_request(&context, &user_a_request).await;
+        create_user_request(&context, &user_b_request).await;
+
+        add_relationship_request(&mut user_a, &mut user_b).await;
+
+        // User A creates phrase
+        let phrase = String::from("The night has come to a close");
+        create_phrase_request(phrase, &mut user_a).await;
+
+        let proofs = get_available_degrees_request(&mut user_b).await.unwrap();
+
+        create_degree_proof_request(&proofs[0], &mut user_b).await;
+        let (_, msg) = create_degree_proof_request(&proofs[0], &mut user_b).await;
+        assert!(
+            msg.unwrap().contains("DegreeProofExists"),
+            "Cannot create a second degree proof between same accounts for same phrase"
         );
     }
 

@@ -715,6 +715,25 @@ impl GrapevineDB {
     }
 
     /**
+     * Check to see if degree already exists between two accounts
+     *
+     * @param proof - Degree proof to be inserted
+     */
+    pub async fn check_degree_exists(
+        &self,
+        proof: &DegreeProof,
+    ) -> Result<bool, GrapevineServerError> {
+        let query = doc! {"preceding": proof.preceding.unwrap(), "user": proof.user.unwrap()};
+        let projection = doc! { "_id": 1 };
+        let find_options = FindOneOptions::builder().projection(projection).build();
+
+        match self.degree_proofs.find_one(query, find_options).await {
+            Ok(res) => Ok(res.is_some()),
+            Err(e) => Err(GrapevineServerError::MongoError(e.to_string())),
+        }
+    }
+
+    /**
      * Check to see if phrase hash already exists
      *
      * @param phrase_hash - hash of the phrase linking the proof

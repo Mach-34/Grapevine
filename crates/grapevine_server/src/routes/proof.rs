@@ -87,7 +87,7 @@ pub async fn create_phrase(
     match db.check_phrase_exists(phrase_hash).await {
         Ok(exists) => match exists {
             true => {
-                return Err(GrapevineResponse::BadRequest(ErrorMessage(
+                return Err(GrapevineResponse::Conflict(ErrorMessage(
                     Some(GrapevineServerError::PhraseExists),
                     None,
                 )))
@@ -209,6 +209,25 @@ pub async fn degree_proof(
         preceding: Some(ObjectId::from_str(&request.previous).unwrap()),
         proceeding: Some(vec![]),
     };
+
+    // check to see that degree proof doesn't already exist between two accounts
+    match db.check_degree_exists(&proof_doc).await {
+        Ok(exists) => match exists {
+            true => {
+                return Err(GrapevineResponse::Conflict(ErrorMessage(
+                    Some(GrapevineServerError::DegreeProofExists),
+                    None,
+                )))
+            }
+            false => (),
+        },
+        Err(e) => {
+            return Err(GrapevineResponse::InternalError(ErrorMessage(
+                Some(e),
+                None,
+            )));
+        }
+    }
 
     // add proof to db and update references
     match db.add_proof(&user.id.unwrap(), &proof_doc).await {

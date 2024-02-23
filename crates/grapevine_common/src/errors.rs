@@ -17,6 +17,7 @@ pub enum GrapevineServerError {
     HeaderError(String),
     InternalError,
     SerdeError(String),
+    DegreeProofExists,
     DegreeProofVerificationFailed,
 }
 
@@ -62,6 +63,12 @@ impl std::fmt::Display for GrapevineServerError {
             GrapevineServerError::HeaderError(msg) => write!(f, "Bad http header error: `{}`", msg),
             GrapevineServerError::InternalError => write!(f, "Unknown internal server error"),
             GrapevineServerError::SerdeError(msg) => write!(f, "Error deserializing {}", msg),
+            GrapevineServerError::DegreeProofExists => {
+                write!(
+                    f,
+                    "Degree proof already exists between these accounts for this phrase"
+                )
+            }
             GrapevineServerError::DegreeProofVerificationFailed => {
                 write!(f, "Failed to verify degree proof")
             }

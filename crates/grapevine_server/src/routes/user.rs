@@ -186,7 +186,7 @@ pub async fn add_relationship(
     match db.check_relationship_exists(&relationship_doc).await {
         Ok(exists) => match exists {
             true => {
-                return Err(GrapevineResponse::BadRequest(ErrorMessage(
+                return Err(GrapevineResponse::Conflict(ErrorMessage(
                     Some(GrapevineServerError::RelationshipExists(
                         sender.username.unwrap(),
                         recipient.username.unwrap(),

@@ -19,6 +19,7 @@ pub enum GrapevineCLIError {
     FsError(String),
     SerdeError(String),
     PhraseCreationProofFailed(String),
+    DegreeProofExists,
     DegreeProofFailed,
     DegreeProofVerificationFailed,
     UnknownServerError,
@@ -68,6 +69,12 @@ impl std::fmt::Display for GrapevineCLIError {
             GrapevineCLIError::PhraseCreationProofFailed(msg) => {
                 write!(f, "Failed to create proof for new phrase {}", msg)
             }
+            GrapevineCLIError::DegreeProofExists => {
+                write!(
+                    f,
+                    "Degree proof already exists between these accounts for this phrase"
+                )
+            }
             GrapevineCLIError::DegreeProofFailed => write!(f, "Failed to create degree proof"),
             GrapevineCLIError::DegreeProofVerificationFailed => {
                 write!(f, "Failed to verify degree proof")
@@ -98,6 +105,7 @@ impl From<GrapevineServerError> for GrapevineCLIError {
                 GrapevineCLIError::NonceMismatch(expected, actual)
             }
             GrapevineServerError::SerdeError(msg) => GrapevineCLIError::SerdeError(msg),
+            GrapevineServerError::DegreeProofExists => GrapevineCLIError::DegreeProofExists,
             GrapevineServerError::DegreeProofVerificationFailed => {
                 GrapevineCLIError::DegreeProofVerificationFailed
             }
