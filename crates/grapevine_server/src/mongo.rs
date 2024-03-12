@@ -521,6 +521,17 @@ impl GrapevineDB {
                     "pipeline": [doc! { "$project": { "degree": 1, "preceding": 1, "phrase_hash": 1 } }]
                 }
             },
+            doc! {
+                "$project": {
+                    "proofs": {
+                        "$filter": {
+                          "input": "$proofs",
+                          "as": "proof",
+                          "cond": { "$gt": ["$$proof.degree", 1] }
+                        }
+                    },
+                }
+            },
             doc! { "$unwind": "$proofs" },
             doc! {
                 "$project": {
@@ -537,7 +548,7 @@ impl GrapevineDB {
                     "localField": "preceding",
                     "foreignField": "_id",
                     "as": "relation",
-                    "pipeline": [doc! { "$project": { "user": 1, "_id": 0 } }]
+                    "pipeline": [doc! { "$project": { "preceding": 1, "user": 1, "_id": 0 } }]
                 }
             },
             doc! {
@@ -546,6 +557,7 @@ impl GrapevineDB {
                     "preceding": 1,
                     "phrase_hash": 1,
                     "relation": { "$arrayElemAt": ["$relation.user", 0] },
+                    "precedingRelation": { "$arrayElemAt": ["$relation.preceding", 0] },
                     "_id": 0
                 }
             },
@@ -563,6 +575,43 @@ impl GrapevineDB {
                     "degree": 1,
                     "phrase_hash": 1,
                     "relation": { "$arrayElemAt": ["$relation.username", 0] },
+                    "precedingRelation": 1,
+                    "_id": 0
+                }
+            },
+            // Lookup preceding relation. Will be none if degree is 2 or less
+            doc! {
+              "$lookup": {
+                "from": "degree_proofs",
+                "localField": "precedingRelation",
+                "foreignField": "_id",
+                "as": "precedingRelation",
+                "pipeline": [doc! { "$project": { "user": 1, "_id": 0 } }]
+              },
+            },
+            doc! {
+                "$project": {
+                    "degree": 1,
+                    "phrase_hash": 1,
+                    "relation": 1,
+                    "precedingRelation": { "$arrayElemAt": ["$precedingRelation.user", 0] },
+                }
+            },
+            doc! {
+                "$lookup": {
+                    "from": "users",
+                    "localField": "precedingRelation",
+                    "foreignField": "_id",
+                    "as": "precedingRelation",
+                    "pipeline": [doc! { "$project": { "_id": 0, "username": 1 } }]
+                }
+            },
+            doc! {
+                "$project": {
+                    "degree": 1,
+                    "phrase_hash": 1,
+                    "relation": 1,
+                    "precedingRelation": { "$arrayElemAt": ["$precedingRelation.username", 0] },
                     "_id": 0
                 }
             },
@@ -574,8 +623,15 @@ impl GrapevineDB {
         while let Some(result) = cursor.next().await {
             match result {
                 Ok(document) => {
+                    println!("Document: {:?}", document);
                     let degree = document.get_i32("degree").unwrap() as u8;
-                    let relation = match document.get("relation") {
+                    let relation = document
+                        .get("relation")
+                        .unwrap()
+                        .as_str()
+                        .unwrap()
+                        .to_string();
+                    let preceding_relation = match document.get("precedingRelation") {
                         Some(relation) => Some(relation.as_str().unwrap().to_string()),
                         None => None,
                     };
@@ -593,6 +649,7 @@ impl GrapevineDB {
                     degrees.push(DegreeData {
                         degree,
                         relation,
+                        preceding_relation,
                         phrase_hash,
                     });
                 }
