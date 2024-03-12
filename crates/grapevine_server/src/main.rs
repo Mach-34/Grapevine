@@ -620,6 +620,58 @@ mod test_rocket {
 
     #[rocket::async_test]
     #[ignore]
+    async fn test_get_degrees_refactor() {
+        let context = GrapevineTestContext::init().await;
+
+        // Reset db with clean state
+        GrapevineDB::drop("grapevine_mocked").await;
+
+        // Create test users
+        let mut users = vec![
+            GrapevineAccount::new(String::from("User_A")),
+            GrapevineAccount::new(String::from("User_B")),
+            GrapevineAccount::new(String::from("User_C")),
+            GrapevineAccount::new(String::from("User_D")),
+        ];
+
+        for i in 0..users.len() {
+            let request = users[i].create_user_request();
+            create_user_request(&context, &request).await;
+        }
+
+        // Create phrase for User A
+        let phrase = String::from("You are what you eat");
+        create_phrase_request(phrase, &mut users[0]).await;
+
+        // Add relationship and degree proofs: A <- B, B <- C, C <- D
+        for i in 0..3 {
+            // Remove users from vector to reference
+            let mut preceding = users.remove(i);
+            // Proceeding is now an index below after removal
+            let mut proceeding = users.remove(i);
+
+            add_relationship_request(&mut preceding, &mut proceeding).await;
+            let proofs = get_available_degrees_request(&mut proceeding)
+                .await
+                .unwrap();
+            create_degree_proof_request(&proofs[0], &mut proceeding).await;
+
+            // Add users back to vector
+            users.insert(i, preceding);
+            users.insert(i + 1, proceeding);
+        }
+
+        // Get degree proofs for user C
+        let degrees = get_all_degrees(&users[2]).await;
+        println!("Degrees: {:?}", degrees);
+        let degrees = get_all_degrees(&users[1]).await;
+        println!("Degrees B: {:?}", degrees);
+        let degrees = get_all_degrees(&users[0]).await;
+        println!("Degrees A: {:?}", degrees);
+    }
+
+    #[rocket::async_test]
+    #[ignore]
     async fn test_proof_reordering_with_20_proof_chain() {
         let context = GrapevineTestContext::init().await;
 

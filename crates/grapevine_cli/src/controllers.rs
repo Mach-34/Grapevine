@@ -1,6 +1,7 @@
 use crate::errors::GrapevineCLIError;
 use crate::http::{
-    add_relationship_req, create_user_req, degree_proof_req, get_available_proofs_req, get_degrees_req, get_nonce_req, get_proof_with_params_req, get_pubkey_req, new_phrase_req
+    add_relationship_req, create_user_req, degree_proof_req, get_available_proofs_req,
+    get_degrees_req, get_nonce_req, get_proof_with_params_req, get_pubkey_req, new_phrase_req,
 };
 use crate::utils::artifacts_guard;
 use crate::utils::fs::{use_public_params, use_r1cs, use_wasm, ACCOUNT_PATH};
@@ -266,7 +267,10 @@ pub async fn prove_all_available() -> Result<String, GrapevineCLIError> {
             Err(e) => return Err(GrapevineCLIError::from(e)),
         }
     }
-    Ok(format!("Success: proved {} new degree proofs", proofs.len()))
+    Ok(format!(
+        "Success: proved {} new degree proofs",
+        proofs.len()
+    ))
 }
 
 pub async fn get_my_proofs() -> Result<String, GrapevineCLIError> {
@@ -283,13 +287,15 @@ pub async fn get_my_proofs() -> Result<String, GrapevineCLIError> {
         account.username()
     );
     for degree in data {
-        println!("=-=-=-=-=-=-=-=-=-=-=-=-=");
+        println!("Test compilation =-=-=-=-=-=-=-=-=-=-=-=-=");
         println!("Phrase hash: 0x{}", hex::encode(degree.phrase_hash));
-        if degree.relation.is_none() {
-            println!("Phrase created by this user");
-        } else {
-            println!("Degrees of separation from origin: {}", degree.degree);
-            println!("Your relation: {}", degree.relation.unwrap());
+        println!("Degrees of separation from origin: {}", degree.degree);
+        println!("Your relation: {}", degree.relation);
+        if degree.preceding_relation.is_some() {
+            println!(
+                "Relation's relation: {}",
+                degree.preceding_relation.unwrap()
+            );
         }
     }
     Ok(String::from(""))
