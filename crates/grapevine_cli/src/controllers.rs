@@ -164,9 +164,10 @@ pub async fn create_new_phrase(phrase: String) -> Result<String, GrapevineCLIErr
         }
     };
     let compressed = compress_proof(&proof);
-
+    // encrypt phrase
+    let phrase_ciphertext = account.encrypt_phrase(&phrase);
     // build request body
-    let body = NewPhraseRequest { proof: compressed };
+    let body = NewPhraseRequest { proof: compressed, phrase_ciphertext };
     // send request
     let res = new_phrase_req(&mut account, body).await;
     match res {
@@ -287,15 +288,21 @@ pub async fn get_my_proofs() -> Result<String, GrapevineCLIError> {
         account.username()
     );
     for degree in data {
-        println!("Test compilation =-=-=-=-=-=-=-=-=-=-=-=-=");
+        println!("=-=-=-=-=-=-=-=-=-=-=-=-=");
         println!("Phrase hash: 0x{}", hex::encode(degree.phrase_hash));
         println!("Degrees of separation from origin: {}", degree.degree);
-        println!("Your relation: {}", degree.relation);
-        if degree.preceding_relation.is_some() {
-            println!(
-                "Relation's relation: {}",
-                degree.preceding_relation.unwrap()
-            );
+        if degree.relation.is_none() {
+            println!("Phrase created by this user");
+            let phrase = account.decrypt_phrase(&degree.secret_phrase.unwrap());
+            println!("Secret phrase: \"{}\"", phrase);
+        } else {
+            println!("Your relation: {}", degree.relation.unwrap());
+            if degree.preceding_relation.is_some() {
+                println!(
+                    "2nd degree relation: {}",
+                    degree.preceding_relation.unwrap()
+                );
+            }
         }
     }
     Ok(String::from(""))

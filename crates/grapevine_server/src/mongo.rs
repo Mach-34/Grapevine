@@ -646,11 +646,25 @@ impl GrapevineDB {
                         .collect::<Vec<u8>>()
                         .try_into()
                         .unwrap();
+                    // get secret phrase is included
+                    let secret_phrase = match document.get("secret_phrase") {
+                        Some(phrase) => {
+                            let phrase: Vec<u8> = phrase
+                                .as_array()
+                                .unwrap()
+                                .iter()
+                                .map(|x| x.as_i32().unwrap() as u8)
+                                .collect();
+                            Some(phrase.try_into().unwrap())
+                        }
+                        None => None,
+                    };
                     degrees.push(DegreeData {
                         degree,
-                        relation,
+                        relation: Some(relation),
                         preceding_relation,
                         phrase_hash,
+                        secret_phrase
                     });
                 }
                 Err(e) => {
