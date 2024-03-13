@@ -1,15 +1,18 @@
 use crate::auth_secret::{AuthSecret, AuthSecretEncrypted, AuthSecretEncryptedUser};
-use crate::crypto::{new_private_key, nonce_hash};
+use crate::crypto::{gen_aes_key, new_private_key, nonce_hash};
 use crate::http::requests::{
     CreateUserRequest, GetNonceRequest, NewPhraseRequest, NewRelationshipRequest,
 };
-use crate::utils::{convert_username_to_fr, random_fr};
+use crate::utils::{convert_phrase_to_fr, convert_username_to_fr, random_fr};
 use crate::{Fr, Params};
+use aes::cipher::{block_padding::Pkcs7, BlockDecryptMut, BlockEncryptMut, KeyIvInit};
 use babyjubjub_rs::{Point, PrivateKey, Signature};
 use num_bigint::{BigInt, Sign};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
+type Aes128CbcEnc = cbc::Encryptor<aes::Aes128>;
+type Aes128CbcDec = cbc::Decryptor<aes::Aes128>;
 #[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct GrapevineAccount {
     username: String,
@@ -100,6 +103,45 @@ impl GrapevineAccount {
      */
     pub fn decrypt_auth_secret(&self, message: AuthSecretEncrypted) -> AuthSecret {
         message.decrypt(self.private_key())
+    }
+
+    /// PHRASE ENCRYPTION METHODS ///
+
+    /**
+     * Encrypt a phrase for this account
+     */
+    pub fn encrypt_phrase(&self, phrase: &String) -> [u8; 192] {
+        // convert phrase to binary
+        let mut bytes = phrase.as_bytes().to_vec();
+        bytes.resize(180, 0);
+        let mut buf = [0u8; 192];
+        buf[..bytes.len()].copy_from_slice(&bytes);
+        // generate encryption key
+        let (aes_key, aes_iv) = gen_aes_key(self.private_key(), self.pubkey());
+        // encrypt padded phrase
+        Aes128CbcEnc::new(aes_key[..].into(), aes_iv[..].into())
+            .encrypt_padded_mut::<Pkcs7>(&mut buf, bytes.len())
+            .unwrap()
+            .try_into()
+            .unwrap()
+    }
+
+    /**
+     * Decrypt a phrase for this account
+     */
+    pub fn decrypt_phrase(&self, ciphertext: &[u8; 192]) -> String {
+        // derive asymmetric key key
+        let (aes_key, aes_iv) = gen_aes_key(self.private_key(), self.pubkey());
+        // decrypt ciphertext
+        let mut buf = ciphertext.clone();
+        let ptr: [u8; 180] = Aes128CbcDec::new(aes_key[..].into(), aes_iv[..].into())
+            .decrypt_padded_mut::<Pkcs7>(&mut buf)
+            .unwrap()
+            .try_into()
+            .unwrap();
+        // return the string
+        let end = ptr.iter().position(|&r| r == 0).unwrap_or(ptr.len());
+        String::from_utf8(ptr[..end].to_vec()).unwrap()
     }
 
     /// SIGNING METHODS ///
@@ -246,5 +288,15 @@ mod test {
         let deserialized = serde_json::from_str::<GrapevineAccount>(&json).unwrap();
         let deserialized_key = hex::encode(deserialized.private_key);
         assert_eq!(deserialized_key, hex::encode(account.private_key));
+    }
+
+    #[test] 
+    fn test_phrase_encryption() {
+        let username = String::from("JP4G");
+        let account = GrapevineAccount::new(username);
+        let phrase = String::from("This is a test phrase");
+        let ciphertext = account.encrypt_phrase(&phrase);
+        let decrypted = account.decrypt_phrase(&ciphertext);
+        assert_eq!(decrypted, phrase);
     }
 }

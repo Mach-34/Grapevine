@@ -337,8 +337,9 @@ mod test_rocket {
         let context = GrapevineTestContext::init().await;
 
         let compressed = compress_proof(&proof);
+        let phrase_ciphertext = user.encrypt_phrase(&phrase);
 
-        let body = NewPhraseRequest { proof: compressed };
+        let body = NewPhraseRequest { proof: compressed, phrase_ciphertext };
 
         let serialized: Vec<u8> = bincode::serialize(&body).unwrap();
 
