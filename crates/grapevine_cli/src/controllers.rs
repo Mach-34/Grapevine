@@ -1,7 +1,8 @@
 use crate::errors::GrapevineCLIError;
 use crate::http::{
-    add_relationship_req, create_user_req, degree_proof_req, get_available_proofs_req,
-    get_degrees_req, get_nonce_req, get_proof_with_params_req, get_pubkey_req, new_phrase_req,
+    add_relationship_req, create_user_req, degree_proof_req, get_account_details_req,
+    get_available_proofs_req, get_degrees_req, get_nonce_req, get_proof_with_params_req,
+    get_pubkey_req, new_phrase_req,
 };
 use crate::utils::artifacts_guard;
 use crate::utils::fs::{use_public_params, use_r1cs, use_wasm, ACCOUNT_PATH};
@@ -24,9 +25,9 @@ use std::path::Path;
 /**
  * Get the details of the current account
  */
-pub fn account_details() -> Result<String, GrapevineCLIError> {
+pub async fn account_details() -> Result<String, GrapevineCLIError> {
     // get account
-    let account = match get_account() {
+    let mut account = match get_account() {
         Ok(account) => account,
         Err(e) => return Err(e),
     };
@@ -35,13 +36,17 @@ pub fn account_details() -> Result<String, GrapevineCLIError> {
     let pubkey = hex::encode(account.pubkey().compress());
 
     // Fetch account stats
+    let details = get_account_details_req(&mut account).await.unwrap();
 
     let res = format!(
-        "Username: {}\nAuth secret: 0x{}\nPrivate key: 0x{}\nPublic key: 0x{}",
+        "Username: {}\nAuth secret: 0x{}\nPrivate key: 0x{}\nPublic key: 0x{}\n# 1st degree connections: {}\n# 2nd degree connections: {}\n# phrases created: {}",
         account.username(),
         auth_secret,
         pk,
-        pubkey
+        pubkey,
+        details.1,
+        details.2,
+        details.0
     );
     Ok(res)
 }

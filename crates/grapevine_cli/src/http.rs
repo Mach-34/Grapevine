@@ -8,8 +8,8 @@ use grapevine_common::http::requests::{
 use grapevine_common::http::responses::DegreeData;
 use grapevine_common::models::proof::ProvingData;
 use grapevine_common::{account::GrapevineAccount, errors::GrapevineServerError};
-use reqwest::{Client, StatusCode};
 use lazy_static::lazy_static;
+use reqwest::{Client, StatusCode};
 
 lazy_static! {
     pub static ref SERVER_URL: String = String::from(env!("SERVER_URL"));
@@ -193,7 +193,34 @@ pub async fn new_phrase_req(
             println!("res: {:#?}", res.text().await.unwrap());
             // Err(res.json::<GrapevineServerError>().await.unwrap())
             Err(GrapevineServerError::InternalError)
-        },
+        }
+    }
+}
+
+pub async fn get_account_details_req(
+    account: &mut GrapevineAccount,
+) -> Result<(u64, u64, u64), GrapevineServerError> {
+    let url = format!("{}/user/details", &**SERVER_URL);
+    // produce signature over current nonce
+    let signature = hex::encode(account.sign_nonce().compress());
+    let client = Client::new();
+    let res = client
+        .get(&url)
+        .header("X-Username", account.username())
+        .header("X-Authorization", signature)
+        .send()
+        .await
+        .unwrap();
+    match res.status() {
+        StatusCode::OK => {
+            // increment nonce
+            account
+                .increment_nonce(Some((&**ACCOUNT_PATH).to_path_buf()))
+                .unwrap();
+            let details = res.json::<(u64, u64, u64)>().await.unwrap();
+            Ok(details)
+        }
+        _ => Err(res.json::<GrapevineServerError>().await.unwrap()),
     }
 }
 
