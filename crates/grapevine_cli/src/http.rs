@@ -261,3 +261,30 @@ pub async fn degree_proof_req(
         _ => Err(res.json::<GrapevineServerError>().await.unwrap()),
     }
 }
+
+pub async fn get_created_req(
+    account: &mut GrapevineAccount,
+) -> Result<Vec<DegreeData>, GrapevineServerError> {
+    let url = format!("{}/proof/created", &**SERVER_URL);
+    // produce signature over current nonce
+    let signature = hex::encode(account.sign_nonce().compress());
+    let client = Client::new();
+    let res = client
+        .get(&url)
+        .header("X-Username", account.username())
+        .header("X-Authorization", signature)
+        .send()
+        .await
+        .unwrap();
+    match res.status() {
+        StatusCode::OK => {
+            // increment nonce
+            account
+                .increment_nonce(Some((&**ACCOUNT_PATH).to_path_buf()))
+                .unwrap();
+            let proofs = res.json::<Vec<DegreeData>>().await.unwrap();
+            Ok(proofs)
+        }
+        _ => Err(res.json::<GrapevineServerError>().await.unwrap()),
+    }
+}
