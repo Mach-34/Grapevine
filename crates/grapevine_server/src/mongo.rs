@@ -4,6 +4,7 @@ use grapevine_common::errors::GrapevineServerError;
 use grapevine_common::http::responses::DegreeData;
 use grapevine_common::models::proof::ProvingData;
 use grapevine_common::models::{proof::DegreeProof, relationship::Relationship, user::User};
+use mongodb::bson::Bson;
 use mongodb::bson::{self, doc, oid::ObjectId, Binary};
 use mongodb::options::{ClientOptions, FindOneOptions, FindOptions, ServerApi, ServerApiVersion};
 use mongodb::{Client, Collection};
@@ -505,6 +506,84 @@ impl GrapevineDB {
         proofs
     }
 
+    /**
+     * Get all degree proofs created by a specific user
+     */
+    pub async fn get_created(&self, username: String) -> Option<Vec<DegreeData>> {
+        let pipeline = vec![
+            // get the user to find the proofs of degrees of separation for the user
+            doc! { "$match": { "username": username } },
+            doc! { "$project": { "_id": 1, "degree_proofs": 1 } },
+            // look up the degree proof documents
+            doc! {
+                "$lookup": {
+                    "from": "degree_proofs",
+                    "localField": "degree_proofs",
+                    "foreignField": "_id",
+                    "as": "proofs",
+                    "pipeline": [doc! { "$project": { "degree": 1, "secret_phrase": 1, "phrase_hash": 1 } }]
+                }
+            },
+            doc! {
+                "$project": {
+                    "proofs": {
+                        "$filter": {
+                          "input": "$proofs",
+                          "as": "proof",
+                          "cond": { "$eq": ["$$proof.degree", 1] }
+                        }
+                    },
+                }
+            },
+            doc! { "$unwind": "$proofs" },
+            doc! {
+                "$project": {
+                    "degree": "$proofs.degree",
+                    "secret_phrase": "$proofs.secret_phrase",
+                    "phrase_hash": "$proofs.phrase_hash",
+                    "_id": 0
+                }
+            },
+        ];
+        // get the OID's of degree proofs the user can build from
+        let mut degrees: Vec<DegreeData> = vec![];
+        let mut cursor = self.users.aggregate(pipeline, None).await.unwrap();
+        while let Some(result) = cursor.next().await {
+            match result {
+                Ok(document) => {
+                    // @todo: can this be retrieved better?
+                    let phrase_hash: [u8; 32] = document
+                        .get("phrase_hash")
+                        .unwrap()
+                        .as_array()
+                        .unwrap()
+                        .iter()
+                        .map(|x| x.as_i32().unwrap() as u8)
+                        .collect::<Vec<u8>>()
+                        .try_into()
+                        .unwrap();
+                    // get secret phrase is included
+                    let mut secret_phrase: Option<[u8; 192]> = None;
+                    if let Some(Bson::Binary(binary)) = document.get("secret_phrase") {
+                        secret_phrase = Some(binary.bytes.clone().try_into().unwrap());
+                    }
+                    degrees.push(DegreeData {
+                        degree: 1,
+                        relation: None,
+                        preceding_relation: None,
+                        phrase_hash,
+                        secret_phrase,
+                    });
+                }
+                Err(e) => {
+                    println!("Error: {}", e);
+                    return None;
+                }
+            }
+        }
+        Some(degrees)
+    }
+
     // @todo: ask chatgpt for better name
     pub async fn get_all_degrees(&self, username: String) -> Option<Vec<DegreeData>> {
         let pipeline = vec![
@@ -519,6 +598,17 @@ impl GrapevineDB {
                     "foreignField": "_id",
                     "as": "proofs",
                     "pipeline": [doc! { "$project": { "degree": 1, "preceding": 1, "phrase_hash": 1 } }]
+                }
+            },
+            doc! {
+                "$project": {
+                    "proofs": {
+                        "$filter": {
+                          "input": "$proofs",
+                          "as": "proof",
+                          "cond": { "$gt": ["$$proof.degree", 1] }
+                        }
+                    },
                 }
             },
             doc! { "$unwind": "$proofs" },
@@ -537,7 +627,7 @@ impl GrapevineDB {
                     "localField": "preceding",
                     "foreignField": "_id",
                     "as": "relation",
-                    "pipeline": [doc! { "$project": { "user": 1, "_id": 0 } }]
+                    "pipeline": [doc! { "$project": { "preceding": 1, "user": 1, "_id": 0 } }]
                 }
             },
             doc! {
@@ -546,6 +636,7 @@ impl GrapevineDB {
                     "preceding": 1,
                     "phrase_hash": 1,
                     "relation": { "$arrayElemAt": ["$relation.user", 0] },
+                    "precedingRelation": { "$arrayElemAt": ["$relation.preceding", 0] },
                     "_id": 0
                 }
             },
@@ -563,6 +654,43 @@ impl GrapevineDB {
                     "degree": 1,
                     "phrase_hash": 1,
                     "relation": { "$arrayElemAt": ["$relation.username", 0] },
+                    "precedingRelation": 1,
+                    "_id": 0
+                }
+            },
+            // Lookup preceding relation. Will be none if degree is 2 or less
+            doc! {
+              "$lookup": {
+                "from": "degree_proofs",
+                "localField": "precedingRelation",
+                "foreignField": "_id",
+                "as": "precedingRelation",
+                "pipeline": [doc! { "$project": { "user": 1, "_id": 0 } }]
+              },
+            },
+            doc! {
+                "$project": {
+                    "degree": 1,
+                    "phrase_hash": 1,
+                    "relation": 1,
+                    "precedingRelation": { "$arrayElemAt": ["$precedingRelation.user", 0] },
+                }
+            },
+            doc! {
+                "$lookup": {
+                    "from": "users",
+                    "localField": "precedingRelation",
+                    "foreignField": "_id",
+                    "as": "precedingRelation",
+                    "pipeline": [doc! { "$project": { "_id": 0, "username": 1 } }]
+                }
+            },
+            doc! {
+                "$project": {
+                    "degree": 1,
+                    "phrase_hash": 1,
+                    "relation": 1,
+                    "precedingRelation": { "$arrayElemAt": ["$precedingRelation.username", 0] },
                     "_id": 0
                 }
             },
@@ -574,8 +702,15 @@ impl GrapevineDB {
         while let Some(result) = cursor.next().await {
             match result {
                 Ok(document) => {
+                    println!("Document: {:?}", document);
                     let degree = document.get_i32("degree").unwrap() as u8;
-                    let relation = match document.get("relation") {
+                    let relation = document
+                        .get("relation")
+                        .unwrap()
+                        .as_str()
+                        .unwrap()
+                        .to_string();
+                    let preceding_relation = match document.get("precedingRelation") {
                         Some(relation) => Some(relation.as_str().unwrap().to_string()),
                         None => None,
                     };
@@ -592,8 +727,10 @@ impl GrapevineDB {
                         .unwrap();
                     degrees.push(DegreeData {
                         degree,
-                        relation,
+                        relation: Some(relation),
+                        preceding_relation,
                         phrase_hash,
+                        secret_phrase: None,
                     });
                 }
                 Err(e) => {

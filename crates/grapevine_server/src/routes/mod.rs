@@ -18,5 +18,6 @@ lazy_static! {
         proof::degree_proof,
         proof::get_available_proofs,
         proof::get_proof_with_params,
+        proof::get_created_phrases
     ];
 }

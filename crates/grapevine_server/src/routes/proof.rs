@@ -4,6 +4,7 @@ use crate::utils::PUBLIC_PARAMS;
 use crate::{catchers::GrapevineResponse, guards::AuthenticatedUser};
 use grapevine_circuits::{nova::verify_nova_proof, utils::decompress_proof};
 use grapevine_common::errors::GrapevineServerError;
+use grapevine_common::http::responses::DegreeData;
 use grapevine_common::{
     http::requests::{DegreeProofRequest, NewPhraseRequest},
     models::proof::{DegreeProof, ProvingData},
@@ -112,6 +113,7 @@ pub async fn create_phrase(
         auth_hash: Some(auth_hash),
         user: Some(user.id.unwrap()),
         degree: Some(1),
+        secret_phrase: Some(request.phrase_ciphertext),
         proof: Some(request.proof.clone()),
         preceding: None,
         proceeding: Some(vec![]),
@@ -205,6 +207,7 @@ pub async fn degree_proof(
         auth_hash: Some(auth_hash),
         user: Some(user.id.unwrap()),
         degree: Some(request.degree),
+        secret_phrase: None,
         proof: Some(request.proof.clone()),
         preceding: Some(ObjectId::from_str(&request.previous).unwrap()),
         proceeding: Some(vec![]),
@@ -320,6 +323,25 @@ pub async fn get_proof_chain(
     db: &State<GrapevineDB>,
 ) -> Result<Json<Vec<DegreeProof>>, Status> {
     Ok(Json(db.get_proof_chain(&phrase_hash).await))
+}
+
+/**
+ * Get all created phrases
+ */
+#[get("/created")]
+pub async fn get_created_phrases(
+    user: AuthenticatedUser,
+    db: &State<GrapevineDB>,
+) -> Result<Json<Vec<DegreeData>>, GrapevineResponse> {
+    match db.get_created(user.0).await {
+        Some(proofs) => Ok(Json(proofs)),
+        None => Err(GrapevineResponse::InternalError(ErrorMessage(
+            Some(GrapevineServerError::MongoError(String::from(
+                "Error retrieving degrees in db",
+            ))),
+            None,
+        ))),
+    }
 }
 
 // /**

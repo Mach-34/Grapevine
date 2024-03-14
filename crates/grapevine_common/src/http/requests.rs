@@ -10,7 +10,8 @@ pub struct CreateUserRequest {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct NewPhraseRequest {
     pub proof: Vec<u8>,
-
+    #[serde(with = "serde_bytes")]
+    pub phrase_ciphertext: [u8; 192],
 }
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct GetNonceRequest {

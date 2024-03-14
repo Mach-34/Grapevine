@@ -4,6 +4,9 @@ use serde::{Deserialize, Serialize};
 pub struct DegreeData {
     pub degree: u8,
     pub relation: Option<String>,
+    pub preceding_relation: Option<String>,
     #[serde(with = "serde_bytes")]
     pub phrase_hash: [u8; 32],
+    #[serde(with = "serde_bytes")]
+    pub secret_phrase: Option<[u8; 192]>
 }
