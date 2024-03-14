@@ -178,6 +178,26 @@ mod test_rocket {
         hex::encode(nonce_signature.compress())
     }
 
+    async fn get_account_details_request(user: &mut GrapevineAccount) -> Option<(u64, u64, u64)> {
+        let context = GrapevineTestContext::init().await;
+
+        let username = user.username().clone();
+        let signature = generate_nonce_signature(user);
+
+        let res = context
+            .client
+            .get("/user/details")
+            .header(Header::new("X-Authorization", signature))
+            .header(Header::new("X-Username", username))
+            .dispatch()
+            .await
+            .into_json::<(u64, u64, u64)>()
+            .await;
+
+        let _ = user.increment_nonce(None);
+        res
+    }
+
     async fn get_all_degrees(user: &GrapevineAccount) -> Option<Vec<DegreeData>> {
         let context = GrapevineTestContext::init().await;
 
@@ -1346,6 +1366,100 @@ mod test_rocket {
             msg.unwrap().contains("DegreeProofExists"),
             "Cannot create a second degree proof between same accounts for same phrase"
         );
+    }
+
+    #[rocket::async_test]
+    async fn test_get_account_details() {
+        // Reset db with clean state
+        GrapevineDB::drop("grapevine_mocked").await;
+
+        let context = GrapevineTestContext::init().await;
+
+        // Create test users
+        let mut users = vec![
+            GrapevineAccount::new(String::from("user_account_details_1")),
+            GrapevineAccount::new(String::from("user_account_details_2")),
+            GrapevineAccount::new(String::from("user_account_details_3")),
+            GrapevineAccount::new(String::from("user_account_details_4")),
+            GrapevineAccount::new(String::from("user_account_details_5")),
+            GrapevineAccount::new(String::from("user_account_details_6")),
+            GrapevineAccount::new(String::from("user_account_details_7")),
+            GrapevineAccount::new(String::from("user_account_details_8")),
+            GrapevineAccount::new(String::from("user_account_details_9")),
+        ];
+
+        for i in 0..users.len() {
+            let request = users[i].create_user_request();
+            create_user_request(&context, &request).await;
+        }
+
+        let mut user_a = users.remove(0);
+        let mut user_b = users.remove(0);
+        let mut user_c = users.remove(0);
+        let mut user_d = users.remove(0);
+        let mut user_e = users.remove(0);
+        let mut user_f = users.remove(0);
+        let mut user_g = users.remove(0);
+        let mut user_h = users.remove(0);
+        let mut user_i = users.remove(0);
+
+        let phrase = String::from("The first phrase to end them all");
+
+        let details = get_account_details_request(&mut user_a).await.unwrap();
+        assert_eq!(details.0, 0, "Phrase count should be 0");
+        assert_eq!(details.1, 0, "First degree count should be 0");
+        assert_eq!(details.2, 0, "Second degree count should be 0");
+
+        create_phrase_request(phrase, &mut user_a).await;
+
+        let details = get_account_details_request(&mut user_a).await.unwrap();
+        assert_eq!(details.0, 1, "Phrase count should be 1");
+        assert_eq!(details.1, 0, "First degree count should be 0");
+        assert_eq!(details.2, 0, "Second degree count should be 0");
+
+        // Add first degree connection and second degree connection
+
+        add_relationship_request(&mut user_b, &mut user_a).await;
+        add_relationship_request(&mut user_c, &mut user_b).await;
+
+        let details = get_account_details_request(&mut user_a).await.unwrap();
+        assert_eq!(details.0, 1, "Phrase count should be 1");
+        assert_eq!(details.1, 1, "First degree count should be 1");
+        assert_eq!(details.2, 1, "Second degree count should be 1");
+
+        // Relationships with calling account should be excluded
+        add_relationship_request(&mut user_a, &mut user_b).await;
+        let details = get_account_details_request(&mut user_a).await.unwrap();
+        assert_eq!(details.0, 1, "Phrase count should be 1");
+        assert_eq!(details.1, 1, "First degree count should be 1");
+        assert_eq!(details.2, 1, "Second degree count should be 1");
+
+        // Second degree connections that becomes a first degree connection should no longer be treated as second degree
+        add_relationship_request(&mut user_d, &mut user_b).await;
+        add_relationship_request(&mut user_e, &mut user_b).await;
+        let details = get_account_details_request(&mut user_a).await.unwrap();
+        assert_eq!(details.0, 1, "Phrase count should be 1");
+        assert_eq!(details.1, 1, "First degree count should be 1");
+        assert_eq!(details.2, 3, "Second degree count should be 3");
+
+        add_relationship_request(&mut user_d, &mut user_a).await;
+        add_relationship_request(&mut user_e, &mut user_a).await;
+        add_relationship_request(&mut user_a, &mut user_d).await;
+        add_relationship_request(&mut user_a, &mut user_e).await;
+        let details = get_account_details_request(&mut user_a).await.unwrap();
+        assert_eq!(details.0, 1, "Phrase count should be 1");
+        assert_eq!(details.1, 3, "First degree count should be 3");
+        assert_eq!(details.2, 1, "Second degree count should be 1");
+
+        // Test where 3 new degree 2 connections added at once
+        add_relationship_request(&mut user_g, &mut user_f).await;
+        add_relationship_request(&mut user_h, &mut user_f).await;
+        add_relationship_request(&mut user_i, &mut user_f).await;
+        add_relationship_request(&mut user_f, &mut user_a).await;
+        let details = get_account_details_request(&mut user_a).await.unwrap();
+        assert_eq!(details.0, 1, "Phrase count should be 1");
+        assert_eq!(details.1, 4, "First degree count should be 3");
+        assert_eq!(details.2, 4, "Second degree count should be 1");
     }
 
     // #[rocket::async_test]
