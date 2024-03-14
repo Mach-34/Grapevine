@@ -37,7 +37,7 @@ pub async fn create_phrase(
     user: AuthenticatedUser,
     data: Data<'_>,
     db: &State<GrapevineDB>,
-) -> Result<Status, GrapevineResponse> {
+) -> Result<String, GrapevineResponse> {
     // stream in data
     // todo: implement FromData trait on NewPhraseRequest
     let mut buffer = Vec::new();
@@ -114,13 +114,14 @@ pub async fn create_phrase(
         user: Some(user.id.unwrap()),
         degree: Some(1),
         secret_phrase: Some(request.phrase_ciphertext),
+        title: Some(request.title.clone()),
         proof: Some(request.proof.clone()),
         preceding: None,
         proceeding: Some(vec![]),
     };
 
     match db.add_proof(&user.id.unwrap(), &proof_doc).await {
-        Ok(_) => Ok(Status::Created),
+        Ok(oid) => Ok(oid.to_string()),
         Err(e) => {
             println!("Error adding proof: {:?}", e);
             Err(GrapevineResponse::InternalError(ErrorMessage(
@@ -216,7 +217,7 @@ pub async fn degree_proof(
     // check to see that degree proof doesn't already exist between two accounts
     match db.check_degree_exists(&proof_doc).await {
         Ok(exists) => match exists {
-            true => {
+            (true) => {
                 return Err(GrapevineResponse::Conflict(ErrorMessage(
                     Some(GrapevineServerError::DegreeProofExists),
                     None,

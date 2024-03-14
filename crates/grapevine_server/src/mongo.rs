@@ -855,17 +855,21 @@ impl GrapevineDB {
      * Check to see if degree already exists between two accounts
      *
      * @param proof - Degree proof to be inserted
+     * @return - title of the degree proof (todo: separate degree doc)
      */
     pub async fn check_degree_exists(
         &self,
         proof: &DegreeProof,
-    ) -> Result<bool, GrapevineServerError> {
+    ) -> Result<String, GrapevineServerError> {
         let query = doc! {"preceding": proof.preceding.unwrap(), "user": proof.user.unwrap()};
-        let projection = doc! { "_id": 1 };
+        let projection = doc! { "_id": 1, "title": 1 };
         let find_options = FindOneOptions::builder().projection(projection).build();
 
         match self.degree_proofs.find_one(query, find_options).await {
-            Ok(res) => Ok(res.is_some()),
+            Ok(res) => match res {
+                Some(doc) => Ok(doc.title.unwrap()),
+                None => Err(GrapevineServerError::MongoError(String::from("Degree proof not found"))),
+            },
             Err(e) => Err(GrapevineServerError::MongoError(e.to_string())),
         }
     }

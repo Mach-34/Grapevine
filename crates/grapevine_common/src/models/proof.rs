@@ -14,6 +14,7 @@ pub struct DegreeProof {
     pub secret_phrase: Option<[u8; 192]>, // encrypted phrase
     #[serde(default, with = "serde_bytes")]
     pub proof: Option<Vec<u8>>, // compressed proof
+    pub title: Option<String>, // todo: separate proof header from proof chain
     pub preceding: Option<ObjectId>, // the proof that this proof is built on (null if first)
     pub proceeding: Option<Vec<ObjectId>>, // proofs that are built on top of this proof
 }

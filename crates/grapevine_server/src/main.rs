@@ -338,8 +338,9 @@ mod test_rocket {
 
         let compressed = compress_proof(&proof);
         let phrase_ciphertext = user.encrypt_phrase(&phrase);
+        let title = String::from("This is the title of my phrase");
 
-        let body = NewPhraseRequest { proof: compressed, phrase_ciphertext };
+        let body = NewPhraseRequest { proof: compressed, phrase_ciphertext, title };
 
         let serialized: Vec<u8> = bincode::serialize(&body).unwrap();
 
