@@ -1,7 +1,6 @@
 use crate::errors::GrapevineCLIError;
 use crate::http::{
-    add_relationship_req, create_user_req, degree_proof_req, get_available_proofs_req,
-    get_degrees_req, get_nonce_req, get_proof_with_params_req, get_pubkey_req, new_phrase_req,
+    add_relationship_req, create_user_req, degree_proof_req, get_available_proofs_req, get_created_req, get_degrees_req, get_nonce_req, get_proof_with_params_req, get_pubkey_req, new_phrase_req
 };
 use crate::utils::artifacts_guard;
 use crate::utils::fs::{use_public_params, use_r1cs, use_wasm, ACCOUNT_PATH};
@@ -167,7 +166,10 @@ pub async fn create_new_phrase(phrase: String) -> Result<String, GrapevineCLIErr
     // encrypt phrase
     let phrase_ciphertext = account.encrypt_phrase(&phrase);
     // build request body
-    let body = NewPhraseRequest { proof: compressed, phrase_ciphertext };
+    let body = NewPhraseRequest {
+        proof: compressed,
+        phrase_ciphertext,
+    };
     // send request
     let res = new_phrase_req(&mut account, body).await;
     match res {
@@ -304,6 +306,28 @@ pub async fn get_my_proofs() -> Result<String, GrapevineCLIError> {
                 );
             }
         }
+    }
+    Ok(String::from(""))
+}
+
+pub async fn get_created_phrases() -> Result<String, GrapevineCLIError> {
+    // get account
+    let mut account = get_account()?;
+    // send request
+    let res = get_created_req(&mut account).await;
+    let data = match res {
+        Ok(data) => data,
+        Err(e) => return Err(GrapevineCLIError::from(e)),
+    };
+    println!(
+        "Proofs created by {}:",
+        account.username()
+    );
+    for degree in data {
+        println!("=-=-=-=-=-=-=-=-=-=-=-=-=");
+        println!("Phrase hash: 0x{}", hex::encode(degree.phrase_hash));
+        let phrase = account.decrypt_phrase(&degree.secret_phrase.unwrap());
+        println!("Secret phrase: \"{}\"", phrase);
     }
     Ok(String::from(""))
 }

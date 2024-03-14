@@ -4,6 +4,7 @@ use grapevine_common::errors::GrapevineServerError;
 use grapevine_common::http::responses::DegreeData;
 use grapevine_common::models::proof::ProvingData;
 use grapevine_common::models::{proof::DegreeProof, relationship::Relationship, user::User};
+use mongodb::bson::Bson;
 use mongodb::bson::{self, doc, oid::ObjectId, Binary};
 use mongodb::options::{ClientOptions, FindOneOptions, FindOptions, ServerApi, ServerApiVersion};
 use mongodb::{Client, Collection};
@@ -505,6 +506,84 @@ impl GrapevineDB {
         proofs
     }
 
+    /**
+     * Get all degree proofs created by a specific user
+     */
+    pub async fn get_created(&self, username: String) -> Option<Vec<DegreeData>> {
+        let pipeline = vec![
+            // get the user to find the proofs of degrees of separation for the user
+            doc! { "$match": { "username": username } },
+            doc! { "$project": { "_id": 1, "degree_proofs": 1 } },
+            // look up the degree proof documents
+            doc! {
+                "$lookup": {
+                    "from": "degree_proofs",
+                    "localField": "degree_proofs",
+                    "foreignField": "_id",
+                    "as": "proofs",
+                    "pipeline": [doc! { "$project": { "degree": 1, "secret_phrase": 1, "phrase_hash": 1 } }]
+                }
+            },
+            doc! {
+                "$project": {
+                    "proofs": {
+                        "$filter": {
+                          "input": "$proofs",
+                          "as": "proof",
+                          "cond": { "$eq": ["$$proof.degree", 1] }
+                        }
+                    },
+                }
+            },
+            doc! { "$unwind": "$proofs" },
+            doc! {
+                "$project": {
+                    "degree": "$proofs.degree",
+                    "secret_phrase": "$proofs.secret_phrase",
+                    "phrase_hash": "$proofs.phrase_hash",
+                    "_id": 0
+                }
+            },
+        ];
+        // get the OID's of degree proofs the user can build from
+        let mut degrees: Vec<DegreeData> = vec![];
+        let mut cursor = self.users.aggregate(pipeline, None).await.unwrap();
+        while let Some(result) = cursor.next().await {
+            match result {
+                Ok(document) => {
+                    // @todo: can this be retrieved better?
+                    let phrase_hash: [u8; 32] = document
+                        .get("phrase_hash")
+                        .unwrap()
+                        .as_array()
+                        .unwrap()
+                        .iter()
+                        .map(|x| x.as_i32().unwrap() as u8)
+                        .collect::<Vec<u8>>()
+                        .try_into()
+                        .unwrap();
+                    // get secret phrase is included
+                    let mut secret_phrase: Option<[u8; 192]> = None;
+                    if let Some(Bson::Binary(binary)) = document.get("secret_phrase") {
+                        secret_phrase = Some(binary.bytes.clone().try_into().unwrap());
+                    }
+                    degrees.push(DegreeData {
+                        degree: 1,
+                        relation: None,
+                        preceding_relation: None,
+                        phrase_hash,
+                        secret_phrase,
+                    });
+                }
+                Err(e) => {
+                    println!("Error: {}", e);
+                    return None;
+                }
+            }
+        }
+        Some(degrees)
+    }
+
     // @todo: ask chatgpt for better name
     pub async fn get_all_degrees(&self, username: String) -> Option<Vec<DegreeData>> {
         let pipeline = vec![
@@ -646,25 +725,12 @@ impl GrapevineDB {
                         .collect::<Vec<u8>>()
                         .try_into()
                         .unwrap();
-                    // get secret phrase is included
-                    let secret_phrase = match document.get("secret_phrase") {
-                        Some(phrase) => {
-                            let phrase: Vec<u8> = phrase
-                                .as_array()
-                                .unwrap()
-                                .iter()
-                                .map(|x| x.as_i32().unwrap() as u8)
-                                .collect();
-                            Some(phrase.try_into().unwrap())
-                        }
-                        None => None,
-                    };
                     degrees.push(DegreeData {
                         degree,
                         relation: Some(relation),
                         preceding_relation,
                         phrase_hash,
-                        secret_phrase
+                        secret_phrase: None,
                     });
                 }
                 Err(e) => {
