@@ -2,7 +2,7 @@ use crate::errors::GrapevineCLIError;
 use crate::http::{
     add_relationship_req, create_user_req, degree_proof_req, get_account_details_req,
     get_available_proofs_req, get_created_req, get_degrees_req, get_nonce_req,
-    get_proof_with_params_req, get_pubkey_req, new_phrase_req,
+    get_proof_with_params_req, get_pubkey_req, new_phrase_req, show_connections_req,
 };
 use crate::utils::artifacts_guard;
 use crate::utils::fs::{use_public_params, use_r1cs, use_wasm, ACCOUNT_PATH};
@@ -335,6 +335,25 @@ pub async fn get_created_phrases() -> Result<String, GrapevineCLIError> {
         let phrase = account.decrypt_phrase(&degree.secret_phrase.unwrap());
         println!("Secret phrase: \"{}\"", phrase);
     }
+    Ok(String::from(""))
+}
+
+pub async fn show_connections(phrase_hash: String) -> Result<String, GrapevineCLIError> {
+    // get account
+    let mut account = get_account()?;
+    // send request
+    let res = show_connections_req(&phrase_hash).await;
+    let data = match res {
+        Ok(data) => data,
+        Err(e) => return Err(GrapevineCLIError::from(e)),
+    };
+    // println!("Proofs created by {}:", account.username());
+    // for degree in data {
+    //     println!("=-=-=-=-=-=-=-=-=-=-=-=-=");
+    //     println!("Phrase hash: 0x{}", hex::encode(degree.phrase_hash));
+    //     let phrase = account.decrypt_phrase(&degree.secret_phrase.unwrap());
+    //     println!("Secret phrase: \"{}\"", phrase);
+    // }
     Ok(String::from(""))
 }
 

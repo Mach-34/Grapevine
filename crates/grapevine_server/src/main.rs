@@ -91,7 +91,7 @@ mod test_rocket {
     use lazy_static::lazy_static;
     use rocket::{
         form::validate::Contains,
-        http::{ContentType, Header, HeaderMap, Status},
+        http::{hyper::server::conn, ContentType, Header, HeaderMap, Status},
         local::asynchronous::{Client, LocalResponse},
         request,
         serde::json::Json,
@@ -236,6 +236,18 @@ mod test_rocket {
         degrees
     }
 
+    async fn get_phrase_connection_request(phrase_hash: &str) -> Option<(u64, Vec<u64>)> {
+        let context = GrapevineTestContext::init().await;
+
+        context
+            .client
+            .get(format!("/proof/connections/{}", phrase_hash))
+            .dispatch()
+            .await
+            .into_json::<(u64, Vec<u64>)>()
+            .await
+    }
+
     async fn get_pipeline_test(username: String) -> Option<Vec<String>> {
         let context = GrapevineTestContext::init().await;
 
@@ -359,7 +371,10 @@ mod test_rocket {
         let compressed = compress_proof(&proof);
         let phrase_ciphertext = user.encrypt_phrase(&phrase);
 
-        let body = NewPhraseRequest { proof: compressed, phrase_ciphertext };
+        let body = NewPhraseRequest {
+            proof: compressed,
+            phrase_ciphertext,
+        };
 
         let serialized: Vec<u8> = bincode::serialize(&body).unwrap();
 
@@ -1513,6 +1528,85 @@ mod test_rocket {
         assert_eq!(details.0, 1, "Phrase count should be 1");
         assert_eq!(details.1, 4, "First degree count should be 3");
         assert_eq!(details.2, 4, "Second degree count should be 1");
+    }
+
+    #[rocket::async_test]
+    async fn test_get_phrase_connections() {
+        // Reset db with clean state
+        GrapevineDB::drop("grapevine_mocked").await;
+
+        let context = GrapevineTestContext::init().await;
+
+        let mut users: Vec<GrapevineAccount> = vec![];
+
+        for i in 0..7 {
+            let user =
+                GrapevineAccount::new(String::from(format!("user_account_details_{}", i + 1)));
+            let request = user.create_user_request();
+            create_user_request(&context, &request).await;
+            users.push(user);
+        }
+        let phrase = String::from("Where there's smoke there's fire");
+        let phrase_hash: [u8; 32] = [
+            38, 142, 14, 29, 140, 161, 88, 94, 151, 208, 90, 144, 196, 174, 91, 34, 117, 129, 237,
+            34, 15, 213, 97, 118, 247, 237, 16, 178, 98, 20, 194, 8,
+        ];
+        create_phrase_request(phrase, &mut users[0]).await;
+
+        let connections = get_phrase_connection_request(&hex::encode(phrase_hash))
+            .await
+            .unwrap();
+        assert_eq!(connections.0, 1);
+        assert_eq!(*connections.1.get(0).unwrap(), 1);
+        // Create degree proofs and relationships
+        for i in 0..users.len() - 3 {
+            // Remove users from vector to reference
+            let mut preceding = users.remove(i);
+            // Proceeding is now an index below after removal
+            let mut proceeding = users.remove(i);
+
+            add_relationship_request(&mut preceding, &mut proceeding).await;
+            let proofs = get_available_degrees_request(&mut proceeding)
+                .await
+                .unwrap();
+            create_degree_proof_request(&proofs[0], &mut proceeding).await;
+
+            // Add users back to vector
+            users.insert(i, preceding);
+            users.insert(i + 1, proceeding);
+        }
+
+        let connections = get_phrase_connection_request(&hex::encode(phrase_hash))
+            .await
+            .unwrap();
+        assert_eq!(connections.0, 5);
+        assert_eq!(*connections.1.get(0).unwrap(), 1);
+        assert_eq!(*connections.1.get(1).unwrap(), 1);
+        assert_eq!(*connections.1.get(2).unwrap(), 1);
+        assert_eq!(*connections.1.get(3).unwrap(), 1);
+        assert_eq!(*connections.1.get(4).unwrap(), 1);
+
+        let mut user_a = users.remove(0);
+        let mut user_b = users.remove(0);
+        let mut user_f = users.remove(3);
+        let mut user_g = users.remove(3);
+
+        add_relationship_request(&mut user_a, &mut user_f).await;
+        let proofs = get_available_degrees_request(&mut user_f).await.unwrap();
+        create_degree_proof_request(&proofs[0], &mut user_f).await;
+        add_relationship_request(&mut user_b, &mut user_g).await;
+        let proofs = get_available_degrees_request(&mut user_g).await.unwrap();
+        create_degree_proof_request(&proofs[0], &mut user_g).await;
+
+        let connections = get_phrase_connection_request(&hex::encode(phrase_hash))
+            .await
+            .unwrap();
+        assert_eq!(connections.0, 7);
+        assert_eq!(*connections.1.get(0).unwrap(), 1);
+        assert_eq!(*connections.1.get(1).unwrap(), 2);
+        assert_eq!(*connections.1.get(2).unwrap(), 2);
+        assert_eq!(*connections.1.get(3).unwrap(), 1);
+        assert_eq!(*connections.1.get(4).unwrap(), 1);
     }
 
     // #[rocket::async_test]

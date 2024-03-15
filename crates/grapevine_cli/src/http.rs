@@ -315,3 +315,18 @@ pub async fn get_created_req(
         _ => Err(res.json::<GrapevineServerError>().await.unwrap()),
     }
 }
+
+pub async fn show_connections_req(
+    phrase_hash: &str,
+) -> Result<(u64, Vec<u64>), GrapevineServerError> {
+    let url = format!("{}/proof/connections/{}", &**SERVER_URL, phrase_hash);
+    let client = Client::new();
+    let res = client.get(&url).send().await.unwrap();
+    match res.status() {
+        StatusCode::OK => {
+            let connection_data = res.json::<(u64, Vec<u64>)>().await.unwrap();
+            Ok(connection_data)
+        }
+        _ => Err(res.json::<GrapevineServerError>().await.unwrap()),
+    }
+}

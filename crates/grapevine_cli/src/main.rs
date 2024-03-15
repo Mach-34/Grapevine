@@ -59,6 +59,11 @@ enum Commands {
     /// usage: `grapevine get-created-phrases`
     #[command(verbatim_doc_comment)]
     GetCreatedPhrases,
+
+    /// Get connection count and degree data for a phrase
+    /// usage: `grapevine show-connections`
+    #[command(verbatim_doc_comment)]
+    ShowConnections(ShowConnectionsArgs),
     // /// Manually prove a degree of separation
     // ProveSeparation(ProveSeparationArgs),
     // // View the OID's of proofs the user can build from
@@ -78,6 +83,11 @@ struct AddRelationshipArgs {
 #[derive(Args)]
 struct CreatePhrase {
     phrase: Option<String>,
+}
+
+#[derive(Args)]
+struct ShowConnectionsArgs {
+    phrase_hash: Option<String>,
 }
 
 #[derive(Args)]
@@ -106,10 +116,12 @@ pub async fn main() {
         Commands::ProveNew => controllers::prove_all_available().await,
         Commands::GetDegrees => controllers::get_my_proofs().await,
         Commands::GetCreatedPhrases => controllers::get_created_phrases().await,
-        // Commands::ProveSeparation(cmd) => {
-        //     controllers::prove_separation_degree(cmd.username.clone().unwrap()).await
-        // }
-        // Commands::AvailableProofs => controllers::get_available_proofs().await,
+        Commands::ShowConnections(cmd) => {
+            controllers::show_connections(cmd.phrase_hash.clone().unwrap()).await
+        } // Commands::ProveSeparation(cmd) => {
+          //     controllers::prove_separation_degree(cmd.username.clone().unwrap()).await
+          // }
+          // Commands::AvailableProofs => controllers::get_available_proofs().await,
     };
 
     match result {

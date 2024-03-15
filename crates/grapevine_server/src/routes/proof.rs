@@ -344,6 +344,54 @@ pub async fn get_created_phrases(
     }
 }
 
+/**
+ * Get total number of connections and
+ */
+#[get("/connections/<phrase_hash>")]
+pub async fn get_phrase_connections(
+    phrase_hash: String,
+    db: &State<GrapevineDB>,
+) -> Result<Json<(u64, Vec<u64>)>, GrapevineResponse> {
+    let bytes = hex::decode(phrase_hash).unwrap();
+    let byte_arr: [u8; 32] = match bytes.try_into() {
+        Ok(arr) => arr,
+        Err(_) => {
+            return Err(GrapevineResponse::BadRequest(ErrorMessage(
+                Some(GrapevineServerError::InvalidPhraseHash),
+                None,
+            )));
+        }
+    };
+
+    // check if phrase exists in db
+    match db.check_phrase_exists(byte_arr).await {
+        Ok(exists) => match exists {
+            true => (),
+            false => {
+                return Err(GrapevineResponse::NotFound(
+                    "No phrase matches the provided hash".to_string(),
+                ))
+            }
+        },
+        Err(e) => {
+            return Err(GrapevineResponse::InternalError(ErrorMessage(
+                Some(e),
+                None,
+            )));
+        }
+    }
+
+    match db.get_phrase_connections(byte_arr).await {
+        Some(connection_data) => Ok(Json(connection_data)),
+        None => Err(GrapevineResponse::InternalError(ErrorMessage(
+            Some(GrapevineServerError::MongoError(String::from(
+                "Error retrieving degrees in db",
+            ))),
+            None,
+        ))),
+    }
+}
+
 // /**
 //  * Returns all the information needed to construct a proof of degree of separation from a given user
 //  */
