@@ -349,6 +349,7 @@ pub async fn get_created_phrases(
  */
 #[get("/connections/<phrase_hash>")]
 pub async fn get_phrase_connections(
+    user: AuthenticatedUser,
     phrase_hash: String,
     db: &State<GrapevineDB>,
 ) -> Result<Json<(u64, Vec<u64>)>, GrapevineResponse> {
@@ -381,7 +382,7 @@ pub async fn get_phrase_connections(
         }
     }
 
-    match db.get_phrase_connections(byte_arr).await {
+    match db.get_phrase_connections(user.0, byte_arr).await {
         Some(connection_data) => Ok(Json(connection_data)),
         None => Err(GrapevineResponse::InternalError(ErrorMessage(
             Some(GrapevineServerError::MongoError(String::from(

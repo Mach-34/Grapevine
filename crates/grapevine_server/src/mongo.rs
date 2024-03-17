@@ -1008,25 +1008,88 @@ impl GrapevineDB {
      *
      * @param phrase_hash - hash of the phrase linking the proof chain together
      */
-    pub async fn get_phrase_connections(&self, phrase_hash: [u8; 32]) -> Option<(u64, Vec<u64>)> {
+    pub async fn get_phrase_connections(
+        &self,
+        username: String,
+        phrase_hash: [u8; 32],
+    ) -> Option<(u64, Vec<u64>)> {
         let phrase_hash_bson: Vec<i32> = phrase_hash.to_vec().iter().map(|x| *x as i32).collect();
 
         let mut cursor = self
-            .degree_proofs
+            .users
             .aggregate(
                 vec![
                     doc! {
                         "$match": {
-                            "phrase_hash": phrase_hash_bson,
-                            "status": { "$ne": "inactive" }
+                            "username": username
                         }
+                    },
+                    doc! {
+                        "$unwind": "$relationships"
+                    },
+                    doc! {
+                        "$lookup": {
+                            "from": "relationships",
+                            "localField": "relationships",
+                            "foreignField": "_id",
+                            "as": "relationship_details"
+                        }
+                    },
+                    doc! {
+                        "$unwind": "$relationship_details"
                     },
                     doc! {
                         "$group": {
                             "_id": null,
-                            "count": { "$sum": 1 },
-                            "degrees": { "$push": "$degree" },
-                            "max_degree": { "$max": "$degree" }
+                            "senders": {
+                                "$addToSet": "$relationship_details.sender"
+                            }
+                        }
+                    },
+                    doc! {
+                        "$project": {
+                            "_id": 0,
+                            "senders": 1
+                        }
+                    },
+                    doc! {
+                        "$lookup": {
+                            "from": "degree_proofs",
+                            "let": {"senders": "$senders"},
+                            "pipeline": [
+                                doc! {
+                                    "$match": {
+                                        "$expr": {
+                                            "$in": ["$user", "$$senders"]
+                                        },
+                                        "phrase_hash": phrase_hash_bson
+                                    }
+                                },
+                                doc! {
+                                    "$project": {
+                                        "_id": 0,
+                                        "degree": 1
+                                    }
+                                }
+                            ],
+                            "as": "degree_proofs"
+                        }
+                    },
+                    doc! {
+                        "$unwind": "$degree_proofs"
+                    },
+                    doc! {
+                        "$group": {
+                            "_id": null,
+                            "max_degree": {
+                                "$max": "$degree_proofs.degree"
+                            },
+                            "count": {
+                                "$sum": 1
+                            },
+                            "degrees": {
+                                "$push": "$degree_proofs.degree"
+                            }
                         }
                     },
                 ],
@@ -1035,7 +1098,13 @@ impl GrapevineDB {
             .await
             .unwrap();
 
-        match cursor.next().await.unwrap() {
+        let cursor_res = cursor.next().await;
+
+        if cursor_res.is_none() {
+            return Some((0, vec![]));
+        }
+
+        match cursor_res.unwrap() {
             Ok(connection_data) => {
                 let total_count = connection_data.get_i32("count").unwrap();
                 let max_degree = connection_data.get_i32("max_degree").unwrap();

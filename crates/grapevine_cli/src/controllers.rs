@@ -342,18 +342,22 @@ pub async fn show_connections(phrase_hash: String) -> Result<String, GrapevineCL
     // get account
     let mut account = get_account()?;
     // send request
-    let res = show_connections_req(&phrase_hash).await;
-    let data = match res {
+    let res = show_connections_req(&mut account, &phrase_hash).await;
+    let connection_data = match res {
         Ok(data) => data,
         Err(e) => return Err(GrapevineCLIError::from(e)),
     };
-    // println!("Proofs created by {}:", account.username());
-    // for degree in data {
-    //     println!("=-=-=-=-=-=-=-=-=-=-=-=-=");
-    //     println!("Phrase hash: 0x{}", hex::encode(degree.phrase_hash));
-    //     let phrase = account.decrypt_phrase(&degree.secret_phrase.unwrap());
-    //     println!("Secret phrase: \"{}\"", phrase);
-    // }
+
+    if connection_data.0 == 0 {
+        println!("You have no connections that know this phrase");
+    } else {
+        println!("Connections for phrase: 0x{}", phrase_hash);
+        println!("\nTotal connections: {}\n", connection_data.0);
+        for i in 0..connection_data.1.len() {
+            let connections = connection_data.1.get(i).unwrap();
+            println!("# of connections of degree {}: {}", i, connections);
+        }
+    }
     Ok(String::from(""))
 }
 
