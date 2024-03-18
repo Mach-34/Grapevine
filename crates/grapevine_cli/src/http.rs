@@ -315,3 +315,31 @@ pub async fn get_created_req(
         _ => Err(res.json::<GrapevineServerError>().await.unwrap()),
     }
 }
+
+pub async fn show_connections_req(
+    account: &mut GrapevineAccount,
+    phrase_hash: &str,
+) -> Result<(u64, Vec<u64>), GrapevineServerError> {
+    let url = format!("{}/proof/connections/{}", &**SERVER_URL, phrase_hash);
+    // produce signature over current nonce
+    let signature = hex::encode(account.sign_nonce().compress());
+    let client = Client::new();
+    let res = client
+        .get(&url)
+        .header("X-Username", account.username())
+        .header("X-Authorization", signature)
+        .send()
+        .await
+        .unwrap();
+    match res.status() {
+        StatusCode::OK => {
+            // increment nonce
+            account
+                .increment_nonce(Some((&**ACCOUNT_PATH).to_path_buf()))
+                .unwrap();
+            let connection_data = res.json::<(u64, Vec<u64>)>().await.unwrap();
+            Ok(connection_data)
+        }
+        _ => Err(res.json::<GrapevineServerError>().await.unwrap()),
+    }
+}

@@ -7,6 +7,7 @@ pub enum GrapevineCLIError {
     UserExists(String),
     UsernameExists(String),
     PhraseExists,
+    InvalidPhraseHash,
     PubkeyExists(String),
     UsernameTooLong(String),
     UsernameNotAscii(String),
@@ -79,6 +80,7 @@ impl std::fmt::Display for GrapevineCLIError {
             GrapevineCLIError::DegreeProofVerificationFailed => {
                 write!(f, "Failed to verify degree proof")
             }
+            GrapevineCLIError::InvalidPhraseHash => write!(f, "Invalid phrase hash provided"),
             GrapevineCLIError::UnknownServerError => write!(f, "Unknown server error"),
         }
     }
@@ -109,6 +111,7 @@ impl From<GrapevineServerError> for GrapevineCLIError {
             GrapevineServerError::DegreeProofVerificationFailed => {
                 GrapevineCLIError::DegreeProofVerificationFailed
             }
+            GrapevineServerError::InvalidPhraseHash => GrapevineCLIError::InvalidPhraseHash,
             _ => GrapevineCLIError::UnknownServerError,
         }
     }

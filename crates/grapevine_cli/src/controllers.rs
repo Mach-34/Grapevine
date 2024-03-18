@@ -2,7 +2,7 @@ use crate::errors::GrapevineCLIError;
 use crate::http::{
     add_relationship_req, create_user_req, degree_proof_req, get_account_details_req,
     get_available_proofs_req, get_created_req, get_degrees_req, get_nonce_req,
-    get_proof_with_params_req, get_pubkey_req, new_phrase_req,
+    get_proof_with_params_req, get_pubkey_req, new_phrase_req, show_connections_req,
 };
 use crate::utils::artifacts_guard;
 use crate::utils::fs::{use_public_params, use_r1cs, use_wasm, ACCOUNT_PATH};
@@ -36,19 +36,24 @@ pub async fn account_details() -> Result<String, GrapevineCLIError> {
     let pubkey = hex::encode(account.pubkey().compress());
 
     // Fetch account stats
-    let details = get_account_details_req(&mut account).await.unwrap();
+    let res = get_account_details_req(&mut account).await;
 
-    let res = format!(
-        "Username: {}\nAuth secret: 0x{}\nPrivate key: 0x{}\nPublic key: 0x{}\n# 1st degree connections: {}\n# 2nd degree connections: {}\n# phrases created: {}",
-        account.username(),
-        auth_secret,
-        pk,
-        pubkey,
-        details.1,
-        details.2,
-        details.0
-    );
-    Ok(res)
+    match res {
+        Ok(_) => {
+            let details = res.unwrap();
+            Ok(format!(
+                "Username: {}\nAuth secret: 0x{}\nPrivate key: 0x{}\nPublic key: 0x{}\n# 1st degree connections: {}\n# 2nd degree connections: {}\n# phrases created: {}",
+                account.username(),
+                auth_secret,
+                pk,
+                pubkey,
+                details.1,
+                details.2,
+                details.0
+            ))
+        }
+        Err(e) => Err(GrapevineCLIError::from(e)),
+    }
 }
 
 /**
@@ -334,6 +339,29 @@ pub async fn get_created_phrases() -> Result<String, GrapevineCLIError> {
         println!("Phrase hash: 0x{}", hex::encode(degree.phrase_hash));
         let phrase = account.decrypt_phrase(&degree.secret_phrase.unwrap());
         println!("Secret phrase: \"{}\"", phrase);
+    }
+    Ok(String::from(""))
+}
+
+pub async fn show_connections(phrase_hash: String) -> Result<String, GrapevineCLIError> {
+    // get account
+    let mut account = get_account()?;
+    // send request
+    let res = show_connections_req(&mut account, &phrase_hash).await;
+    let connection_data = match res {
+        Ok(data) => data,
+        Err(e) => return Err(GrapevineCLIError::from(e)),
+    };
+
+    if connection_data.0 == 0 {
+        println!("You have no connections that know this phrase");
+    } else {
+        println!("Connections for phrase: 0x{}", phrase_hash);
+        println!("\nTotal connections: {}\n", connection_data.0);
+        for i in 0..connection_data.1.len() {
+            let connections = connection_data.1.get(i).unwrap();
+            println!("# of connections of degree {}: {}", i, connections);
+        }
     }
     Ok(String::from(""))
 }
