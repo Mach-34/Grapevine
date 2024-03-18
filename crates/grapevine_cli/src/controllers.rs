@@ -36,19 +36,24 @@ pub async fn account_details() -> Result<String, GrapevineCLIError> {
     let pubkey = hex::encode(account.pubkey().compress());
 
     // Fetch account stats
-    let details = get_account_details_req(&mut account).await.unwrap();
+    let res = get_account_details_req(&mut account).await;
 
-    let res = format!(
-        "Username: {}\nAuth secret: 0x{}\nPrivate key: 0x{}\nPublic key: 0x{}\n# 1st degree connections: {}\n# 2nd degree connections: {}\n# phrases created: {}",
-        account.username(),
-        auth_secret,
-        pk,
-        pubkey,
-        details.1,
-        details.2,
-        details.0
-    );
-    Ok(res)
+    match res {
+        Ok(_) => {
+            let details = res.unwrap();
+            Ok(format!(
+                "Username: {}\nAuth secret: 0x{}\nPrivate key: 0x{}\nPublic key: 0x{}\n# 1st degree connections: {}\n# 2nd degree connections: {}\n# phrases created: {}",
+                account.username(),
+                auth_secret,
+                pk,
+                pubkey,
+                details.1,
+                details.2,
+                details.0
+            ))
+        }
+        Err(e) => Err(GrapevineCLIError::from(e)),
+    }
 }
 
 /**

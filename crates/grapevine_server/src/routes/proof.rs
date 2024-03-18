@@ -353,10 +353,18 @@ pub async fn get_phrase_connections(
     phrase_hash: String,
     db: &State<GrapevineDB>,
 ) -> Result<Json<(u64, Vec<u64>)>, GrapevineResponse> {
-    let bytes = hex::decode(phrase_hash).unwrap();
+    let bytes = match hex::decode(phrase_hash) {
+        Ok(arr) => arr,
+        Err(err) => {
+            return Err(GrapevineResponse::BadRequest(ErrorMessage(
+                Some(GrapevineServerError::InvalidPhraseHash),
+                None,
+            )))
+        }
+    };
     let byte_arr: [u8; 32] = match bytes.try_into() {
         Ok(arr) => arr,
-        Err(_) => {
+        Err(err) => {
             return Err(GrapevineResponse::BadRequest(ErrorMessage(
                 Some(GrapevineServerError::InvalidPhraseHash),
                 None,

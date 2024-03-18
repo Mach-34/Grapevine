@@ -1633,11 +1633,11 @@ mod test_rocket {
         // Different phrase should have no connections returned
         let phrase_2 = String::from("Raindrops are falling on my head");
         let phrase_hash_2: [u8; 32] = [
-            34, 101, 53, 203, 198, 91, 14, 37, 75, 24, 174, 120, 221, 237, 214, 16, 16, 212, 71,
-            246, 156, 174, 137, 92, 1, 135, 236, 100, 186, 106, 167, 5,
+            38, 142, 14, 29, 140, 161, 88, 94, 151, 208, 90, 144, 196, 174, 91, 34, 117, 129, 237,
+            34, 15, 213, 97, 118, 247, 237, 16, 178, 98, 20, 194, 8,
         ];
         create_phrase_request(phrase_2, &mut users[0]).await;
-        let connections = get_phrase_connection_request(&mut user_c, &hex::encode(phrase_hash_2))
+        let connections = get_phrase_connection_request(&mut user_c, &hex::encode(phrase_hash))
             .await
             .unwrap();
 
