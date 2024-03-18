@@ -327,6 +327,40 @@ pub async fn get_all_degrees(
     }
 }
 
+/**
+ * Returns account details related to degree proofs
+ *
+ * @param username - the username to look up details for
+ * @return - count of first degree connections, second degree connections, and phrases created
+ * @return status:
+ *            * 200 if success
+ *            * 404 if user not found
+ *            * 500 if db fails or other unknown issue
+ */
+#[get("/details")]
+pub async fn get_account_details(
+    user: AuthenticatedUser,
+    db: &State<GrapevineDB>,
+) -> Result<Json<(u64, u64, u64)>, GrapevineResponse> {
+    let recipient = match db.get_user(&user.0).await {
+        Some(user) => user,
+        None => {
+            return Err(GrapevineResponse::NotFound(String::from(
+                "Recipient does not exist.".to_string(),
+            )));
+        }
+    };
+    match db.get_account_details(&recipient.id.unwrap()).await {
+        Some(details) => Ok(Json(details)),
+        None => Err(GrapevineResponse::InternalError(ErrorMessage(
+            Some(GrapevineServerError::MongoError(String::from(
+                "Error user states",
+            ))),
+            None,
+        ))),
+    }
+}
+
 // /**
 //  * Return a list of the usernames of all direct connections by a given user
 //  *

@@ -59,7 +59,6 @@ enum Commands {
     /// usage: `grapevine get-created-phrases`
     #[command(verbatim_doc_comment)]
     GetCreatedPhrases,
-
     // /// Manually prove a degree of separation
     // ProveSeparation(ProveSeparationArgs),
     // // View the OID's of proofs the user can build from
@@ -95,7 +94,7 @@ pub async fn main() {
 
     let result = match &cli.command {
         Commands::Health => controllers::health().await,
-        Commands::GetAccount => controllers::account_details(),
+        Commands::GetAccount => controllers::account_details().await,
         Commands::SyncNonce => controllers::synchronize_nonce().await,
         Commands::RegisterAccount(cmd) => controllers::register(cmd.username.clone()).await,
         Commands::AddRelationship(cmd) => {
@@ -107,10 +106,10 @@ pub async fn main() {
         Commands::ProveNew => controllers::prove_all_available().await,
         Commands::GetDegrees => controllers::get_my_proofs().await,
         Commands::GetCreatedPhrases => controllers::get_created_phrases().await,
-          // Commands::ProveSeparation(cmd) => {
-          //     controllers::prove_separation_degree(cmd.username.clone().unwrap()).await
-          // }
-          // Commands::AvailableProofs => controllers::get_available_proofs().await,
+        // Commands::ProveSeparation(cmd) => {
+        //     controllers::prove_separation_degree(cmd.username.clone().unwrap()).await
+        // }
+        // Commands::AvailableProofs => controllers::get_available_proofs().await,
     };
 
     match result {
