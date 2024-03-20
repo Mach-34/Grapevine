@@ -9,7 +9,7 @@ use grapevine_common::utils::convert_username_to_fr;
 use grapevine_common::MAX_USERNAME_CHARS;
 use grapevine_common::{
     http::requests::NewRelationshipRequest,
-    models::{relationship::Relationship, user::User},
+    models::{Relationship, User},
 };
 use rocket::State;
 

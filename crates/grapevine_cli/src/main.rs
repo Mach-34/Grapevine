@@ -43,8 +43,8 @@ enum Commands {
     /// usage: `grapevine add-relationship <username>`
     #[command(verbatim_doc_comment)]
     AddRelationship(AddRelationshipArgs),
-    /// Create a new phrase (degree 1 proof)
-    /// usage: `grapevine create-phrase <phrase>`
+    /// Create a new phrase
+    /// usage: `grapevine create-phrase "<phrase>" "<description>"`
     #[command(verbatim_doc_comment)]
     CreatePhrase(CreatePhrase),
     /// Prove all the the new degrees of separation available
@@ -83,6 +83,7 @@ struct AddRelationshipArgs {
 #[derive(Args)]
 struct CreatePhrase {
     phrase: Option<String>,
+    description: Option<String>,
 }
 
 #[derive(Args)]
@@ -111,7 +112,11 @@ pub async fn main() {
             controllers::add_relationship(cmd.username.clone().unwrap()).await
         }
         Commands::CreatePhrase(cmd) => {
-            controllers::create_new_phrase(cmd.phrase.clone().unwrap()).await
+            controllers::create_new_phrase(
+                cmd.phrase.clone().unwrap(),
+                cmd.description.clone().unwrap(),
+            )
+            .await
         }
         Commands::ProveNew => controllers::prove_all_available().await,
         Commands::GetDegrees => controllers::get_my_proofs().await,

@@ -2,10 +2,8 @@ use crate::{DATABASE_NAME, MONGODB_URI};
 use futures::stream::StreamExt;
 use grapevine_common::errors::GrapevineServerError;
 use grapevine_common::http::responses::DegreeData;
-use grapevine_common::models::proof::ProvingData;
-use grapevine_common::models::{proof::DegreeProof, relationship::Relationship, user::User};
-use mongodb::bson::Bson;
-use mongodb::bson::{self, doc, oid::ObjectId, Binary};
+use grapevine_common::models::{DegreeProof, Phrase, ProvingData, Relationship, User};
+use mongodb::bson::{self, doc, oid::ObjectId, Binary, Bson};
 use mongodb::options::{ClientOptions, FindOneOptions, FindOptions, ServerApi, ServerApiVersion};
 use mongodb::{Client, Collection};
 
@@ -13,6 +11,7 @@ pub struct GrapevineDB {
     users: Collection<User>,
     relationships: Collection<Relationship>,
     degree_proofs: Collection<DegreeProof>,
+    phrases: Collection<Phrase>,
 }
 
 impl GrapevineDB {
@@ -25,10 +24,12 @@ impl GrapevineDB {
         let users = db.collection("users");
         let relationships = db.collection("relationships");
         let degree_proofs = db.collection("degree_proofs");
+        let phrases = db.collection("phrases");
         Self {
             users,
             relationships,
             degree_proofs,
+            phrases,
         }
     }
 
@@ -203,23 +204,56 @@ impl GrapevineDB {
         }
     }
 
+    /**
+     * Creates a new phrase document in the database
+     * @notice assumes that `get_phrase_by_{hash, oid}` has already been called
+     *
+     * @param phrase_hash - the hash of the phrase to create
+     * @param description - the description of the phrase
+     * @return: the index for the new phrase
+     */
+    pub async fn create_phrase(
+        &self,
+        phrase_hash: [u8; 32],
+        description: String,
+    ) -> Result<u32, GrapevineServerError> {
+        // query for the highest phrase id
+        let find_options = FindOneOptions::builder()
+            .sort(doc! {"phrase_id": -1})
+            .build();
+
+        // Use find_one with options to get the document with the largest phrase_id
+        let index = match self.phrases.find_one(None, find_options).await {
+            Ok(Some(document)) => {
+                let previous_index = document.index.unwrap();
+                previous_index + 1
+            }
+            Ok(None) => 1,
+            Err(e) => return Err(GrapevineServerError::MongoError(e.to_string())),
+        };
+
+        // create new phrase document
+        let phrase = Phrase {
+            id: None,
+            index: Some(index),
+            hash: Some(phrase_hash),
+            description: Some(description),
+        };
+        match self.phrases.insert_one(&phrase, None).await {
+            Ok(_) => (),
+            Err(e) => return Err(GrapevineServerError::MongoError(e.to_string())),
+        };
+
+        return Ok(index);
+    }
+
     pub async fn add_proof(
         &self,
         user: &ObjectId,
         proof: &DegreeProof,
     ) -> Result<ObjectId, GrapevineServerError> {
-        // check if an existing proof in this chain exists for the user
-        // todo: make this not ugly
-        let phrase_hash_bson: Vec<i32> = proof
-            .phrase_hash
-            .unwrap()
-            .to_vec()
-            .iter()
-            .map(|x| *x as i32)
-            .collect();
-
-        let mut proof_chain: Vec<DegreeProof> = vec![];
         // fetch all proofs preceding this one
+        let mut proof_chain: Vec<DegreeProof> = vec![];
         let mut cursor = self
             .degree_proofs
             .aggregate(
@@ -227,7 +261,7 @@ impl GrapevineDB {
                     doc! {
                       "$match": {
                         "user": user,
-                        "phrase_hash": phrase_hash_bson.clone()
+                        "phrase": proof.phrase
                       }
                     },
                     doc! {
@@ -742,20 +776,6 @@ impl GrapevineDB {
         Some(degrees)
     }
 
-    // used by passing args hash to check if existing phrase hash exists and deletes it
-    // pub async fn delete_proof(&self, user: oid: ObjectId) -> Result<(), GrapevineServerError> {
-    //     // delete the proof document
-    //     let query = doc! { "_id": oid };
-    //     let res = self.degree_proofs.delete_one(query, None).await.unwrap();
-    //     match res.deleted_count {
-    //         1 => Ok(()),
-    //         _ => Err(GrapevineServerError::MongoError(String::from("todo"))),
-    //     }
-    //     // @todo: removing the proof will break downstream proof chains. This must be handled. Potentially we just delete downstream proofs and make them reprove?
-    //     // remove the reference to the proof in the user's list of proofs
-    //     let
-    // }
-
     /**
      * Get a proof from the server with all info needed to prove a degree of separation as a given user
      *
@@ -1174,18 +1194,37 @@ impl GrapevineDB {
      *
      * @param phrase_hash - hash of the phrase linking the proof
      */
-    pub async fn check_phrase_exists(
+    pub async fn get_phrase_by_hash(
         &self,
-        phrase_hash: [u8; 32],
-    ) -> Result<bool, GrapevineServerError> {
+        phrase_hash: &[u8; 32],
+    ) -> Result<ObjectId, GrapevineServerError> {
         let phrase_hash_bson: Vec<i32> = phrase_hash.to_vec().iter().map(|x| *x as i32).collect();
 
         let query = doc! {"phrase_hash": phrase_hash_bson};
         let projection = doc! { "_id": 1 };
         let find_options = FindOneOptions::builder().projection(projection).build();
 
-        match self.degree_proofs.find_one(query, find_options).await {
-            Ok(res) => Ok(res.is_some()),
+        match self.phrases.find_one(query, find_options).await {
+            Ok(res) => Ok(res.unwrap().id.unwrap()),
+            Err(e) => Err(GrapevineServerError::MongoError(e.to_string())),
+        }
+    }
+
+    /**
+     * Return the oid of a phrase given its index
+     * 
+     * @param index - index of the phrase
+     * @return - ObjectId of the phrase if it exists
+     */
+    pub async fn get_phrase_by_index(&self, index: u32) -> Result<ObjectId, GrapevineServerError> {
+        let options = FindOneOptions::builder()
+            .projection(doc! { "_id": 1 })
+            .build();
+        match self.phrases.find_one(doc! {"index": index}, options).await {
+            Ok(res) => match res {
+                Some(document) => Ok(document.id.unwrap()),
+                None => Err(GrapevineServerError::PhraseNotFound),
+            },
             Err(e) => Err(GrapevineServerError::MongoError(e.to_string())),
         }
     }
