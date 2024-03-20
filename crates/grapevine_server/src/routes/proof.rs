@@ -68,11 +68,9 @@ pub async fn create_phrase(
 
     // check if phrase already exists in db
     match db.get_phrase_by_hash(&request.hash).await {
-        Ok(_) => (),
+        Ok(_) =>  return Err(GrapevineResponse::Conflict(ErrorMessage(Some(GrapevineServerError::PhraseExists), None))),
         Err(e) => match e {
-            GrapevineServerError::PhraseNotFound => {
-                return Err(GrapevineResponse::Conflict(ErrorMessage(Some(e), None)));
-            }
+            GrapevineServerError::PhraseNotFound => (),
             _ => {
                 return Err(GrapevineResponse::InternalError(ErrorMessage(
                     Some(e),
@@ -81,6 +79,8 @@ pub async fn create_phrase(
             }
         },
     };
+
+    println!("CREATE HASH: 0x{}", hex::encode(&request.hash));
 
     // create the new phrase
     match db.create_phrase(request.hash, request.description).await {
@@ -145,7 +145,10 @@ pub async fn knowledge_proof(
         2, // always 2 on first degree proof
     );
     let auth_hash = match verify_res {
-        Ok(res) => res.0[2].to_bytes(),
+        Ok(res) => {
+            println!("KNOWN HASH: 0x{}", hex::encode(res.0[1].to_bytes()));
+            res.0[2].to_bytes()
+        },
         Err(e) => {
             println!("Proof verification failed: {:?}", e);
             return Err(GrapevineResponse::BadRequest(ErrorMessage(
@@ -245,6 +248,7 @@ pub async fn degree_proof(
             )));
         }
     };
+    println!("PHRASE HASH: 0x{}", hex::encode(phrase_hash));
 
     // get the phrase oid from the hash
     let phrase_oid = match db.get_phrase_by_hash(&phrase_hash).await {

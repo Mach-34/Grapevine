@@ -162,13 +162,23 @@ pub async fn create_new_phrase(
     if phrase.len() > 180 {
         return Err(GrapevineCLIError::PhraseTooLong);
     }
-    // ensure artifacts are present
-    artifacts_guard().await.unwrap();
+
     // get account
     let mut account = get_account()?;
 
     // compute the hash of the phrase
-    let hash = phrase_hash(&phrase);
+    // DEV: HASH IS BROKEN, RELYING ON CIRCUIT EXECUTION FOR NOW
+    // let hash = phrase_hash(&phrase);
+    /// ONLY FOR HASH :(
+    /// seriously factor of 10,000x worse doing this, could potentially hide behind auto proving phrase when creating
+    artifacts_guard().await.unwrap();
+    let params = use_public_params().unwrap();
+    let r1cs = use_r1cs().unwrap();
+    let wc_path = use_wasm().unwrap();
+    let username = vec![account.username().clone()];
+    let auth_secret = vec![account.auth_secret().clone()];
+    let proof = nova_proof(wc_path, &r1cs, &params, &phrase, &username, &auth_secret).unwrap();
+    let hash = verify_nova_proof(&proof, &params, 2).unwrap().0[1].to_bytes();
 
     // build request body
     let body = NewPhraseRequest { hash, description };

@@ -364,8 +364,6 @@ impl GrapevineDB {
             }
         }
 
-        // let oid = proof_chain[0].id;
-
         // Delete documents if not empty
         if !delete_entities.is_empty() {
             let filter = doc! {
@@ -603,6 +601,7 @@ impl GrapevineDB {
                     }
                     degrees.push(DegreeData {
                         degree: 1,
+                        phrase_index: 0, //@TODO
                         relation: None,
                         preceding_relation: None,
                         phrase_hash,
@@ -631,7 +630,7 @@ impl GrapevineDB {
                     "localField": "degree_proofs",
                     "foreignField": "_id",
                     "as": "proofs",
-                    "pipeline": [doc! { "$project": { "degree": 1, "preceding": 1, "phrase_hash": 1 } }]
+                    "pipeline": [doc! { "$project": { "degree": 1, "preceding": 1, "phrase": 1 } }]
                 }
             },
             doc! {
@@ -650,7 +649,7 @@ impl GrapevineDB {
                 "$project": {
                     "degree": "$proofs.degree",
                     "preceding": "$proofs.preceding",
-                    "phrase_hash": "$proofs.phrase_hash",
+                    "phrase": "$proofs.phrase",
                     "_id": 0
                 }
             },
@@ -668,7 +667,7 @@ impl GrapevineDB {
                 "$project": {
                     "degree": 1,
                     "preceding": 1,
-                    "phrase_hash": 1,
+                    "phrase": 1,
                     "relation": { "$arrayElemAt": ["$relation.user", 0] },
                     "precedingRelation": { "$arrayElemAt": ["$relation.preceding", 0] },
                     "_id": 0
@@ -686,7 +685,7 @@ impl GrapevineDB {
             doc! {
                 "$project": {
                     "degree": 1,
-                    "phrase_hash": 1,
+                    "phrase": 1,
                     "relation": { "$arrayElemAt": ["$relation.username", 0] },
                     "precedingRelation": 1,
                     "_id": 0
@@ -705,7 +704,7 @@ impl GrapevineDB {
             doc! {
                 "$project": {
                     "degree": 1,
-                    "phrase_hash": 1,
+                    "phrase": 1,
                     "relation": 1,
                     "precedingRelation": { "$arrayElemAt": ["$precedingRelation.user", 0] },
                 }
@@ -722,10 +721,33 @@ impl GrapevineDB {
             doc! {
                 "$project": {
                     "degree": 1,
-                    "phrase_hash": 1,
+                    "phrase": 1,
                     "relation": 1,
                     "precedingRelation": { "$arrayElemAt": ["$precedingRelation.username", 0] },
                     "_id": 0
+                }
+            },
+            doc!{
+                "$lookup": {
+                    "from": "phrases",
+                    "localField": "phrase",
+                    "foreignField": "_id",
+                    "as": "phrase",
+                    "pipeline": [doc! { "$project": { "index": 1, "hash": 1, "_id": 0 } }]
+                }
+            },
+            doc! {
+                "$unwind": "$phrase"
+            },
+            doc! {
+                "$set": {
+                    "phrase_index": "$phrase.index",
+                    "phrase_hash": "$phrase.hash"
+                }
+            },
+            doc! {
+                "$project": {
+                    "phrase": 0
                 }
             },
             doc! { "$sort": { "degree": 1 }},
@@ -759,8 +781,10 @@ impl GrapevineDB {
                         .collect::<Vec<u8>>()
                         .try_into()
                         .unwrap();
+                    let phrase_index = document.get_i64("phrase_index").unwrap() as u32;
                     degrees.push(DegreeData {
                         degree,
+                        phrase_index,
                         relation: Some(relation),
                         preceding_relation,
                         phrase_hash,
@@ -1200,12 +1224,15 @@ impl GrapevineDB {
     ) -> Result<ObjectId, GrapevineServerError> {
         let phrase_hash_bson: Vec<i32> = phrase_hash.to_vec().iter().map(|x| *x as i32).collect();
 
-        let query = doc! {"phrase_hash": phrase_hash_bson};
+        let query = doc! {"hash": phrase_hash_bson};
         let projection = doc! { "_id": 1 };
         let find_options = FindOneOptions::builder().projection(projection).build();
 
         match self.phrases.find_one(query, find_options).await {
-            Ok(res) => Ok(res.unwrap().id.unwrap()),
+            Ok(res) => match res {
+                Some(document) => Ok(document.id.unwrap()),
+                None => Err(GrapevineServerError::PhraseNotFound),
+            }
             Err(e) => Err(GrapevineServerError::MongoError(e.to_string())),
         }
     }
