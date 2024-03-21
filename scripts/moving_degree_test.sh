@@ -51,26 +51,29 @@ grapevine register-account alice
 grapevine add-relationship bob
 printf "\n"
 ## create degree 1 proof (phrase proof)
-grapevine create-phrase "It was cryptography all along"
+output=$(grapevine create-phrase "It was cryptography all along" "The very first phrase of the word!")
+echo "$output"
+phrase_id=$(echo "$output" | grep -oP 'Created new phrase #\K[^!]+')
+grapevine prove-phrase $phrase_id "It was cryptography all along"
 printf "\n"
 mv grapevine.key alice.key
 
-## Note: though you can prove a single proof, there is not an easy way to get the necessary object ID to target a specific proof. so just use prove-new since it picks it uj
+## Note: though you can prove a single proof, there is not an easy way to get the necessary object ID to target a specific proof. so just use prove-new-degrees since it picks it uj
 ## Prove degree 2 relationshpi to alice's phrase as bob 
 mv bob.key grapevine.key
-grapevine prove-new
+grapevine prove-new-degrees
 printf "\n"
 mv grapevine.key bob.key
 
 # ## Prove degree 3 relationship to allice's phrase as charlie through bob
 mv charlie.key grapevine.key
-grapevine prove-new
+grapevine prove-new-degrees
 printf "\n"
 mv grapevine.key charlie.key
 
 ## Prove degree 4 relationship to alice's phrase as the_user through charlie
 mv the_user.key grapevine.key
-grapevine prove-new
+grapevine prove-new-degrees
 ## Get all proofs as the user (show degree 4)
 printf "\n"
 grapevine get-degrees
@@ -85,7 +88,7 @@ mv grapevine.key bob.key
 
 ## Prove degree 3 relationship to alice's phrase as the_user through bob
 mv the_user.key grapevine.key
-grapevine prove-new
+grapevine prove-new-degrees
 printf "\n"
 ## Get all proofs as the user (show degree 3 and old proof removed)
 grapevine get-degrees
@@ -101,7 +104,7 @@ mv grapevine.key alice.key
 
 ## Prove degree 2 relationship to alice
 mv the_user.key grapevine.key
-grapevine prove-new
+grapevine prove-new-degrees
 printf "\n"
 ## Get all proofs as the user (show degree 3 and old proof removed)
 grapevine get-degrees
