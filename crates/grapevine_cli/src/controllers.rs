@@ -357,8 +357,9 @@ pub async fn get_my_proofs() -> Result<String, GrapevineCLIError> {
         account.username()
     );
     for degree in data {
-        println!("=-=-=-=-=-=-=-=-=-=-=-=-=");
+        println!("=-=-=-=-=-=-=[Phrase #{}]=-=-=-=-=-=-=", degree.phrase_index);
         println!("Phrase hash: 0x{}", hex::encode(degree.phrase_hash));
+        println!("Phrase description: \"{}\"", degree.description);
         println!("Degrees of separation from origin: {}", degree.degree);
         if degree.relation.is_none() {
             println!("Phrase created by this user");

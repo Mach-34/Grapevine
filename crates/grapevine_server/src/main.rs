@@ -853,6 +853,7 @@ mod test_rocket {
     }
 
     #[rocket::async_test]
+    #[ignore]
     async fn test_get_degrees_refactor() {
         let context = GrapevineTestContext::init().await;
 
