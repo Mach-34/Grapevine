@@ -215,7 +215,7 @@ impl GrapevineDB {
     ) -> Result<u32, GrapevineServerError> {
         // query for the highest phrase id
         let find_options = FindOneOptions::builder()
-            .sort(doc! {"phrase_id": -1})
+            .sort(doc! {"index": -1})
             .build();
 
         // Use find_one with options to get the document with the largest phrase_id
@@ -240,6 +240,7 @@ impl GrapevineDB {
             Err(e) => return Err(GrapevineServerError::MongoError(e.to_string())),
         };
 
+        println!("Index: {}", index);
         return Ok(index);
     }
 
@@ -537,39 +538,42 @@ impl GrapevineDB {
     /**
      * Get all degree proofs created by a specific user
      */
-    pub async fn get_created(&self, username: String) -> Option<Vec<DegreeData>> {
+    pub async fn get_known(&self, username: String) -> Option<Vec<DegreeData>> {
         let pipeline = vec![
-            // get the user to find the proofs of degrees of separation for the user
+            // Step 1: Find the user by username to get their degree proofs
             doc! { "$match": { "username": username } },
             doc! { "$project": { "_id": 1, "degree_proofs": 1 } },
-            // look up the degree proof documents
+            // Step 2: Look up degree proofs by this user of degree 1
             doc! {
                 "$lookup": {
                     "from": "degree_proofs",
                     "localField": "degree_proofs",
                     "foreignField": "_id",
                     "as": "proofs",
-                    "pipeline": [doc! { "$project": { "degree": 1, "secret_phrase": 1, "phrase_hash": 1 } }]
-                }
-            },
-            doc! {
-                "$project": {
-                    "proofs": {
-                        "$filter": {
-                          "input": "$proofs",
-                          "as": "proof",
-                          "cond": { "$eq": ["$$proof.degree", 1] }
-                        }
-                    },
+                    "pipeline": [
+                        { "$match": { "$expr": { "$eq": ["$degree", 1] } } }, // Note: Adjusted to use a static value for "degree"
+                        { "$project": { "degree": 1, "ciphertext": 1, "phrase": 1 } }
+                    ]
                 }
             },
             doc! { "$unwind": "$proofs" },
+            // Step 3: Cross reference the phrase documents to get auxiliary phrase information
+            doc! {
+                "$lookup": {
+                    "from": "phrases",
+                    "localField": "proofs.phrase",
+                    "foreignField": "_id",
+                    "as": "phrase",
+                }
+            },
+            doc! { "$unwind": "$phrase" },
+            // Step 4: Prune unnecessary fields and return the result
             doc! {
                 "$project": {
-                    "degree": "$proofs.degree",
-                    "secret_phrase": "$proofs.secret_phrase",
-                    "phrase_hash": "$proofs.phrase_hash",
-                    "_id": 0
+                    "hash": "$phrase.hash",
+                    "index": "$phrase.index",
+                    "description": "$phrase.description",
+                    "ciphertext": "$proofs.ciphertext",
                 }
             },
         ];
@@ -579,9 +583,8 @@ impl GrapevineDB {
         while let Some(result) = cursor.next().await {
             match result {
                 Ok(document) => {
-                    // @todo: can this be retrieved better?
                     let phrase_hash: [u8; 32] = document
-                        .get("phrase_hash")
+                        .get("hash")
                         .unwrap()
                         .as_array()
                         .unwrap()
@@ -590,14 +593,21 @@ impl GrapevineDB {
                         .collect::<Vec<u8>>()
                         .try_into()
                         .unwrap();
-                    // get secret phrase is included
                     let mut secret_phrase: Option<[u8; 192]> = None;
-                    if let Some(Bson::Binary(binary)) = document.get("secret_phrase") {
+                    if let Some(Bson::Binary(binary)) = document.get("ciphertext") {
                         secret_phrase = Some(binary.bytes.clone().try_into().unwrap());
                     }
+                    let phrase_index = document.get("index").unwrap().as_i64().unwrap() as u32;
+                    let description = document
+                        .get("description")
+                        .unwrap()
+                        .as_str()
+                        .unwrap()
+                        .to_string();
                     degrees.push(DegreeData {
+                        description,
                         degree: 1,
-                        phrase_index: 0, //@TODO
+                        phrase_index,
                         relation: None,
                         preceding_relation: None,
                         phrase_hash,
@@ -729,7 +739,7 @@ impl GrapevineDB {
                     "localField": "phrase",
                     "foreignField": "_id",
                     "as": "phrase",
-                    "pipeline": [doc! { "$project": { "index": 1, "hash": 1, "_id": 0 } }]
+                    "pipeline": [doc! { "$project": { "index": 1, "hash": 1, "description": 1, "_id": 0 } }]
                 }
             },
             doc! {
@@ -738,7 +748,8 @@ impl GrapevineDB {
             doc! {
                 "$set": {
                     "phrase_index": "$phrase.index",
-                    "phrase_hash": "$phrase.hash"
+                    "phrase_hash": "$phrase.hash",
+                    "phrase_description": "$phrase.description"
                 }
             },
             doc! {
@@ -777,7 +788,14 @@ impl GrapevineDB {
                         .try_into()
                         .unwrap();
                     let phrase_index = document.get_i64("phrase_index").unwrap() as u32;
+                    let phrase_description = document
+                        .get("phrase_description")
+                        .unwrap()
+                        .as_str()
+                        .unwrap()
+                        .to_string();
                     degrees.push(DegreeData {
+                        description: phrase_description,
                         degree,
                         phrase_index,
                         relation: Some(relation),
@@ -1076,7 +1094,7 @@ impl GrapevineDB {
                     },
                     doc! { "$project": { "_id": 0, "senders": 1 } },
                     // step 3: look up the phrase document by index
-                    doc! { 
+                    doc! {
                         "$lookup": {
                             "from": "phrases",
                             "let": { "index": phrase_index },
@@ -1089,7 +1107,7 @@ impl GrapevineDB {
                     },
                     doc! { "$unwind": "$phrase_document" },
                     // step 4: find all active degree proofs for the phrase made by relationships
-                    doc! { 
+                    doc! {
                         "$lookup": {
                             "from": "degree_proofs",
                             "let": { "senders": "$senders", "phrase": "$phrase_document._id" },
@@ -1111,14 +1129,14 @@ impl GrapevineDB {
                         }
                     },
                     doc! { "$unwind": "$degree_proofs" },
-                    doc! { 
+                    doc! {
                         "$group": {
                             "_id": null,
                             "max_degree": { "$max": "$degree_proofs.degree" },
                             "count": { "$sum": 1 },
                             "degrees": { "$push": "$degree_proofs.degree" }
                         }
-                    }
+                    },
                 ],
                 None,
             )
@@ -1256,5 +1274,82 @@ impl GrapevineDB {
             Ok(res) => Ok(res.is_some()),
             Err(e) => Err(GrapevineServerError::MongoError(e.to_string())),
         }
+    }
+
+    /**
+     * Checks to see whether the user has already created a degree proof for the phrase
+     *
+     * @param user - the username of the user to check for
+     * @param phrase_index - the index of the phrase to check for
+     * @degree - the degree of the proof to check for
+     * @return - true if a degree proof was found matching the user, index, and degree, and false otherwise
+     */
+    pub async fn check_degree_conflict(
+        &self,
+        user: &String,
+        phrase_index: u32,
+        degree: u8,
+    ) -> Result<bool, GrapevineServerError> {
+        let mut cursor = self
+            .users
+            .aggregate(
+                vec![
+                    // Step 1: retrieve the ID of the user using the username
+                    doc! { "$match": { "username": user } },
+                    // Step 2: retrieve the ID of the phrase using the phrase index
+                    doc! {
+                        "$lookup": {
+                            "from": "phrases",
+                            "let": {
+                                "index": phrase_index,
+                            },
+                            "pipeline": [
+                                { "$match": { "$expr": { "$eq": ["$index", "$$index"] } } },
+                                { "$project": { "_id": 1 } }
+                            ],
+                            "as": "phrases"
+                        }
+                    },
+                    doc! { "$unwind": "$phrases" },
+                    // Step 3: retrieve any degree proofs that match the user, phrase, and degree
+                    doc! {
+                        "$lookup": {
+                            "from": "degree_proofs",
+                            "let": {
+                                "phrase": "$phrases._id",
+                                "user": "$_id",
+                                "degree": degree as i64,
+                            },
+                            "pipeline": [
+                                {
+                                    "$match": {
+                                        "$expr": {
+                                            "$and": [
+                                                { "$eq": ["$phrase", "$$phrase"] },
+                                                { "$eq": ["$user", "$$user"] },
+                                                { "$eq": ["$degree", "$$degree"] }
+                                            ]
+                                        }
+                                    }
+                                },
+                                { "$project": { "_id": 1 } }
+                            ],
+                            "as": "degree_proofs"
+                        }
+                    },
+                    doc! { "$unwind": "$degree_proofs" },
+                    doc! { "$project": { "_id": "$phrases._id" } },
+                ],
+                None,
+            )
+            .await
+            .unwrap();
+
+        let cursor_res = cursor.next().await;
+        return match cursor_res {
+            Some(Ok(_)) => Ok(true),
+            Some(Err(e)) => Err(GrapevineServerError::MongoError(e.to_string())),
+            None => Ok(false),
+        };
     }
 }

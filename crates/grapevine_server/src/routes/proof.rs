@@ -38,7 +38,7 @@ pub async fn create_phrase(
     _user: AuthenticatedUser,
     data: Data<'_>,
     db: &State<GrapevineDB>,
-) -> Result<Json<u32>, GrapevineResponse> {
+) -> Result<GrapevineResponse, GrapevineResponse> {
     // stream in data
     // todo: implement FromData trait on NewPhraseRequest
     let mut buffer = Vec::new();
@@ -86,7 +86,7 @@ pub async fn create_phrase(
 
     // create the new phrase
     match db.create_phrase(request.hash, request.description).await {
-        Ok(res) => Ok(Json(res)),
+        Ok(res) => Ok(GrapevineResponse::Created(res.to_string())),
         Err(e) => {
             println!("Error adding proof: {:?}", e);
             Err(GrapevineResponse::InternalError(ErrorMessage(
@@ -138,6 +138,25 @@ pub async fn knowledge_proof(
             )))
         }
     };
+
+    // check that there is no existing degree 1 proof for this user on this phrase
+    match db.check_degree_conflict(&user.0, request.index, 1).await {
+        Ok(exists) => match exists {
+            true => {
+                return Err(GrapevineResponse::Conflict(ErrorMessage(
+                    Some(GrapevineServerError::DegreeProofExists),
+                    None,
+                )))
+            }
+            false => (),
+        },
+        Err(e) => {
+            return Err(GrapevineResponse::InternalError(ErrorMessage(
+                Some(e),
+                None,
+            )));
+        }
+    }
 
     // verify the proof
     let decompressed_proof = decompress_proof(&request.proof);
@@ -390,12 +409,12 @@ pub async fn get_proof_chain(
 /**
  * Get all created phrases
  */
-#[get("/created")]
-pub async fn get_created_phrases(
+#[get("/known")]
+pub async fn get_known_phrases(
     user: AuthenticatedUser,
     db: &State<GrapevineDB>,
 ) -> Result<Json<Vec<DegreeData>>, GrapevineResponse> {
-    match db.get_created(user.0).await {
+    match db.get_known(user.0).await {
         Some(proofs) => Ok(Json(proofs)),
         None => Err(GrapevineResponse::InternalError(ErrorMessage(
             Some(GrapevineServerError::MongoError(String::from(

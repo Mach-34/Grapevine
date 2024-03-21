@@ -73,7 +73,7 @@ impl std::fmt::Display for GrapevineCLIError {
             GrapevineCLIError::DegreeProofExists => {
                 write!(
                     f,
-                    "Degree proof already exists between these accounts for this phrase"
+                    "Degree proof already exists at this degree for this phrase"
                 )
             }
             GrapevineCLIError::DegreeProofFailed => write!(f, "Failed to create degree proof"),

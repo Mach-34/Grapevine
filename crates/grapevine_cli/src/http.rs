@@ -166,7 +166,7 @@ pub async fn new_phrase_req(
     account: &mut GrapevineAccount,
     body: NewPhraseRequest,
 ) -> Result<u32, GrapevineServerError> {
-    let url = format!("{}/proof/create", &**SERVER_URL);
+    let url = format!("{}/proof/phrase", &**SERVER_URL);
     // serialize the proof
     let serialized: Vec<u8> = bincode::serialize(&body).unwrap();
     // produce signature over current nonce
@@ -182,7 +182,7 @@ pub async fn new_phrase_req(
         .unwrap();
     match res.status() {
         StatusCode::CREATED => {
-            let index = res.json::<u32>().await.unwrap();
+            let index = res.text().await.unwrap().parse().unwrap();
             // increment nonce
             account
                 .increment_nonce(Some((&**ACCOUNT_PATH).to_path_buf()))
@@ -325,10 +325,10 @@ pub async fn degree_proof_req(
     }
 }
 
-pub async fn get_created_req(
+pub async fn get_known_req(
     account: &mut GrapevineAccount,
 ) -> Result<Vec<DegreeData>, GrapevineServerError> {
-    let url = format!("{}/proof/created", &**SERVER_URL);
+    let url = format!("{}/proof/known", &**SERVER_URL);
     // produce signature over current nonce
     let signature = hex::encode(account.sign_nonce().compress());
     let client = Client::new();
@@ -354,9 +354,9 @@ pub async fn get_created_req(
 
 pub async fn show_connections_req(
     account: &mut GrapevineAccount,
-    phrase_hash: &str,
+    phrase_index: u32,
 ) -> Result<(u64, Vec<u64>), GrapevineServerError> {
-    let url = format!("{}/proof/connections/{}", &**SERVER_URL, phrase_hash);
+    let url = format!("{}/proof/connections/{}", &**SERVER_URL, phrase_index);
     // produce signature over current nonce
     let signature = hex::encode(account.sign_nonce().compress());
     let client = Client::new();

@@ -1337,6 +1337,31 @@ mod test_rocket {
     }
 
     #[rocket::async_test]
+    async fn test_degree_1_conflict() {
+        // initialize context
+        GrapevineDB::drop("grapevine_mocked").await;
+        let context = GrapevineTestContext::init().await;
+
+        // add user
+        let mut user1 = GrapevineAccount::new(String::from("user"));
+        create_user_request(&context, &user1.create_user_request()).await;
+
+        // create phrase
+        let phrase = String::from("This is a phrase");
+        let description = String::from("This is a description");
+        let (_, index) = create_phrase_request(&phrase, description.clone(), &mut user1).await;
+        let index = index.parse().unwrap();
+
+        // prove knowledge of phrase
+        knowledge_proof_req(index, &phrase, &mut user1).await;
+
+        // attempt to prove knowledge of phrase again
+        let (code, msg) = knowledge_proof_req(index, &phrase, &mut user1).await;
+        assert_eq!(code, Status::Conflict.code);
+        assert_eq!(msg.unwrap(), "\"DegreeProofExists\"");
+    }
+
+    #[rocket::async_test]
     async fn test_create_degree_proof_with_invalid_request_body() {
         // Reset db with clean state
         GrapevineDB::drop("grapevine_mocked").await;

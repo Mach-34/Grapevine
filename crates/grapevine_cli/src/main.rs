@@ -46,20 +46,23 @@ enum Commands {
     /// Create a new phrase
     /// usage: `grapevine create-phrase "<phrase>" "<description>"`
     #[command(verbatim_doc_comment)]
-    CreatePhrase(CreatePhrase),
+    CreatePhrase(CreatePhraseArgs),
+    /// Prove knowledege of a phrase
+    /// usage: `grapevine prove-phrase "<phrase>" <index>`
+    #[command(verbatim_doc_comment)]
+    ProvePhrase(ProvePhraseArgs),
     /// Prove all the the new degrees of separation available
     /// usage: `grapevine prove-new`
     #[command(verbatim_doc_comment)]
-    ProveNew,
+    ProveNewDegrees,    
     /// Print all of your degrees of separation
     /// usage: `grapevine get-degrees`
     #[command(verbatim_doc_comment)]
     GetDegrees,
-    /// Print all phrases you have created
-    /// usage: `grapevine get-created-phrases`
+    /// Print all phrases you know (1st degree)
+    /// usage: `grapevine get-known-phrases`
     #[command(verbatim_doc_comment)]
-    GetCreatedPhrases,
-
+    GetKnownPhrases,
     /// Get connection count and degree data for a phrase
     /// usage: `grapevine show-connections`
     #[command(verbatim_doc_comment)]
@@ -81,14 +84,20 @@ struct AddRelationshipArgs {
 }
 
 #[derive(Args)]
-struct CreatePhrase {
+struct CreatePhraseArgs {
     phrase: Option<String>,
     description: Option<String>,
 }
 
 #[derive(Args)]
+struct ProvePhraseArgs {
+    index: Option<u32>,
+    phrase: Option<String>,
+}
+
+#[derive(Args)]
 struct ShowConnectionsArgs {
-    phrase_hash: Option<String>,
+    phrase_index: Option<u32>,
 }
 
 #[derive(Args)]
@@ -118,15 +127,15 @@ pub async fn main() {
             )
             .await
         }
-        Commands::ProveNew => controllers::prove_all_available().await,
+        Commands::ProvePhrase(cmd) => {
+            controllers::prove_phrase_knowledge(cmd.phrase.clone().unwrap(), cmd.index.clone().unwrap()).await
+        }
+        Commands::ProveNewDegrees => controllers::prove_all_available().await,
         Commands::GetDegrees => controllers::get_my_proofs().await,
-        Commands::GetCreatedPhrases => controllers::get_created_phrases().await,
+        Commands::GetKnownPhrases => controllers::get_known_phrases().await,
         Commands::ShowConnections(cmd) => {
-            controllers::show_connections(cmd.phrase_hash.clone().unwrap()).await
-        } // Commands::ProveSeparation(cmd) => {
-          //     controllers::prove_separation_degree(cmd.username.clone().unwrap()).await
-          // }
-          // Commands::AvailableProofs => controllers::get_available_proofs().await,
+            controllers::show_connections(cmd.phrase_index.clone().unwrap()).await
+        }
     };
 
     match result {

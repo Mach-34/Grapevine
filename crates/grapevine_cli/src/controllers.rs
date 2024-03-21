@@ -1,7 +1,7 @@
 use crate::errors::GrapevineCLIError;
 use crate::http::{
     add_relationship_req, create_user_req, degree_proof_req, get_account_details_req,
-    get_available_proofs_req, get_created_req, get_degrees_req, get_nonce_req,
+    get_available_proofs_req, get_known_req, get_degrees_req, get_nonce_req,
     get_proof_with_params_req, get_pubkey_req, knowledge_proof_req, new_phrase_req,
     show_connections_req,
 };
@@ -181,11 +181,14 @@ pub async fn create_new_phrase(
     let hash = verify_nova_proof(&proof, &params, 2).unwrap().0[1].to_bytes();
 
     // build request body
-    let body = NewPhraseRequest { hash, description };
+    let body = NewPhraseRequest { hash, description: description.clone() };
     // send request
     let res = new_phrase_req(&mut account, body).await;
     match res {
-        Ok(_) => Ok(format!("Created new phrase: \"{}\"", phrase)),
+        Ok(index) => Ok(format!(
+            "\nCreated new phrase #{}!\nSecret Phrase: \"{}\"\nDescription: \"{}\"",
+            index, phrase, description
+        )),
         Err(e) => Err(GrapevineCLIError::from(e)),
     }
 }
@@ -237,7 +240,7 @@ pub async fn prove_phrase_knowledge(
     // send request
     let res = knowledge_proof_req(&mut account, body).await;
     match res {
-        Ok(_) => Ok(format!("Created new phrase: \"{}\"", phrase)),
+        Ok(_) => Ok(format!("Proved knowledge of phrase #{}: \"{}\"", index, phrase)),
         Err(e) => Err(GrapevineCLIError::from(e)),
     }
 }
@@ -374,30 +377,30 @@ pub async fn get_my_proofs() -> Result<String, GrapevineCLIError> {
     Ok(String::from(""))
 }
 
-pub async fn get_created_phrases() -> Result<String, GrapevineCLIError> {
+pub async fn get_known_phrases() -> Result<String, GrapevineCLIError> {
     // get account
     let mut account = get_account()?;
     // send request
-    let res = get_created_req(&mut account).await;
+    let res = get_known_req(&mut account).await;
     let data = match res {
         Ok(data) => data,
         Err(e) => return Err(GrapevineCLIError::from(e)),
     };
-    println!("Proofs created by {}:", account.username());
     for degree in data {
-        println!("=-=-=-=-=-=-=-=-=-=-=-=-=");
+        println!("=-=-=-=-=-=-=[Phrase #{}]=-=-=-=-=-=-=", degree.phrase_index);
         println!("Phrase hash: 0x{}", hex::encode(degree.phrase_hash));
         let phrase = account.decrypt_phrase(&degree.secret_phrase.unwrap());
         println!("Secret phrase: \"{}\"", phrase);
+        println!("Description: \"{}\"", degree.description);
     }
     Ok(String::from(""))
 }
 
-pub async fn show_connections(phrase_hash: String) -> Result<String, GrapevineCLIError> {
+pub async fn show_connections(phrase_index: u32) -> Result<String, GrapevineCLIError> {
     // get account
     let mut account = get_account()?;
     // send request
-    let res = show_connections_req(&mut account, &phrase_hash).await;
+    let res = show_connections_req(&mut account, phrase_index).await;
     let connection_data = match res {
         Ok(data) => data,
         Err(e) => return Err(GrapevineCLIError::from(e)),
@@ -406,7 +409,7 @@ pub async fn show_connections(phrase_hash: String) -> Result<String, GrapevineCL
     if connection_data.0 == 0 {
         println!("You have no connections that know this phrase");
     } else {
-        println!("Connections for phrase: 0x{}", phrase_hash);
+        println!("Connections for phrase #{}", phrase_index);
         println!("\nTotal connections: {}\n", connection_data.0);
         for i in 0..connection_data.1.len() {
             let connections = connection_data.1.get(i).unwrap();
@@ -414,38 +417,6 @@ pub async fn show_connections(phrase_hash: String) -> Result<String, GrapevineCL
         }
     }
     Ok(String::from(""))
-}
-
-pub fn get_account_info() {
-    // @TODO: pass info in
-    // get grapevine path
-    let grapevine_dir_path = match std::env::var("HOME") {
-        Ok(home) => Path::new(&home).join(".grapevine"),
-        Err(_) => {
-            println!("Error: no home directory found");
-            return;
-        }
-    };
-    let grapevine_key_path = grapevine_dir_path.join("grapevine.key");
-    match grapevine_key_path.exists() {
-        true => (),
-        false => {
-            println!(
-                "No Grapevine account found at {}",
-                grapevine_key_path.display()
-            );
-            return;
-        }
-    };
-    // read from the saved account file
-    let json = std::fs::read_to_string(grapevine_key_path).unwrap();
-    let account = serde_json::from_str::<GrapevineAccount>(&json).unwrap();
-    println!("Username: {}", account.username());
-    println!("Private Key: 0x{}", hex::encode(account.private_key_raw()));
-    println!(
-        "Auth Secret: 0x{}",
-        hex::encode(account.auth_secret().to_bytes())
-    );
 }
 
 pub fn make_or_get_account(username: String) -> Result<GrapevineAccount, GrapevineCLIError> {
