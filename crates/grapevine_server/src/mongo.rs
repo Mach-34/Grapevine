@@ -2,10 +2,8 @@ use crate::{DATABASE_NAME, MONGODB_URI};
 use futures::stream::StreamExt;
 use grapevine_common::errors::GrapevineServerError;
 use grapevine_common::http::responses::DegreeData;
-use grapevine_common::models::proof::ProvingData;
-use grapevine_common::models::{proof::DegreeProof, relationship::Relationship, user::User};
-use mongodb::bson::Bson;
-use mongodb::bson::{self, doc, oid::ObjectId, Binary};
+use grapevine_common::models::{DegreeProof, Phrase, ProvingData, Relationship, User};
+use mongodb::bson::{self, doc, oid::ObjectId, Binary, Bson};
 use mongodb::options::{ClientOptions, FindOneOptions, FindOptions, ServerApi, ServerApiVersion};
 use mongodb::{Client, Collection};
 
@@ -13,22 +11,25 @@ pub struct GrapevineDB {
     users: Collection<User>,
     relationships: Collection<Relationship>,
     degree_proofs: Collection<DegreeProof>,
+    phrases: Collection<Phrase>,
 }
 
 impl GrapevineDB {
-    pub async fn init() -> Self {
-        let mut client_options = ClientOptions::parse(&**MONGODB_URI).await.unwrap();
+    pub async fn init(database_name: &String, mongodb_uri: &String) -> Self {
+        let mut client_options = ClientOptions::parse(mongodb_uri).await.unwrap();
         let server_api = ServerApi::builder().version(ServerApiVersion::V1).build();
         client_options.server_api = Some(server_api);
         let client = Client::with_options(client_options).unwrap();
-        let db = client.database(&**DATABASE_NAME);
+        let db = client.database(database_name);
         let users = db.collection("users");
         let relationships = db.collection("relationships");
         let degree_proofs = db.collection("degree_proofs");
+        let phrases = db.collection("phrases");
         Self {
             users,
             relationships,
             degree_proofs,
+            phrases,
         }
     }
 
@@ -168,11 +169,7 @@ impl GrapevineDB {
             .await
             .unwrap();
         match user {
-            Some(user) => {
-                println!("User: {:?}", user);
-                println!("user: {:?}", user.pubkey.unwrap());
-                Some(user.pubkey.unwrap())
-            }
+            Some(user) => Some(user.pubkey.unwrap()),
             None => None,
         }
     }
@@ -203,23 +200,57 @@ impl GrapevineDB {
         }
     }
 
+    /**
+     * Creates a new phrase document in the database
+     * @notice assumes that `get_phrase_by_{hash, oid}` has already been called
+     *
+     * @param phrase_hash - the hash of the phrase to create
+     * @param description - the description of the phrase
+     * @return: the index for the new phrase
+     */
+    pub async fn create_phrase(
+        &self,
+        phrase_hash: [u8; 32],
+        description: String,
+    ) -> Result<u32, GrapevineServerError> {
+        // query for the highest phrase id
+        let find_options = FindOneOptions::builder()
+            .sort(doc! {"index": -1})
+            .build();
+
+        // Use find_one with options to get the document with the largest phrase_id
+        let index = match self.phrases.find_one(None, find_options).await {
+            Ok(Some(document)) => {
+                let previous_index = document.index.unwrap();
+                previous_index + 1
+            }
+            Ok(None) => 1,
+            Err(e) => return Err(GrapevineServerError::MongoError(e.to_string())),
+        };
+
+        // create new phrase document
+        let phrase = Phrase {
+            id: None,
+            index: Some(index),
+            hash: Some(phrase_hash),
+            description: Some(description),
+        };
+        match self.phrases.insert_one(&phrase, None).await {
+            Ok(_) => (),
+            Err(e) => return Err(GrapevineServerError::MongoError(e.to_string())),
+        };
+
+        println!("Index: {}", index);
+        return Ok(index);
+    }
+
     pub async fn add_proof(
         &self,
         user: &ObjectId,
         proof: &DegreeProof,
     ) -> Result<ObjectId, GrapevineServerError> {
-        // check if an existing proof in this chain exists for the user
-        // todo: make this not ugly
-        let phrase_hash_bson: Vec<i32> = proof
-            .phrase_hash
-            .unwrap()
-            .to_vec()
-            .iter()
-            .map(|x| *x as i32)
-            .collect();
-
-        let mut proof_chain: Vec<DegreeProof> = vec![];
         // fetch all proofs preceding this one
+        let mut proof_chain: Vec<DegreeProof> = vec![];
         let mut cursor = self
             .degree_proofs
             .aggregate(
@@ -227,7 +258,7 @@ impl GrapevineDB {
                     doc! {
                       "$match": {
                         "user": user,
-                        "phrase_hash": phrase_hash_bson.clone()
+                        "phrase": proof.phrase
                       }
                     },
                     doc! {
@@ -329,8 +360,6 @@ impl GrapevineDB {
                 }
             }
         }
-
-        // let oid = proof_chain[0].id;
 
         // Delete documents if not empty
         if !delete_entities.is_empty() {
@@ -509,39 +538,42 @@ impl GrapevineDB {
     /**
      * Get all degree proofs created by a specific user
      */
-    pub async fn get_created(&self, username: String) -> Option<Vec<DegreeData>> {
+    pub async fn get_known(&self, username: String) -> Option<Vec<DegreeData>> {
         let pipeline = vec![
-            // get the user to find the proofs of degrees of separation for the user
+            // Step 1: Find the user by username to get their degree proofs
             doc! { "$match": { "username": username } },
             doc! { "$project": { "_id": 1, "degree_proofs": 1 } },
-            // look up the degree proof documents
+            // Step 2: Look up degree proofs by this user of degree 1
             doc! {
                 "$lookup": {
                     "from": "degree_proofs",
                     "localField": "degree_proofs",
                     "foreignField": "_id",
                     "as": "proofs",
-                    "pipeline": [doc! { "$project": { "degree": 1, "secret_phrase": 1, "phrase_hash": 1 } }]
-                }
-            },
-            doc! {
-                "$project": {
-                    "proofs": {
-                        "$filter": {
-                          "input": "$proofs",
-                          "as": "proof",
-                          "cond": { "$eq": ["$$proof.degree", 1] }
-                        }
-                    },
+                    "pipeline": [
+                        { "$match": { "$expr": { "$eq": ["$degree", 1] } } }, // Note: Adjusted to use a static value for "degree"
+                        { "$project": { "degree": 1, "ciphertext": 1, "phrase": 1 } }
+                    ]
                 }
             },
             doc! { "$unwind": "$proofs" },
+            // Step 3: Cross reference the phrase documents to get auxiliary phrase information
+            doc! {
+                "$lookup": {
+                    "from": "phrases",
+                    "localField": "proofs.phrase",
+                    "foreignField": "_id",
+                    "as": "phrase",
+                }
+            },
+            doc! { "$unwind": "$phrase" },
+            // Step 4: Prune unnecessary fields and return the result
             doc! {
                 "$project": {
-                    "degree": "$proofs.degree",
-                    "secret_phrase": "$proofs.secret_phrase",
-                    "phrase_hash": "$proofs.phrase_hash",
-                    "_id": 0
+                    "hash": "$phrase.hash",
+                    "index": "$phrase.index",
+                    "description": "$phrase.description",
+                    "ciphertext": "$proofs.ciphertext",
                 }
             },
         ];
@@ -551,9 +583,8 @@ impl GrapevineDB {
         while let Some(result) = cursor.next().await {
             match result {
                 Ok(document) => {
-                    // @todo: can this be retrieved better?
                     let phrase_hash: [u8; 32] = document
-                        .get("phrase_hash")
+                        .get("hash")
                         .unwrap()
                         .as_array()
                         .unwrap()
@@ -562,13 +593,21 @@ impl GrapevineDB {
                         .collect::<Vec<u8>>()
                         .try_into()
                         .unwrap();
-                    // get secret phrase is included
                     let mut secret_phrase: Option<[u8; 192]> = None;
-                    if let Some(Bson::Binary(binary)) = document.get("secret_phrase") {
+                    if let Some(Bson::Binary(binary)) = document.get("ciphertext") {
                         secret_phrase = Some(binary.bytes.clone().try_into().unwrap());
                     }
+                    let phrase_index = document.get("index").unwrap().as_i64().unwrap() as u32;
+                    let description = document
+                        .get("description")
+                        .unwrap()
+                        .as_str()
+                        .unwrap()
+                        .to_string();
                     degrees.push(DegreeData {
+                        description,
                         degree: 1,
+                        phrase_index,
                         relation: None,
                         preceding_relation: None,
                         phrase_hash,
@@ -597,7 +636,7 @@ impl GrapevineDB {
                     "localField": "degree_proofs",
                     "foreignField": "_id",
                     "as": "proofs",
-                    "pipeline": [doc! { "$project": { "degree": 1, "preceding": 1, "phrase_hash": 1 } }]
+                    "pipeline": [doc! { "$project": { "degree": 1, "preceding": 1, "phrase": 1 } }]
                 }
             },
             doc! {
@@ -616,7 +655,7 @@ impl GrapevineDB {
                 "$project": {
                     "degree": "$proofs.degree",
                     "preceding": "$proofs.preceding",
-                    "phrase_hash": "$proofs.phrase_hash",
+                    "phrase": "$proofs.phrase",
                     "_id": 0
                 }
             },
@@ -634,7 +673,7 @@ impl GrapevineDB {
                 "$project": {
                     "degree": 1,
                     "preceding": 1,
-                    "phrase_hash": 1,
+                    "phrase": 1,
                     "relation": { "$arrayElemAt": ["$relation.user", 0] },
                     "precedingRelation": { "$arrayElemAt": ["$relation.preceding", 0] },
                     "_id": 0
@@ -652,7 +691,7 @@ impl GrapevineDB {
             doc! {
                 "$project": {
                     "degree": 1,
-                    "phrase_hash": 1,
+                    "phrase": 1,
                     "relation": { "$arrayElemAt": ["$relation.username", 0] },
                     "precedingRelation": 1,
                     "_id": 0
@@ -671,7 +710,7 @@ impl GrapevineDB {
             doc! {
                 "$project": {
                     "degree": 1,
-                    "phrase_hash": 1,
+                    "phrase": 1,
                     "relation": 1,
                     "precedingRelation": { "$arrayElemAt": ["$precedingRelation.user", 0] },
                 }
@@ -688,10 +727,34 @@ impl GrapevineDB {
             doc! {
                 "$project": {
                     "degree": 1,
-                    "phrase_hash": 1,
+                    "phrase": 1,
                     "relation": 1,
                     "precedingRelation": { "$arrayElemAt": ["$precedingRelation.username", 0] },
                     "_id": 0
+                }
+            },
+            doc! {
+                "$lookup": {
+                    "from": "phrases",
+                    "localField": "phrase",
+                    "foreignField": "_id",
+                    "as": "phrase",
+                    "pipeline": [doc! { "$project": { "index": 1, "hash": 1, "description": 1, "_id": 0 } }]
+                }
+            },
+            doc! {
+                "$unwind": "$phrase"
+            },
+            doc! {
+                "$set": {
+                    "phrase_index": "$phrase.index",
+                    "phrase_hash": "$phrase.hash",
+                    "phrase_description": "$phrase.description"
+                }
+            },
+            doc! {
+                "$project": {
+                    "phrase": 0
                 }
             },
             doc! { "$sort": { "degree": 1 }},
@@ -702,7 +765,6 @@ impl GrapevineDB {
         while let Some(result) = cursor.next().await {
             match result {
                 Ok(document) => {
-                    println!("Document: {:?}", document);
                     let degree = document.get_i32("degree").unwrap() as u8;
                     let relation = document
                         .get("relation")
@@ -725,8 +787,17 @@ impl GrapevineDB {
                         .collect::<Vec<u8>>()
                         .try_into()
                         .unwrap();
+                    let phrase_index = document.get_i64("phrase_index").unwrap() as u32;
+                    let phrase_description = document
+                        .get("phrase_description")
+                        .unwrap()
+                        .as_str()
+                        .unwrap()
+                        .to_string();
                     degrees.push(DegreeData {
+                        description: phrase_description,
                         degree,
+                        phrase_index,
                         relation: Some(relation),
                         preceding_relation,
                         phrase_hash,
@@ -741,20 +812,6 @@ impl GrapevineDB {
         }
         Some(degrees)
     }
-
-    // used by passing args hash to check if existing phrase hash exists and deletes it
-    // pub async fn delete_proof(&self, user: oid: ObjectId) -> Result<(), GrapevineServerError> {
-    //     // delete the proof document
-    //     let query = doc! { "_id": oid };
-    //     let res = self.degree_proofs.delete_one(query, None).await.unwrap();
-    //     match res.deleted_count {
-    //         1 => Ok(()),
-    //         _ => Err(GrapevineServerError::MongoError(String::from("todo"))),
-    //     }
-    //     // @todo: removing the proof will break downstream proof chains. This must be handled. Potentially we just delete downstream proofs and make them reprove?
-    //     // remove the reference to the proof in the user's list of proofs
-    //     let
-    // }
 
     /**
      * Get a proof from the server with all info needed to prove a degree of separation as a given user
@@ -772,7 +829,6 @@ impl GrapevineDB {
         let filter = doc! { "_id": proof };
         let projection = doc! { "user": 1, "degree": 1, "proof": 1 };
         let find_options = FindOneOptions::builder().projection(projection).build();
-        println!("getting proof {:?}", proof);
         let proof = self
             .degree_proofs
             .find_one(filter, Some(find_options))
@@ -784,7 +840,6 @@ impl GrapevineDB {
         let filter = doc! { "_id": proof_creator };
         let projection = doc! { "username": 1, "pubkey": 1 };
         let find_options = FindOneOptions::builder().projection(projection).build();
-        println!("proof creator: {:?}", proof_creator);
         let proof_creator_username = self
             .users
             .find_one(filter, Some(find_options))
@@ -793,7 +848,6 @@ impl GrapevineDB {
             .unwrap()
             .username
             .unwrap();
-        println!("got proof creator");
         // get the oid of message sender
         let filter = doc! { "username": username };
         let projection = doc! { "_id": 1, "pubkey": 1 };
@@ -806,7 +860,6 @@ impl GrapevineDB {
             .unwrap()
             .id
             .unwrap();
-        println!("got caller");
         // look up relationship with sender and recipient
         let filter = doc! { "sender": proof_creator, "recipient": caller };
         let projection = doc! { "ephemeral_key": 1, "ciphertext": 1 };
@@ -817,7 +870,6 @@ impl GrapevineDB {
             .await
             .unwrap()
             .unwrap();
-        println!("got relationship");
         // return the proof data
         Some(ProvingData {
             degree: proof.degree.unwrap(),
@@ -1011,22 +1063,15 @@ impl GrapevineDB {
     pub async fn get_phrase_connections(
         &self,
         username: String,
-        phrase_hash: [u8; 32],
+        phrase_index: u32,
     ) -> Option<(u64, Vec<u64>)> {
-        let phrase_hash_bson: Vec<i32> = phrase_hash.to_vec().iter().map(|x| *x as i32).collect();
-
         let mut cursor = self
             .users
             .aggregate(
                 vec![
-                    doc! {
-                        "$match": {
-                            "username": username
-                        }
-                    },
-                    doc! {
-                        "$unwind": "$relationships"
-                    },
+                    // Step 1: get relationships of the user
+                    doc! { "$match": { "username": username } },
+                    doc! { "$unwind": "$relationships" },
                     doc! {
                         "$lookup": {
                             "from": "relationships",
@@ -1038,6 +1083,7 @@ impl GrapevineDB {
                     doc! {
                         "$unwind": "$relationship_details"
                     },
+                    // step 2: ensure unique senders
                     doc! {
                         "$group": {
                             "_id": null,
@@ -1046,50 +1092,49 @@ impl GrapevineDB {
                             }
                         }
                     },
+                    doc! { "$project": { "_id": 0, "senders": 1 } },
+                    // step 3: look up the phrase document by index
                     doc! {
-                        "$project": {
-                            "_id": 0,
-                            "senders": 1
+                        "$lookup": {
+                            "from": "phrases",
+                            "let": { "index": phrase_index },
+                            "pipeline": [
+                                { "$match": { "$expr": { "$eq": ["$index", "$$index"] } } },
+                                { "$project": { "_id": 1 } }
+                            ],
+                            "as": "phrase_document"
                         }
                     },
+                    doc! { "$unwind": "$phrase_document" },
+                    // step 4: find all active degree proofs for the phrase made by relationships
                     doc! {
                         "$lookup": {
                             "from": "degree_proofs",
-                            "let": {"senders": "$senders"},
+                            "let": { "senders": "$senders", "phrase": "$phrase_document._id" },
                             "pipeline": [
-                                doc! {
+                                {
                                     "$match": {
                                         "$expr": {
-                                            "$in": ["$user", "$$senders"]
-                                        },
-                                        "phrase_hash": phrase_hash_bson
+                                            "$and": [
+                                                { "$in": ["$user", "$$senders"] },
+                                                { "$eq": ["$phrase", "$$phrase"] },
+                                                { "$ne": ["$inactive", true] }
+                                            ]
+                                        }
                                     }
                                 },
-                                doc! {
-                                    "$project": {
-                                        "_id": 0,
-                                        "degree": 1
-                                    }
-                                }
+                                { "$project": { "_id": 0, "degree": 1 } }
                             ],
                             "as": "degree_proofs"
                         }
                     },
-                    doc! {
-                        "$unwind": "$degree_proofs"
-                    },
+                    doc! { "$unwind": "$degree_proofs" },
                     doc! {
                         "$group": {
                             "_id": null,
-                            "max_degree": {
-                                "$max": "$degree_proofs.degree"
-                            },
-                            "count": {
-                                "$sum": 1
-                            },
-                            "degrees": {
-                                "$push": "$degree_proofs.degree"
-                            }
+                            "max_degree": { "$max": "$degree_proofs.degree" },
+                            "count": { "$sum": 1 },
+                            "degrees": { "$push": "$degree_proofs.degree" }
                         }
                     },
                 ],
@@ -1174,18 +1219,40 @@ impl GrapevineDB {
      *
      * @param phrase_hash - hash of the phrase linking the proof
      */
-    pub async fn check_phrase_exists(
+    pub async fn get_phrase_by_hash(
         &self,
-        phrase_hash: [u8; 32],
-    ) -> Result<bool, GrapevineServerError> {
+        phrase_hash: &[u8; 32],
+    ) -> Result<ObjectId, GrapevineServerError> {
         let phrase_hash_bson: Vec<i32> = phrase_hash.to_vec().iter().map(|x| *x as i32).collect();
 
-        let query = doc! {"phrase_hash": phrase_hash_bson};
+        let query = doc! {"hash": phrase_hash_bson};
         let projection = doc! { "_id": 1 };
         let find_options = FindOneOptions::builder().projection(projection).build();
 
-        match self.degree_proofs.find_one(query, find_options).await {
-            Ok(res) => Ok(res.is_some()),
+        match self.phrases.find_one(query, find_options).await {
+            Ok(res) => match res {
+                Some(document) => Ok(document.id.unwrap()),
+                None => Err(GrapevineServerError::PhraseNotFound),
+            },
+            Err(e) => Err(GrapevineServerError::MongoError(e.to_string())),
+        }
+    }
+
+    /**
+     * Return the oid of a phrase given its index
+     *
+     * @param index - index of the phrase
+     * @return - ObjectId of the phrase if it exists
+     */
+    pub async fn get_phrase_by_index(&self, index: u32) -> Result<ObjectId, GrapevineServerError> {
+        let options = FindOneOptions::builder()
+            .projection(doc! { "_id": 1 })
+            .build();
+        match self.phrases.find_one(doc! {"index": index}, options).await {
+            Ok(res) => match res {
+                Some(document) => Ok(document.id.unwrap()),
+                None => Err(GrapevineServerError::PhraseNotFound),
+            },
             Err(e) => Err(GrapevineServerError::MongoError(e.to_string())),
         }
     }
@@ -1207,5 +1274,82 @@ impl GrapevineDB {
             Ok(res) => Ok(res.is_some()),
             Err(e) => Err(GrapevineServerError::MongoError(e.to_string())),
         }
+    }
+
+    /**
+     * Checks to see whether the user has already created a degree proof for the phrase
+     *
+     * @param user - the username of the user to check for
+     * @param phrase_index - the index of the phrase to check for
+     * @degree - the degree of the proof to check for
+     * @return - true if a degree proof was found matching the user, index, and degree, and false otherwise
+     */
+    pub async fn check_degree_conflict(
+        &self,
+        user: &String,
+        phrase_index: u32,
+        degree: u8,
+    ) -> Result<bool, GrapevineServerError> {
+        let mut cursor = self
+            .users
+            .aggregate(
+                vec![
+                    // Step 1: retrieve the ID of the user using the username
+                    doc! { "$match": { "username": user } },
+                    // Step 2: retrieve the ID of the phrase using the phrase index
+                    doc! {
+                        "$lookup": {
+                            "from": "phrases",
+                            "let": {
+                                "index": phrase_index,
+                            },
+                            "pipeline": [
+                                { "$match": { "$expr": { "$eq": ["$index", "$$index"] } } },
+                                { "$project": { "_id": 1 } }
+                            ],
+                            "as": "phrases"
+                        }
+                    },
+                    doc! { "$unwind": "$phrases" },
+                    // Step 3: retrieve any degree proofs that match the user, phrase, and degree
+                    doc! {
+                        "$lookup": {
+                            "from": "degree_proofs",
+                            "let": {
+                                "phrase": "$phrases._id",
+                                "user": "$_id",
+                                "degree": degree as i64,
+                            },
+                            "pipeline": [
+                                {
+                                    "$match": {
+                                        "$expr": {
+                                            "$and": [
+                                                { "$eq": ["$phrase", "$$phrase"] },
+                                                { "$eq": ["$user", "$$user"] },
+                                                { "$eq": ["$degree", "$$degree"] }
+                                            ]
+                                        }
+                                    }
+                                },
+                                { "$project": { "_id": 1 } }
+                            ],
+                            "as": "degree_proofs"
+                        }
+                    },
+                    doc! { "$unwind": "$degree_proofs" },
+                    doc! { "$project": { "_id": "$phrases._id" } },
+                ],
+                None,
+            )
+            .await
+            .unwrap();
+
+        let cursor_res = cursor.next().await;
+        return match cursor_res {
+            Some(Ok(_)) => Ok(true),
+            Some(Err(e)) => Err(GrapevineServerError::MongoError(e.to_string())),
+            None => Ok(false),
+        };
     }
 }

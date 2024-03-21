@@ -66,14 +66,6 @@ pub struct ErrorMessage(pub Option<GrapevineServerError>, pub Option<u64>);
 
 impl<'r> Responder<'r, 'static> for ErrorMessage {
     fn respond_to(self, req: &'r Request<'_>) -> response::Result<'static> {
-        println!("Responding");
-        println!("===============================");
-        println!("===============================");
-        println!("===============================");
-        println!("===============================");
-        println!("===============================");
-        println!("===============================");
-
         let body = match self.0.is_some() {
             true => Json(self.0.unwrap()),
             false => Json(GrapevineServerError::InternalError),
@@ -82,7 +74,6 @@ impl<'r> Responder<'r, 'static> for ErrorMessage {
 
         // optionally add nonce to header
         if self.1.is_some() {
-            println!("Nonce: {}", self.1.clone().unwrap());
             res.raw_header("X-Nonce", self.1.unwrap().to_string())
                 .status(Status::Unauthorized);
         };

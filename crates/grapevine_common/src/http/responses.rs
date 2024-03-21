@@ -2,6 +2,8 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct DegreeData {
+    pub description: String,
+    pub phrase_index: u32,
     pub degree: u8,
     pub relation: Option<String>,
     pub preceding_relation: Option<String>,

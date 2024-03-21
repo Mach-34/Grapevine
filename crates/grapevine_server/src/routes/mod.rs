@@ -15,10 +15,11 @@ lazy_static! {
     ];
     pub(crate) static ref PROOF_ROUTES: Vec<Route> = routes![
         proof::create_phrase,
+        proof::knowledge_proof,
         proof::degree_proof,
         proof::get_available_proofs,
         proof::get_phrase_connections,
         proof::get_proof_with_params,
-        proof::get_created_phrases
+        proof::get_known_phrases
     ];
 }

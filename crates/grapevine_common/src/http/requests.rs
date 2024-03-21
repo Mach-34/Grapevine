@@ -7,12 +7,21 @@ pub struct CreateUserRequest {
     pub signature: [u8; 64],
 }
 
+// #[derive(Serialize, Deserialize, Debug, Clone)]
+// pub struct NewPhraseRequest {
+//     pub proof: Vec<u8>,
+//     #[serde(with = "serde_bytes")]
+//     pub phrase_ciphertext: [u8; 192],
+// }
+
+
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct NewPhraseRequest {
-    pub proof: Vec<u8>,
     #[serde(with = "serde_bytes")]
-    pub phrase_ciphertext: [u8; 192],
+    pub hash: [u8; 32],
+    pub description: String,
 }
+
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct GetNonceRequest {
     pub username: String,
@@ -36,58 +45,16 @@ pub struct NewRelationshipRequest {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct DegreeProofRequest {
+pub struct DegreeNProofRequest {
     pub proof: Vec<u8>,
     pub previous: String,
     pub degree: u8,
 }
 
-pub struct RequestDriver {
-    pub url: String,
-}
-
-impl RequestDriver {
-    pub fn new(url: String) -> RequestDriver {
-        RequestDriver { url }
-    }
-
-    // pub fn create_user(&self, request: CreateUserRequest) -> Result<(), reqwest::Error> {
-    //     let client = reqwest::blocking::Client::new();
-    //     client.post(&format!("{}/create_user", self.url))
-    //         .json(&request)
-    //         .send()
-    //         .map(|_| ())
-    // }
-
-    // pub fn new_phrase(&self, request: NewPhraseRequest) -> Result<(), reqwest::Error> {
-    //     let client = reqwest::blocking::Client::new();
-    //     client.post(&format!("{}/new_phrase", self.url))
-    //         .json(&request)
-    //         .send()
-    //         .map(|_| ())
-    // }
-
-    // pub fn test_proof_compression(&self, request: TestProofCompressionRequest) -> Result<(), reqwest::Error> {
-    //     let client = reqwest::blocking::Client::new();
-    //     client.post(&format!("{}/test_proof_compression", self.url))
-    //         .json(&request)
-    //         .send()
-    //         .map(|_| ())
-    // }
-
-    // pub fn new_relationship(&self, request: NewRelationshipRequest) -> Result<(), reqwest::Error> {
-    //     let client = reqwest::blocking::Client::new();
-    //     client.post(&format!("{}/new_relationship", self.url))
-    //         .json(&request)
-    //         .send()
-    //         .map(|_| ())
-    // }
-
-    // pub fn degree_proof(&self, request: DegreeProofRequest) -> Result<(), reqwest::Error> {
-    //     let client = reqwest::blocking::Client::new();
-    //     client.post(&format!("{}/degree_proof", self.url))
-    //         .json(&request)
-    //         .send()
-    //         .map(|_| ())
-    // }
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct Degree1ProofRequest {
+    pub proof: Vec<u8>, // compressed proof
+    #[serde(with = "serde_bytes")]
+    pub ciphertext: [u8; 192], // encrypted phrase that the user can retrieve
+    pub index: u32, // the index of the phrase to prove knowledge of
 }

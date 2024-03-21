@@ -6,8 +6,8 @@ use grapevine_circuits::{nova::verify_nova_proof, utils::decompress_proof};
 use grapevine_common::errors::GrapevineServerError;
 use grapevine_common::http::responses::DegreeData;
 use grapevine_common::{
-    http::requests::{DegreeProofRequest, NewPhraseRequest},
-    models::proof::{DegreeProof, ProvingData},
+    http::requests::{Degree1ProofRequest, DegreeNProofRequest, NewPhraseRequest},
+    models::{DegreeProof, Phrase, ProvingData},
 };
 use mongodb::bson::oid::ObjectId;
 use rocket::{
@@ -18,31 +18,31 @@ use std::str::FromStr;
 // /// POST REQUESTS ///
 
 /**
- * Create a new phrase and (a degree 1 proof) and add it to the database
+ * Create a degree 1 proof (knowledge of phrase) for a phrase. Create new proof doc if exists
  *
  * @param data - binary serialized NewPhraseRequest containing:
- *             * username: the username of the user creating the phrase
- *             * proof: the gzip-compressed fold proof
+ *             * hash: the hash of the phrase
+ *             * ciphertext: the encrypted phrase
+ *             * description: the description of the phrase
  *        
  * @return status:
  *             * 201 if success
- *             * 400 if proof verification failed, deserialization fails, or proof decompression
- *               fails
+ *             * 400 if deserialization fails
  *             * 401 if signature mismatch or nonce mismatch
  *             * 404 if user not found
+ *             * 409 if phrase already exists
  *             * 500 if db fails or other unknown issue
  */
-#[post("/create", data = "<data>")]
+#[post("/phrase", data = "<data>")]
 pub async fn create_phrase(
-    user: AuthenticatedUser,
+    _user: AuthenticatedUser,
     data: Data<'_>,
     db: &State<GrapevineDB>,
-) -> Result<Status, GrapevineResponse> {
+) -> Result<GrapevineResponse, GrapevineResponse> {
     // stream in data
     // todo: implement FromData trait on NewPhraseRequest
     let mut buffer = Vec::new();
     let mut stream = data.open(2.mebibytes()); // Adjust size limit as needed
-                                               // @TODO: Stream in excess of 2 megabytes not actually throwing error
     if let Err(e) = stream.read_to_end(&mut buffer).await {
         println!("Error reading request body: {:?}", e);
         return Err(GrapevineResponse::TooLarge(
@@ -64,32 +64,87 @@ pub async fn create_phrase(
             )));
         }
     };
-    // @TODO: No decompression error set up in case invalid
-    let decompressed_proof = decompress_proof(&request.proof);
-    // verify the proof
-    let verify_res = verify_nova_proof(&decompressed_proof, &*PUBLIC_PARAMS, 2);
-    let (phrase_hash, auth_hash) = match verify_res {
-        Ok(res) => {
-            let phrase_hash = res.0[1];
-            let auth_hash = res.0[2];
-            // todo: use request guard to check username against proven username
-            (phrase_hash.to_bytes(), auth_hash.to_bytes())
-        }
-        Err(e) => {
-            println!("Proof verification failed: {:?}", e);
-            return Err(GrapevineResponse::BadRequest(ErrorMessage(
-                Some(GrapevineServerError::DegreeProofVerificationFailed),
+
+    // check if phrase already exists in db
+    match db.get_phrase_by_hash(&request.hash).await {
+        Ok(_) => {
+            return Err(GrapevineResponse::Conflict(ErrorMessage(
+                Some(GrapevineServerError::PhraseExists),
                 None,
-            )));
+            )))
+        }
+        Err(e) => match e {
+            GrapevineServerError::PhraseNotFound => (),
+            _ => {
+                return Err(GrapevineResponse::InternalError(ErrorMessage(
+                    Some(e),
+                    None,
+                )))
+            }
+        },
+    };
+
+    // create the new phrase
+    match db.create_phrase(request.hash, request.description).await {
+        Ok(res) => Ok(GrapevineResponse::Created(res.to_string())),
+        Err(e) => {
+            println!("Error adding proof: {:?}", e);
+            Err(GrapevineResponse::InternalError(ErrorMessage(
+                Some(GrapevineServerError::MongoError(String::from(
+                    "Failed to add proof to db",
+                ))),
+                None,
+            )))
+        }
+    }
+}
+
+/**
+ * Prove knowledge of an existing phrase and create a 1st degree proof
+ */
+#[post("/knowledge", data = "<data>")]
+pub async fn knowledge_proof(
+    user: AuthenticatedUser,
+    data: Data<'_>,
+    db: &State<GrapevineDB>,
+) -> Result<Status, GrapevineResponse> {
+    // stream in data
+    let mut buffer = Vec::new();
+    let mut stream = data.open(2.mebibytes()); // Adjust size limit as needed
+    if let Err(_) = stream.read_to_end(&mut buffer).await {
+        return Err(GrapevineResponse::TooLarge(
+            "Request body execeeds 2 MiB".to_string(),
+        ));
+    }
+    let request = match bincode::deserialize::<Degree1ProofRequest>(&buffer) {
+        Ok(req) => req,
+        Err(_) => {
+            return Err(GrapevineResponse::BadRequest(ErrorMessage(
+                Some(GrapevineServerError::SerdeError(String::from(
+                    "DegreeProofRequest",
+                ))),
+                None,
+            )))
         }
     };
 
-    // check if phrase already exists in db
-    match db.check_phrase_exists(phrase_hash).await {
+    // check that the phrase exists for the given ID
+    let phrase_oid = match db.get_phrase_by_index(request.index).await {
+        Ok(phrase) => phrase,
+        Err(_) => {
+            return Err(GrapevineResponse::NotFound(format!(
+                "No phrase found with id {}",
+                request.index
+            )))
+        }
+    };
+
+    // check that there is no existing degree 1 proof for this user on this phrase
+    match db.check_degree_conflict(&user.0, request.index, 1).await {
         Ok(exists) => match exists {
             true => {
                 return Err(GrapevineResponse::Conflict(ErrorMessage(
-                    Some(GrapevineServerError::PhraseExists),
+                    Some(GrapevineServerError::DegreeProofExists),
                     None,
                 )))
             }
@@ -103,17 +158,35 @@ pub async fn create_phrase(
         }
     }
 
+    // verify the proof
+    let decompressed_proof = decompress_proof(&request.proof);
+    let verify_res = verify_nova_proof(
+        &decompressed_proof,
+        &*PUBLIC_PARAMS,
+        2, // always 2 on first degree proof
+    );
+    let auth_hash = match verify_res {
+        Ok(res) => res.0[2].to_bytes(),
+        Err(e) => {
+            println!("Proof verification failed: {:?}", e);
+            return Err(GrapevineResponse::BadRequest(ErrorMessage(
+                Some(GrapevineServerError::DegreeProofVerificationFailed),
+                None,
+            )));
+        }
+    };
+
     // get user doc
     let user = db.get_user(&user.0).await.unwrap();
     // build DegreeProof model
     let proof_doc = DegreeProof {
         id: None,
         inactive: Some(false),
-        phrase_hash: Some(phrase_hash),
+        phrase: Some(phrase_oid),
         auth_hash: Some(auth_hash),
         user: Some(user.id.unwrap()),
         degree: Some(1),
-        secret_phrase: Some(request.phrase_ciphertext),
+        ciphertext: Some(request.ciphertext),
         proof: Some(request.proof.clone()),
         preceding: None,
         proceeding: Some(vec![]),
@@ -149,7 +222,7 @@ pub async fn create_phrase(
  *             * 404 if user or previous proof not found not found
  *             * 500 if db fails or other unknown issue
  */
-#[post("/continue", data = "<data>")]
+#[post("/degree", data = "<data>")]
 pub async fn degree_proof(
     user: AuthenticatedUser,
     data: Data<'_>,
@@ -164,7 +237,7 @@ pub async fn degree_proof(
             "Request body execeeds 2 MiB".to_string(),
         ));
     }
-    let request = match bincode::deserialize::<DegreeProofRequest>(&buffer) {
+    let request = match bincode::deserialize::<DegreeNProofRequest>(&buffer) {
         Ok(req) => req,
         Err(_) => {
             return Err(GrapevineResponse::BadRequest(ErrorMessage(
@@ -175,19 +248,16 @@ pub async fn degree_proof(
             )))
         }
     };
-    let decompressed_proof = decompress_proof(&request.proof);
+
     // verify the proof
+    let decompressed_proof = decompress_proof(&request.proof);
     let verify_res = verify_nova_proof(
         &decompressed_proof,
         &*PUBLIC_PARAMS,
         (request.degree * 2) as usize,
     );
     let (phrase_hash, auth_hash) = match verify_res {
-        Ok(res) => {
-            let phrase_hash = res.0[1];
-            let auth_hash = res.0[2];
-            (phrase_hash.to_bytes(), auth_hash.to_bytes())
-        }
+        Ok(res) => (res.0[1].to_bytes(), res.0[2].to_bytes()),
         Err(e) => {
             println!("Proof verification failed: {:?}", e);
             return Err(GrapevineResponse::BadRequest(ErrorMessage(
@@ -196,6 +266,18 @@ pub async fn degree_proof(
             )));
         }
     };
+
+    // get the phrase oid from the hash
+    let phrase_oid = match db.get_phrase_by_hash(&phrase_hash).await {
+        Ok(phrase) => phrase,
+        Err(_) => {
+            return Err(GrapevineResponse::NotFound(format!(
+                "No phrase found with hash {:?}",
+                &phrase_hash
+            )))
+        }
+    };
+
     // get user doc
     let user = db.get_user(&user.0).await.unwrap();
     // @TODO: needs to delete a previous proof by same user on same phrase hash if exists, including removing from last proof's previous field
@@ -203,11 +285,11 @@ pub async fn degree_proof(
     let proof_doc = DegreeProof {
         id: None,
         inactive: Some(false),
-        phrase_hash: Some(phrase_hash),
+        phrase: Some(phrase_oid),
         auth_hash: Some(auth_hash),
         user: Some(user.id.unwrap()),
         degree: Some(request.degree),
-        secret_phrase: None,
+        ciphertext: None,
         proof: Some(request.proof.clone()),
         preceding: Some(ObjectId::from_str(&request.previous).unwrap()),
         proceeding: Some(vec![]),
@@ -288,7 +370,6 @@ pub async fn get_available_proofs(
  *         - 404 if username or proof not found
  *         - 500 if db fails or other unknown issue
  */
-
 #[get("/params/<oid>")]
 pub async fn get_proof_with_params(
     user: AuthenticatedUser,
@@ -328,12 +409,12 @@ pub async fn get_proof_chain(
 /**
  * Get all created phrases
  */
-#[get("/created")]
-pub async fn get_created_phrases(
+#[get("/known")]
+pub async fn get_known_phrases(
     user: AuthenticatedUser,
     db: &State<GrapevineDB>,
 ) -> Result<Json<Vec<DegreeData>>, GrapevineResponse> {
-    match db.get_created(user.0).await {
+    match db.get_known(user.0).await {
         Some(proofs) => Ok(Json(proofs)),
         None => Err(GrapevineResponse::InternalError(ErrorMessage(
             Some(GrapevineServerError::MongoError(String::from(
@@ -347,50 +428,33 @@ pub async fn get_created_phrases(
 /**
  * Get total number of connections and
  */
-#[get("/connections/<phrase_hash>")]
+#[get("/connections/<phrase_index>")]
 pub async fn get_phrase_connections(
     user: AuthenticatedUser,
-    phrase_hash: String,
+    phrase_index: u32,
     db: &State<GrapevineDB>,
 ) -> Result<Json<(u64, Vec<u64>)>, GrapevineResponse> {
-    let bytes = match hex::decode(phrase_hash) {
-        Ok(arr) => arr,
-        Err(err) => {
-            return Err(GrapevineResponse::BadRequest(ErrorMessage(
-                Some(GrapevineServerError::InvalidPhraseHash),
-                None,
-            )))
-        }
-    };
-    let byte_arr: [u8; 32] = match bytes.try_into() {
-        Ok(arr) => arr,
-        Err(err) => {
-            return Err(GrapevineResponse::BadRequest(ErrorMessage(
-                Some(GrapevineServerError::InvalidPhraseHash),
-                None,
-            )));
-        }
-    };
-
     // check if phrase exists in db
-    match db.check_phrase_exists(byte_arr).await {
-        Ok(exists) => match exists {
-            true => (),
-            false => {
-                return Err(GrapevineResponse::NotFound(
-                    "No phrase matches the provided hash".to_string(),
-                ))
+    match db.get_phrase_by_index(phrase_index).await {
+        Ok(_) => (),
+        Err(e) => match e {
+            GrapevineServerError::PhraseNotFound => {
+                return Err(GrapevineResponse::NotFound(format!(
+                    "No phrase found with id {}",
+                    phrase_index
+                )));
+            }
+            _ => {
+                return Err(GrapevineResponse::InternalError(ErrorMessage(
+                    Some(e),
+                    None,
+                )))
             }
         },
-        Err(e) => {
-            return Err(GrapevineResponse::InternalError(ErrorMessage(
-                Some(e),
-                None,
-            )));
-        }
     }
 
-    match db.get_phrase_connections(user.0, byte_arr).await {
+    // retrieve all connections for the given phrase
+    match db.get_phrase_connections(user.0, phrase_index).await {
         Some(connection_data) => Ok(Json(connection_data)),
         None => Err(GrapevineResponse::InternalError(ErrorMessage(
             Some(GrapevineServerError::MongoError(String::from(

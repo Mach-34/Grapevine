@@ -12,6 +12,7 @@ pub enum GrapevineServerError {
     RelationshipExists(String, String),
     RelationshipSenderIsTarget,
     PhraseExists,
+    PhraseNotFound,
     InvalidPhraseHash,
     NonceMismatch(u64, u64),
     MongoError(String),
@@ -60,6 +61,7 @@ impl std::fmt::Display for GrapevineServerError {
             GrapevineServerError::PhraseExists => {
                 write!(f, "This phrase has already added used by another account")
             }
+            GrapevineServerError::PhraseNotFound => write!(f, "Phrase not found"),
             GrapevineServerError::MongoError(msg) => write!(f, "Mongo error: {}", msg),
             GrapevineServerError::HeaderError(msg) => write!(f, "Bad http header error: `{}`", msg),
             GrapevineServerError::InvalidPhraseHash => write!(f, "Invalid phrase hash provided"),
