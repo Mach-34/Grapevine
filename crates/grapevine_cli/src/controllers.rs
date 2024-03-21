@@ -34,6 +34,8 @@ pub async fn account_details() -> Result<String, GrapevineCLIError> {
         Ok(account) => account,
         Err(e) => return Err(e),
     };
+    // sync nonce
+    synchronize_nonce().await?;
     let auth_secret = hex::encode(account.auth_secret().to_bytes());
     let pk = hex::encode(account.private_key_raw());
     let pubkey = hex::encode(account.pubkey().compress());
@@ -98,6 +100,8 @@ pub async fn register(username: Option<String>) -> Result<String, GrapevineCLIEr
 pub async fn add_relationship(username: String) -> Result<String, GrapevineCLIError> {
     // get own account
     let mut account = get_account()?;
+    // sync nonce
+    synchronize_nonce().await?;
     // get pubkey for recipient
     let pubkey = match get_pubkey_req(username.clone()).await {
         Ok(pubkey) => pubkey,
@@ -165,7 +169,8 @@ pub async fn create_new_phrase(
 
     // get account
     let mut account = get_account()?;
-
+    // sync nonce
+    synchronize_nonce().await?;
     // compute the hash of the phrase
     // DEV: HASH IS BROKEN, RELYING ON CIRCUIT EXECUTION FOR NOW
     // let hash = phrase_hash(&phrase);
@@ -206,6 +211,8 @@ pub async fn prove_phrase_knowledge(
     artifacts_guard().await.unwrap();
     // get account
     let mut account = get_account()?;
+    // sync nonce
+    synchronize_nonce().await?;
     // get proving artifacts
     let params = use_public_params().unwrap();
     let r1cs = use_r1cs().unwrap();
@@ -249,6 +256,8 @@ pub async fn prove_all_available() -> Result<String, GrapevineCLIError> {
     /// GETTING
     // get account
     let mut account = get_account()?;
+    // sync nonce
+    synchronize_nonce().await?;
     // get available proofs
     let res = get_available_proofs_req(&mut account).await;
     // handle result
@@ -346,6 +355,8 @@ pub async fn prove_all_available() -> Result<String, GrapevineCLIError> {
 pub async fn get_my_proofs() -> Result<String, GrapevineCLIError> {
     // get account
     let mut account = get_account()?;
+    // sync nonce
+    synchronize_nonce().await?;
     // send request
     let res = get_degrees_req(&mut account).await;
     let data = match res {
@@ -381,6 +392,8 @@ pub async fn get_my_proofs() -> Result<String, GrapevineCLIError> {
 pub async fn get_known_phrases() -> Result<String, GrapevineCLIError> {
     // get account
     let mut account = get_account()?;
+    // sync nonce
+    synchronize_nonce().await?;
     // send request
     let res = get_known_req(&mut account).await;
     let data = match res {
@@ -400,6 +413,8 @@ pub async fn get_known_phrases() -> Result<String, GrapevineCLIError> {
 pub async fn show_connections(phrase_index: u32) -> Result<String, GrapevineCLIError> {
     // get account
     let mut account = get_account()?;
+    // sync nonce
+    synchronize_nonce().await?;
     // send request
     let res = show_connections_req(&mut account, phrase_index).await;
     let connection_data = match res {
