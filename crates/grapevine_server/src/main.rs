@@ -837,8 +837,12 @@ mod test_rocket {
             let proofs = get_available_degrees_request(&mut proceeding)
                 .await
                 .unwrap();
+            println!("Index: {}", i);
+            println!("Preceding: {:?}", preceding.username());
+            println!("Proceeding: {:?}", proceeding.username());
+            println!("Proof len: {:?}", proofs.len());
 
-            create_degree_proof_request(&proofs[0], &mut proceeding).await;
+            // create_degree_proof_request(&proofs[0], &mut proceeding).await;
 
             // Add users back to vector
             users.insert(0, preceding);

@@ -453,7 +453,7 @@ impl GrapevineDB {
                     "localField": "degree_proofs",
                     "foreignField": "_id",
                     "as": "userDegreeProofs",
-                    "pipeline": [doc! { "$project": { "degree": 1, "phrase_hash": 1 } }]
+                    "pipeline": [doc! { "$project": { "degree": 1, "phrase": 1 } }]
                 }
             },
             // look up the relationships made by this user
@@ -476,7 +476,7 @@ impl GrapevineDB {
                     "as": "relationshipDegreeProofs",
                     "pipeline": [
                         doc! { "$match": { "inactive": { "$ne": true } } },
-                        doc! { "$project": { "degree": 1, "phrase_hash": 1 } }
+                        doc! { "$project": { "degree": 1, "phrase": 1 } }
                     ]
                 }
             },
@@ -486,7 +486,7 @@ impl GrapevineDB {
             // find the lowest degree proof in each chain from relationship proofs and reference user proofs in this chain if exists
             doc! {
                 "$group": {
-                    "_id": "$relationshipDegreeProofs.phrase_hash",
+                    "_id": "$relationshipDegreeProofs.phrase",
                     "originalId": { "$first": "$relationshipDegreeProofs._id" },
                     "degree": { "$min": "$relationshipDegreeProofs.degree" },
                     "userProof": {
@@ -495,7 +495,7 @@ impl GrapevineDB {
                                 "$filter": {
                                     "input": "$userDegreeProofs",
                                     "as": "userProof",
-                                    "cond": { "$eq": ["$$userProof.phrase_hash", "$relationshipDegreeProofs.phrase_hash"] }
+                                    "cond": { "$eq": ["$$userProof.phrase", "$relationshipDegreeProofs.phrase"] }
                                 }
                             }, 0]
                         }
