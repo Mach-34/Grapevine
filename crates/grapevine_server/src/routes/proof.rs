@@ -43,7 +43,6 @@ pub async fn create_phrase(
     // todo: implement FromData trait on NewPhraseRequest
     let mut buffer = Vec::new();
     let mut stream = data.open(2.mebibytes()); // Adjust size limit as needed
-                                               // @TODO: Stream in excess of 2 megabytes not actually throwing error
     if let Err(e) = stream.read_to_end(&mut buffer).await {
         println!("Error reading request body: {:?}", e);
         return Err(GrapevineResponse::TooLarge(
@@ -68,7 +67,12 @@ pub async fn create_phrase(
 
     // check if phrase already exists in db
     match db.get_phrase_by_hash(&request.hash).await {
-        Ok(_) =>  return Err(GrapevineResponse::Conflict(ErrorMessage(Some(GrapevineServerError::PhraseExists), None))),
+        Ok(_) => {
+            return Err(GrapevineResponse::Conflict(ErrorMessage(
+                Some(GrapevineServerError::PhraseExists),
+                None,
+            )))
+        }
         Err(e) => match e {
             GrapevineServerError::PhraseNotFound => (),
             _ => {
@@ -79,8 +83,6 @@ pub async fn create_phrase(
             }
         },
     };
-
-    println!("CREATE HASH: 0x{}", hex::encode(&request.hash));
 
     // create the new phrase
     match db.create_phrase(request.hash, request.description).await {
@@ -145,10 +147,7 @@ pub async fn knowledge_proof(
         2, // always 2 on first degree proof
     );
     let auth_hash = match verify_res {
-        Ok(res) => {
-            println!("KNOWN HASH: 0x{}", hex::encode(res.0[1].to_bytes()));
-            res.0[2].to_bytes()
-        },
+        Ok(res) => res.0[2].to_bytes(),
         Err(e) => {
             println!("Proof verification failed: {:?}", e);
             return Err(GrapevineResponse::BadRequest(ErrorMessage(
@@ -248,7 +247,6 @@ pub async fn degree_proof(
             )));
         }
     };
-    println!("PHRASE HASH: 0x{}", hex::encode(phrase_hash));
 
     // get the phrase oid from the hash
     let phrase_oid = match db.get_phrase_by_hash(&phrase_hash).await {
@@ -353,7 +351,6 @@ pub async fn get_available_proofs(
  *         - 404 if username or proof not found
  *         - 500 if db fails or other unknown issue
  */
-
 #[get("/params/<oid>")]
 pub async fn get_proof_with_params(
     user: AuthenticatedUser,
@@ -412,39 +409,20 @@ pub async fn get_created_phrases(
 /**
  * Get total number of connections and
  */
-#[get("/connections/<phrase_hash>")]
+#[get("/connections/<phrase_index>")]
 pub async fn get_phrase_connections(
     user: AuthenticatedUser,
-    phrase_hash: String,
+    phrase_index: u32,
     db: &State<GrapevineDB>,
 ) -> Result<Json<(u64, Vec<u64>)>, GrapevineResponse> {
-    let bytes = match hex::decode(phrase_hash) {
-        Ok(arr) => arr,
-        Err(err) => {
-            return Err(GrapevineResponse::BadRequest(ErrorMessage(
-                Some(GrapevineServerError::InvalidPhraseHash),
-                None,
-            )))
-        }
-    };
-    let bytes: [u8; 32] = match bytes.try_into() {
-        Ok(arr) => arr,
-        Err(err) => {
-            return Err(GrapevineResponse::BadRequest(ErrorMessage(
-                Some(GrapevineServerError::InvalidPhraseHash),
-                None,
-            )));
-        }
-    };
-
     // check if phrase exists in db
-    match db.get_phrase_by_hash(&bytes).await {
-        Ok(exists) => (),
+    match db.get_phrase_by_index(phrase_index).await {
+        Ok(_) => (),
         Err(e) => match e {
             GrapevineServerError::PhraseNotFound => {
                 return Err(GrapevineResponse::NotFound(format!(
-                    "No phrase found with hash {:?}",
-                    &bytes
+                    "No phrase found with id {}",
+                    phrase_index
                 )));
             }
             _ => {
@@ -456,7 +434,8 @@ pub async fn get_phrase_connections(
         },
     }
 
-    match db.get_phrase_connections(user.0, bytes).await {
+    // retrieve all connections for the given phrase
+    match db.get_phrase_connections(user.0, phrase_index).await {
         Some(connection_data) => Ok(Json(connection_data)),
         None => Err(GrapevineResponse::InternalError(ErrorMessage(
             Some(GrapevineServerError::MongoError(String::from(
