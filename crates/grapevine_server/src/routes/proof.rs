@@ -367,26 +367,6 @@ pub async fn get_proof_with_params(
 }
 
 /**
- * Return a list of all proofs linked to a given phrase hash
- *
- *
- * @param phrase hash - the hash of the phrase creating the proof chain
- * @return - a vector of stringified OIDs of proofs within the given chain
- * @return status:
- *         - 200 if successful retrieval
- *         - 401 if signature mismatch or nonce mismatch
- *         - 404 if user not found
- *         - 500 if db fails or other unknown issue
- */
-#[get("/chain/<phrase_hash>")]
-pub async fn get_proof_chain(
-    phrase_hash: String,
-    db: &State<GrapevineDB>,
-) -> Result<Json<Vec<DegreeProof>>, Status> {
-    Ok(Json(db.get_proof_chain(&phrase_hash).await))
-}
-
-/**
  * Get all created phrases
  */
 #[get("/known")]
