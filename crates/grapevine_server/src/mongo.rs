@@ -454,7 +454,7 @@ impl GrapevineDB {
                     "localField": "degree_proofs",
                     "foreignField": "_id",
                     "as": "userDegreeProofs",
-                    "pipeline": [doc! { "$project": { "degree": 1, "phrase_hash": 1 } }]
+                    "pipeline": [doc! { "$project": { "degree": 1, "phrase": 1 } }]
                 }
             },
             // look up the relationships made by this user
@@ -477,7 +477,7 @@ impl GrapevineDB {
                     "as": "relationshipDegreeProofs",
                     "pipeline": [
                         doc! { "$match": { "inactive": { "$ne": true } } },
-                        doc! { "$project": { "degree": 1, "phrase_hash": 1 } }
+                        doc! { "$project": { "degree": 1, "phrase": 1 } }
                     ]
                 }
             },
@@ -487,7 +487,7 @@ impl GrapevineDB {
             // find the lowest degree proof in each chain from relationship proofs and reference user proofs in this chain if exists
             doc! {
                 "$group": {
-                    "_id": "$relationshipDegreeProofs.phrase_hash",
+                    "_id": "$relationshipDegreeProofs.phrase",
                     "originalId": { "$first": "$relationshipDegreeProofs._id" },
                     "degree": { "$min": "$relationshipDegreeProofs.degree" },
                     "userProof": {
@@ -496,7 +496,7 @@ impl GrapevineDB {
                                 "$filter": {
                                     "input": "$userDegreeProofs",
                                     "as": "userProof",
-                                    "cond": { "$eq": ["$$userProof.phrase_hash", "$relationshipDegreeProofs.phrase_hash"] }
+                                    "cond": { "$eq": ["$$userProof.phrase", "$relationshipDegreeProofs.phrase"] }
                                 }
                             }, 0]
                         }
@@ -1171,29 +1171,6 @@ impl GrapevineDB {
                 return None;
             }
         }
-    }
-
-    /**
-     * Get chain of degree proofs linked to a phrase
-     *
-     * @param phrase_hash - hash of the phrase linking the proof chain together
-     */
-    pub async fn get_proof_chain(&self, phrase_hash: &str) -> Vec<DegreeProof> {
-        let mut proofs: Vec<DegreeProof> = vec![];
-        let query = doc! { "phrase_hash": phrase_hash };
-        let projection = doc! { "_id": 1, "degree": 1 };
-        let find_options = FindOptions::builder().projection(projection).build();
-        let mut cursor = self.degree_proofs.find(query, find_options).await.unwrap();
-
-        while let Some(result) = cursor.next().await {
-            match result {
-                Ok(proof) => {
-                    proofs.push(proof);
-                }
-                Err(e) => println!("Error: {:?}", e),
-            }
-        }
-        proofs
     }
 
     /**
