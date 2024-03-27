@@ -216,9 +216,7 @@ impl GrapevineDB {
         description: String,
     ) -> Result<(ObjectId, u32), GrapevineServerError> {
         // query for the highest phrase id
-        let find_options = FindOneOptions::builder()
-            .sort(doc! {"index": -1})
-            .build();
+        let find_options = FindOneOptions::builder().sort(doc! {"index": -1}).build();
 
         // Use find_one with options to get the document with the largest phrase_id
         let index = match self.phrases.find_one(None, find_options).await {
@@ -607,7 +605,7 @@ impl GrapevineDB {
                         .to_string();
                     degrees.push(DegreeData {
                         description,
-                        degree: 1,
+                        degree: Some(1),
                         phrase_index,
                         relation: None,
                         preceding_relation: None,
@@ -797,7 +795,7 @@ impl GrapevineDB {
                         .to_string();
                     degrees.push(DegreeData {
                         description: phrase_description,
-                        degree,
+                        degree: Some(degree),
                         phrase_index,
                         relation: Some(relation),
                         preceding_relation,
@@ -1341,6 +1339,208 @@ impl GrapevineDB {
                 None => Err(GrapevineServerError::PhraseNotFound),
             },
             Err(e) => Err(GrapevineServerError::MongoError(e.to_string())),
+        }
+    }
+
+    /**
+     * Returns all info about a phrase known to a given user
+     * @notice: connections done separately
+     *
+     * @param username - the username of the user
+     * @param index - the index of the phrase
+     *
+     * @returns
+     */
+    pub async fn get_phrase_info(
+        &self,
+        username: &String,
+        index: u32,
+    ) -> Result<DegreeData, GrapevineServerError> {
+        // find the degree data for a given proof
+        let pipeline = vec![
+            // look up the user by username
+            doc! { "$match": { "username": username } },
+            doc! { "$project": { "_id": 1 } },
+            // look up the phrase by index
+            doc! {
+                "$lookup": {
+                    "from": "phrases",
+                    "let": { "index": index as i64 },
+                    "as": "phrase",
+                    "pipeline": [
+                        doc! { "$match": { "$expr": { "$eq": ["$index", "$$index"] } } },
+                    ]
+                }
+            },
+            doc! { "$unwind": "$phrase" },
+            // search for an active degree proof matching the phrase and user
+            doc! {
+                "$lookup": {
+                    "from": "degree_proofs",
+                    "let": { "user": "$_id", "phrase": "$phrase._id" },
+                    "as": "proof",
+                    "pipeline": [
+                        doc! {
+                            "$match": {
+                                "$expr": {
+                                    "$and": [
+                                        { "$eq": ["$user", "$$user"] },
+                                        { "$eq": ["$phrase", "$$phrase"] },
+                                        { "$eq": ["$inactive", false] }
+                                    ]
+                                }
+                            }
+                        },
+                        doc! { "$project": { "degree": 1, "preceding": 1, "phrase": 1, "ciphertext": 1 } }
+                    ]
+                }
+            },
+            doc! {
+                "$unwind": {
+                    "path": "$proof",
+                    "preserveNullAndEmptyArrays": true
+                }
+            },
+            // search for a degree proof preceding the user's proof (degree 1 from user)
+            doc! {
+                "$lookup": {
+                    "from": "degree_proofs",
+                    "localField": "proof.preceding",
+                    "foreignField": "_id",
+                    "as": "degree_1",
+                    "pipeline": [doc! { "$project": { "preceding": 1, "user": 1, "_id": 0 } }]
+                }
+            },
+            doc! {
+                "$unwind": {
+                    "path": "$degree_1",
+                    "preserveNullAndEmptyArrays": true
+                }
+            },
+            // search for a degree proof preceding the proof that is 1 degree from the user's proof (degree 2 from user)
+            doc! {
+                "$lookup": {
+                    "from": "degree_proofs",
+                    "localField": "degree_1.preceding",
+                    "foreignField": "_id",
+                    "as": "degree_2",
+                    "pipeline": [doc! { "$project": { "user": 1, "_id": 0 } }]
+                }
+            },
+            doc! {
+                "$unwind": {
+                    "path": "$degree_2",
+                    "preserveNullAndEmptyArrays": true
+                }
+            },
+            // convert the 1st and 2nd degree relations into usernames
+            doc! {
+                "$lookup": {
+                    "from": "users",
+                    "localField": "degree_1.user",
+                    "foreignField": "_id",
+                    "as": "degree_1",
+                    "pipeline": [doc! { "$project": { "username": 1, "_id": 0 } }]
+                }
+            },
+            doc! {
+                "$unwind": {
+                    "path": "$degree_1",
+                    "preserveNullAndEmptyArrays": true
+                }
+            },
+            doc! {
+                "$lookup": {
+                    "from": "users",
+                    "localField": "degree_2.user",
+                    "foreignField": "_id",
+                    "as": "degree_2",
+                    "pipeline": [doc! { "$project": { "username": 1, "_id": 0 } }]
+                }
+            },
+            doc! {
+                "$unwind": {
+                    "path": "$degree_2",
+                    "preserveNullAndEmptyArrays": true
+                }
+            },
+            // project the final results
+            doc! {
+                "$project": {
+                    "hash": "$phrase.hash",
+                    "description": "$phrase.description",
+                    "degree": "$proof.degree",
+                    "ciphertext": "$proof.ciphertext",
+                    "degree_1": "$degree_1.username",
+                    "degree_2": "$degree_2.username",
+                    "_id": 0
+                }
+            },
+        ];
+        let mut cursor = self.users.aggregate(pipeline, None).await.unwrap();
+        if let Some(result) = cursor.next().await {
+            match result {
+                Ok(document) => {
+                    println!("Document: {:#?}", document);
+                    // get the degree of separation found for this user on this phrase
+                    let degree = match document.get_i32("degree") {
+                        Ok(val) => Some(val as u8),
+                        Err(_) => None
+                    };
+                    println!("Degree: {:?}", degree);
+                    // get any 1st and 2nd degree relations found for this user on this phrase
+                    let relation = match document.get("degree_1") {
+                        Some(degree_1) => Some(degree_1.as_str().unwrap().to_string()),
+                        None => None,
+                    };
+                    println!("Relation: {:?}", relation);
+                    let preceding_relation = match document.get("degree_2") {
+                        Some(degree_2) => Some(degree_2.as_str().unwrap().to_string()),
+                        None => None,
+                    };
+                    println!("Preceding relation: {:?}", preceding_relation);
+                    // get the hash of the phrase
+                    let phrase_hash: [u8; 32] = document
+                        .get("hash")
+                        .unwrap()
+                        .as_array()
+                        .unwrap()
+                        .iter()
+                        .map(|x| x.as_i32().unwrap() as u8)
+                        .collect::<Vec<u8>>()
+                        .try_into()
+                        .unwrap();
+                    println!("Phrase hash: {:?}", phrase_hash);
+                    // get the description of the phrase
+                    let phrase_description = document
+                        .get("description")
+                        .unwrap()
+                        .as_str()
+                        .unwrap()
+                        .to_string();
+                    println!("Phrase description: {:?}", phrase_description);
+                    // get the ciphertext of the proof
+                    let mut secret_phrase: Option<[u8; 192]> = None;
+                    if let Some(Bson::Binary(binary)) = document.get("ciphertext") {
+                        secret_phrase = Some(binary.bytes.clone().try_into().unwrap());
+                    }
+                    println!("Secret phrase: {:?}", secret_phrase);
+                    return Ok(DegreeData {
+                        description: phrase_description,
+                        degree,
+                        phrase_index: index,
+                        relation,
+                        preceding_relation,
+                        phrase_hash,
+                        secret_phrase
+                    });
+                }
+                Err(_) => {
+                    return Err(GrapevineServerError::MongoError("Failed phrase data retrieval".to_string()));
+                }
+            }
+        } else {
+            return Err(GrapevineServerError::MongoError("Failed phrase data retrieval".to_string()))
         }
     }
 }

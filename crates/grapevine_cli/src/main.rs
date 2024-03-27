@@ -55,10 +55,10 @@ enum Commands {
     /// usage: `grapevine get-known-phrases`
     #[command(verbatim_doc_comment)]
     GetKnownPhrases,
-    /// Get connection count and degree data for a phrase
-    /// usage: `grapevine show-connections`
+    /// Get all information you know about a given phrase
+    /// usage: `grapevine get-phrase <phrase_index>`
     #[command(verbatim_doc_comment)]
-    ShowConnections(ShowConnectionsArgs),
+    GetPhrase(GetPhraseArgs),
 }
 
 #[derive(Args)]
@@ -78,7 +78,7 @@ struct ProvePhraseArgs {
 }
 
 #[derive(Args)]
-struct ShowConnectionsArgs {
+struct GetPhraseArgs {
     phrase_index: Option<u32>,
 }
 
@@ -111,8 +111,8 @@ pub async fn main() {
         Commands::ProveNewDegrees => controllers::prove_all_available().await,
         Commands::GetDegrees => controllers::get_my_proofs().await,
         Commands::GetKnownPhrases => controllers::get_known_phrases().await,
-        Commands::ShowConnections(cmd) => {
-            controllers::show_connections(cmd.phrase_index.clone().unwrap()).await
+        Commands::GetPhrase(cmd) => {
+            controllers::get_phrase(cmd.phrase_index.clone().unwrap()).await
         }
     };
 

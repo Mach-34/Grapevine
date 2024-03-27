@@ -424,3 +424,42 @@ pub async fn get_phrase_connections(
         ))),
     }
 }
+
+/**
+ * Get all info about a phrase
+ */
+#[get("/phrase/<phrase_index>")]
+pub async fn get_phrase(
+    user: AuthenticatedUser,
+    phrase_index: u32,
+    db: &State<GrapevineDB>,
+) -> Result<Json<DegreeData>, GrapevineResponse> {
+    // check if phrase exists in db
+    println!("1");
+    match db.get_phrase_by_index(phrase_index).await {
+        Ok(_) => (),
+        Err(e) => match e {
+            GrapevineServerError::PhraseNotFound => {
+                return Err(GrapevineResponse::NotFound(format!(
+                    "No phrase found with id {}",
+                    phrase_index
+                )));
+            }
+            _ => {
+                return Err(GrapevineResponse::InternalError(ErrorMessage(
+                    Some(e),
+                    None,
+                )))
+            }
+        },
+    }
+    println!("2");
+    // get degree data for this phrase
+    match db.get_phrase_info(&user.0, phrase_index).await {
+        Ok(phrase_data) => Ok(Json(phrase_data)),
+        Err(e) => Err(GrapevineResponse::InternalError(ErrorMessage(
+            Some(e),
+            None,
+        ))),
+    }
+}

@@ -19,6 +19,7 @@ lazy_static! {
         proof::get_available_proofs,
         proof::get_phrase_connections,
         proof::get_proof_with_params,
-        proof::get_known_phrases
+        proof::get_known_phrases,
+        proof::get_phrase
     ];
 }
