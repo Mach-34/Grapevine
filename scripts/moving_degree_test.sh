@@ -51,10 +51,7 @@ grapevine register-account alice
 grapevine add-relationship bob
 printf "\n"
 ## create degree 1 proof (phrase proof)
-output=$(grapevine create-phrase "It was cryptography all along" "The very first phrase of the word!")
-echo "$output"
-phrase_id=$(echo "$output" | grep -oP 'Created new phrase #\K[^!]+')
-grapevine prove-phrase $phrase_id "It was cryptography all along"
+grapevine prove-phrase "It was cryptography all along" "The very first phrase of the word!"
 printf "\n"
 mv grapevine.key alice.key
 

@@ -31,10 +31,6 @@ enum Commands {
     /// usage: `grapevine get-account`
     #[command(verbatim_doc_comment)]
     GetAccount,
-    /// Synchronize the local account nonce with expected nonce
-    /// usage: `grapevine sync-nonce`
-    #[command(verbatim_doc_comment)]
-    SyncNonce,
     /// Create a new Grapevine Account
     /// usage: `grapevine register-account <username>`
     #[command(verbatim_doc_comment)]
@@ -43,10 +39,6 @@ enum Commands {
     /// usage: `grapevine add-relationship <username>`
     #[command(verbatim_doc_comment)]
     AddRelationship(AddRelationshipArgs),
-    /// Create a new phrase
-    /// usage: `grapevine create-phrase "<phrase>" "<description>"`
-    #[command(verbatim_doc_comment)]
-    CreatePhrase(CreatePhraseArgs),
     /// Prove knowledege of a phrase
     /// usage: `grapevine prove-phrase "<phrase>" <index>`
     #[command(verbatim_doc_comment)]
@@ -67,10 +59,6 @@ enum Commands {
     /// usage: `grapevine show-connections`
     #[command(verbatim_doc_comment)]
     ShowConnections(ShowConnectionsArgs),
-    // /// Manually prove a degree of separation
-    // ProveSeparation(ProveSeparationArgs),
-    // // View the OID's of proofs the user can build from
-    // AvailableProofs,
 }
 
 #[derive(Args)]
@@ -84,15 +72,9 @@ struct AddRelationshipArgs {
 }
 
 #[derive(Args)]
-struct CreatePhraseArgs {
+struct ProvePhraseArgs {
     phrase: Option<String>,
     description: Option<String>,
-}
-
-#[derive(Args)]
-struct ProvePhraseArgs {
-    index: Option<u32>,
-    phrase: Option<String>,
 }
 
 #[derive(Args)]
@@ -115,20 +97,16 @@ pub async fn main() {
     let result = match &cli.command {
         Commands::Health => controllers::health().await,
         Commands::GetAccount => controllers::account_details().await,
-        Commands::SyncNonce => controllers::synchronize_nonce().await,
         Commands::RegisterAccount(cmd) => controllers::register(cmd.username.clone()).await,
         Commands::AddRelationship(cmd) => {
             controllers::add_relationship(cmd.username.clone().unwrap()).await
         }
-        Commands::CreatePhrase(cmd) => {
-            controllers::create_new_phrase(
+        Commands::ProvePhrase(cmd) => {
+            controllers::prove_phrase(
                 cmd.phrase.clone().unwrap(),
                 cmd.description.clone().unwrap(),
             )
             .await
-        }
-        Commands::ProvePhrase(cmd) => {
-            controllers::prove_phrase_knowledge(cmd.phrase.clone().unwrap(), cmd.index.clone().unwrap()).await
         }
         Commands::ProveNewDegrees => controllers::prove_all_available().await,
         Commands::GetDegrees => controllers::get_my_proofs().await,
