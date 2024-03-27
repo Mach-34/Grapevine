@@ -2,10 +2,10 @@ use crate::errors::GrapevineCLIError;
 use crate::utils::fs::ACCOUNT_PATH;
 use babyjubjub_rs::{decompress_point, Point};
 use grapevine_common::http::requests::{
-    CreateUserRequest, Degree1ProofRequest, DegreeNProofRequest, GetNonceRequest, NewPhraseRequest,
+    CreateUserRequest, DegreeProofRequest, GetNonceRequest, PhraseRequest,
     NewRelationshipRequest,
 };
-use grapevine_common::http::responses::DegreeData;
+use grapevine_common::http::responses::{DegreeData, PhraseCreationResponse};
 use grapevine_common::models::ProvingData;
 use grapevine_common::{account::GrapevineAccount, errors::GrapevineServerError};
 use lazy_static::lazy_static;
@@ -162,10 +162,10 @@ pub async fn add_relationship_req(
  * @param account - the account of the user creating the new phrase
  * @param body - the NewPhraseRequest containing proof to provide as the body of the http request
  */
-pub async fn new_phrase_req(
+pub async fn phrase_req(
     account: &mut GrapevineAccount,
-    body: NewPhraseRequest,
-) -> Result<u32, GrapevineServerError> {
+    body: PhraseRequest,
+) -> Result<PhraseCreationResponse, GrapevineServerError> {
     let url = format!("{}/proof/phrase", &**SERVER_URL);
     // serialize the proof
     let serialized: Vec<u8> = bincode::serialize(&body).unwrap();
@@ -182,12 +182,12 @@ pub async fn new_phrase_req(
         .unwrap();
     match res.status() {
         StatusCode::CREATED => {
-            let index = res.text().await.unwrap().parse().unwrap();
+            let data: PhraseCreationResponse = serde_json::from_str(&res.text().await.unwrap()).unwrap();
             // increment nonce
             account
                 .increment_nonce(Some((&**ACCOUNT_PATH).to_path_buf()))
                 .unwrap();
-            return Ok(index);
+            return Ok(data);
         }
         _ => {
             // Err(res.json::<GrapevineServerError>().await.unwrap())
@@ -250,45 +250,6 @@ pub async fn get_degrees_req(
     }
 }
 
-// todo: combine 1st and n degree proof reqs since only route changes (can make serialization generic)
-
-/**
- * Prove knowledge of a phrase and create a degree 1 proof
- * 
- * @param account - the account of the user proving knowledge of the phrase
- * @param body - the Degree1ProofRequest containing proof and context to provide as the body of the http request
- * @returns - Ok if 201, or the error type otherwise
- */
-pub async fn knowledge_proof_req(
-    account: &mut GrapevineAccount,
-    body: Degree1ProofRequest,
-) -> Result<(), GrapevineServerError> {
-    let url = format!("{}/proof/knowledge", &**SERVER_URL);
-    // serialize the proof
-    let serialized: Vec<u8> = bincode::serialize(&body).unwrap();
-    // produce signature over current nonce
-    let signature = hex::encode(account.sign_nonce().compress());
-    let client = Client::new();
-    let res = client
-        .post(&url)
-        .body(serialized)
-        .header("X-Username", account.username())
-        .header("X-Authorization", signature)
-        .send()
-        .await
-        .unwrap();
-    match res.status() {
-        StatusCode::CREATED => {
-            // increment nonce
-            account
-                .increment_nonce(Some((&**ACCOUNT_PATH).to_path_buf()))
-                .unwrap();
-            return Ok(());
-        }
-        _ => Err(res.json::<GrapevineServerError>().await.unwrap()),
-    }
-}
-
 /**
  * Makes an HTTP Request to prove a separation degree
  *
@@ -297,7 +258,7 @@ pub async fn knowledge_proof_req(
  */
 pub async fn degree_proof_req(
     account: &mut GrapevineAccount,
-    body: DegreeNProofRequest,
+    body: DegreeProofRequest,
 ) -> Result<(), GrapevineServerError> {
     let url = format!("{}/proof/degree", &**SERVER_URL);
     // serialize the proof

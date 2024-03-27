@@ -1,9 +1,8 @@
 use crate::errors::GrapevineCLIError;
 use crate::http::{
     add_relationship_req, create_user_req, degree_proof_req, get_account_details_req,
-    get_available_proofs_req, get_known_req, get_degrees_req, get_nonce_req,
-    get_proof_with_params_req, get_pubkey_req, knowledge_proof_req, new_phrase_req,
-    show_connections_req,
+    get_available_proofs_req, get_degrees_req, get_known_req, get_nonce_req,
+    get_proof_with_params_req, get_pubkey_req, phrase_req, show_connections_req,
 };
 use crate::utils::artifacts_guard;
 use crate::utils::fs::{use_public_params, use_r1cs, use_wasm, ACCOUNT_PATH};
@@ -16,8 +15,8 @@ use grapevine_common::compat::{convert_ff_to_ff_ce, ff_ce_from_le_bytes};
 use grapevine_common::crypto::phrase_hash;
 use grapevine_common::errors::GrapevineServerError;
 use grapevine_common::http::requests::{
-    CreateUserRequest, Degree1ProofRequest, DegreeNProofRequest, NewPhraseRequest,
-    NewRelationshipRequest, TestProofCompressionRequest,
+    CreateUserRequest, DegreeProofRequest, NewRelationshipRequest, PhraseRequest,
+    TestProofCompressionRequest,
 };
 use grapevine_common::http::responses::DegreeData;
 use grapevine_common::models::ProvingData;
@@ -154,100 +153,61 @@ pub async fn synchronize_nonce() -> Result<String, GrapevineCLIError> {
 }
 
 /**
- * Create a new phrase
+ * Create a new phrase and proves knowledge of it
+ * @notice if phrase does not exists, creates new phrase. Otherwise, proves knowledge of existing phrase
  *
  * @param phrase - the phrase to create
+ * @param description - the description of the phrase (discarded if phrase exists)
  */
-pub async fn create_new_phrase(
+pub async fn prove_phrase(
     phrase: String,
     description: String,
 ) -> Result<String, GrapevineCLIError> {
+    // ensure artifacts are present
+    artifacts_guard().await.unwrap();
+    let params = use_public_params().unwrap();
+    let r1cs = use_r1cs().unwrap();
+    let wc_path = use_wasm().unwrap();
+    // get account
+    let mut account = get_account()?;
+    // sync nonce
+    synchronize_nonce().await?;
+
     // check that phrase is > 180 chars
     if phrase.len() > 180 {
         return Err(GrapevineCLIError::PhraseTooLong);
     }
 
-    // get account
-    let mut account = get_account()?;
-    // sync nonce
-    synchronize_nonce().await?;
-    // compute the hash of the phrase
-    // DEV: HASH IS BROKEN, RELYING ON CIRCUIT EXECUTION FOR NOW
-    // let hash = phrase_hash(&phrase);
-    /// ONLY FOR HASH :(
-    /// seriously factor of 10,000x worse doing this, could potentially hide behind auto proving phrase when creating
-    artifacts_guard().await.unwrap();
-    let params = use_public_params().unwrap();
-    let r1cs = use_r1cs().unwrap();
-    let wc_path = use_wasm().unwrap();
+    // prove phrase
     let username = vec![account.username().clone()];
     let auth_secret = vec![account.auth_secret().clone()];
     let proof = nova_proof(wc_path, &r1cs, &params, &phrase, &username, &auth_secret).unwrap();
-    let hash = verify_nova_proof(&proof, &params, 2).unwrap().0[1].to_bytes();
 
-    // build request body
-    let body = NewPhraseRequest { hash, description: description.clone() };
-    // send request
-    let res = new_phrase_req(&mut account, body).await;
-    match res {
-        Ok(index) => Ok(format!(
-            "\nCreated new phrase #{}!\nSecret Phrase: \"{}\"\nDescription: \"{}\"",
-            index, phrase, description
-        )),
-        Err(e) => Err(GrapevineCLIError::from(e)),
-    }
-}
-
-/**
- * Prove knowledge of an existing phrase and create a degree 1 proof of separation
- *
- * @param phrase - the phrase to create
- */
-pub async fn prove_phrase_knowledge(
-    phrase: String,
-    index: u32,
-) -> Result<String, GrapevineCLIError> {
-    // ensure artifacts are present
-    artifacts_guard().await.unwrap();
-    // get account
-    let mut account = get_account()?;
-    // sync nonce
-    synchronize_nonce().await?;
-    // get proving artifacts
-    let params = use_public_params().unwrap();
-    let r1cs = use_r1cs().unwrap();
-    let wc_path = use_wasm().unwrap();
-
-    // check that phrase is > 180 chars
-    if phrase.len() > 180 {
-        return Err(GrapevineCLIError::PhraseTooLong);
-    }
-    // @todo: check if phrase is ascii
-    // get proof inputs
-    let username = vec![account.username().clone()];
-    let auth_secret = vec![account.auth_secret().clone()];
-    // create proof
-    let res = nova_proof(wc_path, &r1cs, &params, &phrase, &username, &auth_secret);
-    let proof = match res {
-        Ok(proof) => proof,
-        Err(e) => {
-            return Err(GrapevineCLIError::PhraseCreationProofFailed(phrase));
-        }
-    };
+    // compress proof
     let compressed = compress_proof(&proof);
     // encrypt phrase
     let ciphertext = account.encrypt_phrase(&phrase);
 
     // build request body
-    let body = Degree1ProofRequest {
+    let body = PhraseRequest {
         proof: compressed,
         ciphertext,
-        index,
+        description: description.clone(),
     };
     // send request
-    let res = knowledge_proof_req(&mut account, body).await;
+    let res = phrase_req(&mut account, body).await;
     match res {
-        Ok(_) => Ok(format!("Proved knowledge of phrase #{}: \"{}\"", index, phrase)),
+        Ok(data) => {
+            match data.new_phrase {
+                true => Ok(format!(
+                    "Success: Created and proved knowledge of new phrase #{}: \"{}\"", data.phrase_index, phrase
+                )),
+                false => Ok(format!(
+                    "Success: Proved knowledge of existing phrase #{}: \"{}\"",
+                    data.phrase_index, phrase
+                )),
+            }
+        },
         Err(e) => Err(GrapevineCLIError::from(e)),
     }
 }
@@ -333,7 +293,7 @@ pub async fn prove_all_available() -> Result<String, GrapevineCLIError> {
         }
         let compressed = compress_proof(&proof);
         // build request body
-        let body = DegreeNProofRequest {
+        let body = DegreeProofRequest {
             proof: compressed,
             // username: account.username().clone(),
             previous: oid,
@@ -368,7 +328,10 @@ pub async fn get_my_proofs() -> Result<String, GrapevineCLIError> {
         account.username()
     );
     for degree in data {
-        println!("=-=-=-=-=-=-=[Phrase #{}]=-=-=-=-=-=-=", degree.phrase_index);
+        println!(
+            "=-=-=-=-=-=-=[Phrase #{}]=-=-=-=-=-=-=",
+            degree.phrase_index
+        );
         println!("Phrase hash: 0x{}", hex::encode(degree.phrase_hash));
         println!("Phrase description: \"{}\"", degree.description);
         println!("Degrees of separation from origin: {}", degree.degree);
@@ -401,7 +364,10 @@ pub async fn get_known_phrases() -> Result<String, GrapevineCLIError> {
         Err(e) => return Err(GrapevineCLIError::from(e)),
     };
     for degree in data {
-        println!("=-=-=-=-=-=-=[Phrase #{}]=-=-=-=-=-=-=", degree.phrase_index);
+        println!(
+            "=-=-=-=-=-=-=[Phrase #{}]=-=-=-=-=-=-=",
+            degree.phrase_index
+        );
         println!("Phrase hash: 0x{}", hex::encode(degree.phrase_hash));
         let phrase = account.decrypt_phrase(&degree.secret_phrase.unwrap());
         println!("Secret phrase: \"{}\"", phrase);

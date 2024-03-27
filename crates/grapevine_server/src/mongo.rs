@@ -206,13 +206,15 @@ impl GrapevineDB {
      *
      * @param phrase_hash - the hash of the phrase to create
      * @param description - the description of the phrase
-     * @return: the index for the new phrase
+     * @return: (0, 1)
+     *  - 0: the object id of the created phrase document
+     *  - 1: the index of the phrase
      */
     pub async fn create_phrase(
         &self,
         phrase_hash: [u8; 32],
         description: String,
-    ) -> Result<u32, GrapevineServerError> {
+    ) -> Result<(ObjectId, u32), GrapevineServerError> {
         // query for the highest phrase id
         let find_options = FindOneOptions::builder()
             .sort(doc! {"index": -1})
@@ -235,13 +237,12 @@ impl GrapevineDB {
             hash: Some(phrase_hash),
             description: Some(description),
         };
-        match self.phrases.insert_one(&phrase, None).await {
-            Ok(_) => (),
+        let oid = match self.phrases.insert_one(&phrase, None).await {
+            Ok(res) => res.inserted_id.as_object_id().unwrap(),
             Err(e) => return Err(GrapevineServerError::MongoError(e.to_string())),
         };
 
-        println!("Index: {}", index);
-        return Ok(index);
+        Ok((oid, index))
     }
 
     pub async fn add_proof(
@@ -1351,5 +1352,18 @@ impl GrapevineDB {
             Some(Err(e)) => Err(GrapevineServerError::MongoError(e.to_string())),
             None => Ok(false),
         };
+    }
+
+    pub async fn get_phrase_index(&self, oid: &ObjectId) -> Result<u32, GrapevineServerError> {
+        let options = FindOneOptions::builder()
+            .projection(doc! { "index": 1 })
+            .build();
+        match self.phrases.find_one(doc! {"_id": oid}, options).await {
+            Ok(res) => match res {
+                Some(document) => Ok(document.index.unwrap()),
+                None => Err(GrapevineServerError::PhraseNotFound),
+            },
+            Err(e) => Err(GrapevineServerError::MongoError(e.to_string())),
+        }
     }
 }
