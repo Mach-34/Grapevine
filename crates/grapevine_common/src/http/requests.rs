@@ -7,19 +7,13 @@ pub struct CreateUserRequest {
     pub signature: [u8; 64],
 }
 
-// #[derive(Serialize, Deserialize, Debug, Clone)]
-// pub struct NewPhraseRequest {
-//     pub proof: Vec<u8>,
-//     #[serde(with = "serde_bytes")]
-//     pub phrase_ciphertext: [u8; 192],
-// }
-
-
 #[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct NewPhraseRequest {
+pub struct PhraseRequest {
     #[serde(with = "serde_bytes")]
-    pub hash: [u8; 32],
-    pub description: String,
+    pub proof: Vec<u8>, // compressed proof
+    #[serde(with = "serde_bytes")]
+    pub ciphertext: [u8; 192], // encrypted phrase
+    pub description: String, // description (discarded if phrase already exists)
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -45,16 +39,8 @@ pub struct NewRelationshipRequest {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct DegreeNProofRequest {
+pub struct DegreeProofRequest {
     pub proof: Vec<u8>,
     pub previous: String,
     pub degree: u8,
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct Degree1ProofRequest {
-    pub proof: Vec<u8>, // compressed proof
-    #[serde(with = "serde_bytes")]
-    pub ciphertext: [u8; 192], // encrypted phrase that the user can retrieve
-    pub index: u32, // the index of the phrase to prove knowledge of
 }

@@ -1,7 +1,7 @@
 use crate::auth_secret::{AuthSecret, AuthSecretEncrypted, AuthSecretEncryptedUser};
 use crate::crypto::{gen_aes_key, new_private_key, nonce_hash};
 use crate::http::requests::{
-    CreateUserRequest, GetNonceRequest, NewPhraseRequest, NewRelationshipRequest,
+    CreateUserRequest, GetNonceRequest, PhraseRequest, NewRelationshipRequest,
 };
 use crate::utils::{convert_phrase_to_fr, convert_username_to_fr, random_fr};
 use crate::{Fr, Params};
