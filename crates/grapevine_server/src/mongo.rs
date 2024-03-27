@@ -605,7 +605,7 @@ impl GrapevineDB {
                         .to_string();
                     degrees.push(DegreeData {
                         description,
-                        degree: 1,
+                        degree: Some(1),
                         phrase_index,
                         relation: None,
                         preceding_relation: None,
@@ -795,7 +795,7 @@ impl GrapevineDB {
                         .to_string();
                     degrees.push(DegreeData {
                         description: phrase_description,
-                        degree,
+                        degree: Some(degree),
                         phrase_index,
                         relation: Some(relation),
                         preceding_relation,
@@ -1481,20 +1481,27 @@ impl GrapevineDB {
         if let Some(result) = cursor.next().await {
             match result {
                 Ok(document) => {
+                    println!("Document: {:#?}", document);
                     // get the degree of separation found for this user on this phrase
-                    let degree = document.get_i32("degree").unwrap() as u8;
+                    let degree = match document.get_i32("degree") {
+                        Ok(val) => Some(val as u8),
+                        Err(_) => None
+                    };
+                    println!("Degree: {:?}", degree);
                     // get any 1st and 2nd degree relations found for this user on this phrase
                     let relation = match document.get("degree_1") {
                         Some(degree_1) => Some(degree_1.as_str().unwrap().to_string()),
                         None => None,
                     };
+                    println!("Relation: {:?}", relation);
                     let preceding_relation = match document.get("degree_2") {
                         Some(degree_2) => Some(degree_2.as_str().unwrap().to_string()),
                         None => None,
                     };
+                    println!("Preceding relation: {:?}", preceding_relation);
                     // get the hash of the phrase
                     let phrase_hash: [u8; 32] = document
-                        .get("phrase_hash")
+                        .get("hash")
                         .unwrap()
                         .as_array()
                         .unwrap()
@@ -1503,18 +1510,21 @@ impl GrapevineDB {
                         .collect::<Vec<u8>>()
                         .try_into()
                         .unwrap();
+                    println!("Phrase hash: {:?}", phrase_hash);
                     // get the description of the phrase
                     let phrase_description = document
-                        .get("phrase_description")
+                        .get("description")
                         .unwrap()
                         .as_str()
                         .unwrap()
                         .to_string();
+                    println!("Phrase description: {:?}", phrase_description);
                     // get the ciphertext of the proof
                     let mut secret_phrase: Option<[u8; 192]> = None;
                     if let Some(Bson::Binary(binary)) = document.get("ciphertext") {
                         secret_phrase = Some(binary.bytes.clone().try_into().unwrap());
                     }
+                    println!("Secret phrase: {:?}", secret_phrase);
                     return Ok(DegreeData {
                         description: phrase_description,
                         degree,

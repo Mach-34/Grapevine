@@ -313,9 +313,37 @@ pub async fn get_known_req(
     }
 }
 
-pub async fn show_connections_req(
-    account: &mut GrapevineAccount,
+pub async fn get_phrase_req(
     phrase_index: u32,
+    account: &mut GrapevineAccount,
+) -> Result<DegreeData, GrapevineServerError> {
+    let url = format!("{}/proof/phrase/{}", &**SERVER_URL, phrase_index);
+    // produce signature over current nonce
+    let signature = hex::encode(account.sign_nonce().compress());
+    let client = Client::new();
+    let res = client
+        .get(&url)
+        .header("X-Username", account.username())
+        .header("X-Authorization", signature)
+        .send()
+        .await
+        .unwrap();
+    match res.status() {
+        StatusCode::OK => {
+            // increment nonce
+            account
+                .increment_nonce(Some((&**ACCOUNT_PATH).to_path_buf()))
+                .unwrap();
+            let data = res.json::<DegreeData>().await.unwrap();
+            Ok(data)
+        }
+        _ => Err(res.json::<GrapevineServerError>().await.unwrap()),
+    }
+}
+
+pub async fn show_connections_req(
+    phrase_index: u32,
+    account: &mut GrapevineAccount,
 ) -> Result<(u64, Vec<u64>), GrapevineServerError> {
     let url = format!("{}/proof/connections/{}", &**SERVER_URL, phrase_index);
     // produce signature over current nonce

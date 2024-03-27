@@ -1,7 +1,7 @@
 use crate::errors::GrapevineCLIError;
 use crate::http::{
     add_relationship_req, create_user_req, degree_proof_req, get_account_details_req,
-    get_available_proofs_req, get_degrees_req, get_known_req, get_nonce_req,
+    get_available_proofs_req, get_degrees_req, get_known_req, get_nonce_req, get_phrase_req,
     get_proof_with_params_req, get_pubkey_req, phrase_req, show_connections_req,
 };
 use crate::utils::artifacts_guard;
@@ -197,16 +197,15 @@ pub async fn prove_phrase(
     // send request
     let res = phrase_req(&mut account, body).await;
     match res {
-        Ok(data) => {
-            match data.new_phrase {
-                true => Ok(format!(
-                    "Success: Created and proved knowledge of new phrase #{}: \"{}\"", data.phrase_index, phrase
-                )),
-                false => Ok(format!(
-                    "Success: Proved knowledge of existing phrase #{}: \"{}\"",
-                    data.phrase_index, phrase
-                )),
-            }
+        Ok(data) => match data.new_phrase {
+            true => Ok(format!(
+                "Success: Created and proved knowledge of new phrase #{}: \"{}\"",
+                data.phrase_index, phrase
+            )),
+            false => Ok(format!(
+                "Success: Proved knowledge of existing phrase #{}: \"{}\"",
+                data.phrase_index, phrase
+            )),
         },
         Err(e) => Err(GrapevineCLIError::from(e)),
     }
@@ -334,7 +333,7 @@ pub async fn get_my_proofs() -> Result<String, GrapevineCLIError> {
         );
         println!("Phrase hash: 0x{}", hex::encode(degree.phrase_hash));
         println!("Phrase description: \"{}\"", degree.description);
-        println!("Degrees of separation from origin: {}", degree.degree);
+        println!("Degrees of separation from origin: {}", degree.degree.unwrap());
         if degree.relation.is_none() {
             println!("Phrase created by this user");
             let phrase = account.decrypt_phrase(&degree.secret_phrase.unwrap());
@@ -376,27 +375,72 @@ pub async fn get_known_phrases() -> Result<String, GrapevineCLIError> {
     Ok(String::from(""))
 }
 
-pub async fn show_connections(phrase_index: u32) -> Result<String, GrapevineCLIError> {
+pub async fn get_phrase(phrase_index: u32) -> Result<String, GrapevineCLIError> {
     // get account
     let mut account = get_account()?;
     // sync nonce
     synchronize_nonce().await?;
-    // send request
-    let res = show_connections_req(&mut account, phrase_index).await;
+    // get degree data
+    let res = get_phrase_req(phrase_index, &mut account).await;
+    let phrase_data = match res {
+        Ok(data) => data,
+        Err(e) => return Err(GrapevineCLIError::from(e)),
+    };
+    // get connection data
+    let res = show_connections_req(phrase_index, &mut account).await;
     let connection_data = match res {
         Ok(data) => data,
         Err(e) => return Err(GrapevineCLIError::from(e)),
     };
 
-    if connection_data.0 == 0 {
-        println!("You have no connections that know this phrase");
+    /// OUTPUT
+    // header (always shown)
+    println!("=-=-=-=-=-=-=[Phrase #{}]=-=-=-=-=-=-=", phrase_index);
+    println!("Phrase description: \"{}\"", &phrase_data.description);
+    println!("Phrase hash: 0x{}", hex::encode(&phrase_data.phrase_hash));
+    // if no degree, show that this user does not know the phrase
+    if phrase_data.degree.is_none() {
+        println!("You do not have any connections to this phrase!");
+        return Ok(String::from(""));
+    }
+    if phrase_data.secret_phrase.is_some() {
+        // If phrase is known, show secret
+        let decrypted_phrase = account.decrypt_phrase(&phrase_data.secret_phrase.unwrap());
+        println!("Secret phrase: \"{}\"", decrypted_phrase);
     } else {
-        println!("Connections for phrase #{}", phrase_index);
-        println!("\nTotal connections: {}\n", connection_data.0);
-        for i in 0..connection_data.1.len() {
-            let connections = connection_data.1.get(i).unwrap();
-            println!("# of connections of degree {}: {}", i, connections);
+        // If phrase is not known, show degrees of separation from origin + upstream relations
+        println!(
+            "Degrees of separation from phrase: {}",
+            phrase_data.degree.unwrap()
+        );
+        if phrase_data.relation.is_some() {
+            println!(
+                "Your 1st degree relation to this phrase: {}",
+                phrase_data.relation.unwrap()
+            );
         }
+        if phrase_data.preceding_relation.is_some() {
+            println!(
+                "Your 2nd degree relation to this phrase: {}",
+                phrase_data.preceding_relation.unwrap()
+            );
+        }
+    }
+    // Show connection data
+    println!("#####################");
+    println!("Total of {} connections to this phrase", connection_data.0);
+    for i in 0..connection_data.1.len() {
+        let connections = connection_data.1.get(i).unwrap();
+        let degree_plural = match i == 0 {
+            true => "degree",
+            false => "degrees",
+        };
+        println!(
+            "Relationships with {} {} connection to this phrase: {}",
+            i + 1,
+            degree_plural,
+            connections
+        );
     }
     Ok(String::from(""))
 }
