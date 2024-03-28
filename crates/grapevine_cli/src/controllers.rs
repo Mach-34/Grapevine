@@ -65,19 +65,14 @@ pub async fn account_details() -> Result<String, GrapevineCLIError> {
  *
  * @param username - the username to register
  */
-pub async fn register(username: Option<String>) -> Result<String, GrapevineCLIError> {
-    // check that username is provided
-    let username = match username {
-        Some(username) => username,
-        None => return Err(GrapevineCLIError::NoInput(String::from("username"))),
-    };
+pub async fn register(username: &String) -> Result<String, GrapevineCLIError> {
     // check username is < 30 chars
     if username.len() > 30 {
-        return Err(GrapevineCLIError::UsernameTooLong(username));
+        return Err(GrapevineCLIError::UsernameTooLong(username.clone()));
     }
     // check username is ascii
     if !username.is_ascii() {
-        return Err(GrapevineCLIError::UsernameNotAscii(username));
+        return Err(GrapevineCLIError::UsernameNotAscii(username.clone()));
     }
     // make account (or retrieve from fs)
     let account = make_or_get_account(username.clone())?;
@@ -96,7 +91,7 @@ pub async fn register(username: Option<String>) -> Result<String, GrapevineCLIEr
  *
  * @param username - the username of the user to add a connection to
  */
-pub async fn add_relationship(username: String) -> Result<String, GrapevineCLIError> {
+pub async fn add_relationship(username: &String) -> Result<String, GrapevineCLIError> {
     // get own account
     let mut account = get_account()?;
     // sync nonce
@@ -160,8 +155,8 @@ pub async fn synchronize_nonce() -> Result<String, GrapevineCLIError> {
  * @param description - the description of the phrase (discarded if phrase exists)
  */
 pub async fn prove_phrase(
-    phrase: String,
-    description: String,
+    phrase: &String,
+    description: &String,
 ) -> Result<String, GrapevineCLIError> {
     // ensure artifacts are present
     artifacts_guard().await.unwrap();
