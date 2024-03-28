@@ -252,14 +252,15 @@ pub async fn add_relationship(
     }
 }
 
-#[post("/relationship/reject", format = "json", data = "<request>")]
+#[post("/relationship/reject/<username>")]
 pub async fn reject_pending_relationship(
     user: AuthenticatedUser,
-    request: Json<String>,
+    username: String,
     db: &State<GrapevineDB>,
 ) -> Result<Status, GrapevineResponse> {
     // attempt to delete the pending relationship
-    match db.reject_relationship(&user.0, &request).await {
+    println!("Rejecting relationship from {} to {}", username, user.0);
+    match db.reject_relationship(&username, &user.0).await {
         Ok(_) => Ok(Status::Ok),
         Err(e) => match e {
             GrapevineServerError::NoPendingRelationship(from, to) => {
@@ -275,6 +276,35 @@ pub async fn reject_pending_relationship(
         },
     }
 }
+
+#[get("/relationship/pending")]
+pub async fn get_pending_relationships(
+    user: AuthenticatedUser,
+    db: &State<GrapevineDB>,
+) -> Result<Json<Vec<String>>, GrapevineResponse> {
+    match db.get_relationships(&user.0, false).await {
+        Ok(relationships) => Ok(Json(relationships)),
+        Err(e) => Err(GrapevineResponse::InternalError(ErrorMessage(
+            Some(e),
+            None,
+        ))),
+    }
+}
+
+#[get("/relationship/active")]
+pub async fn get_active_relationships(
+    user: AuthenticatedUser,
+    db: &State<GrapevineDB>,
+) -> Result<Json<Vec<String>>, GrapevineResponse> {
+    match db.get_relationships(&user.0, true).await {
+        Ok(relationships) => Ok(Json(relationships)),
+        Err(e) => Err(GrapevineResponse::InternalError(ErrorMessage(
+            Some(e),
+            None,
+        ))),
+    }
+}
+
 /// GET REQUESTS ///
 
 /**

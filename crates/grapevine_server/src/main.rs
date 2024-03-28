@@ -409,6 +409,50 @@ mod test_rocket {
             .await
     }
 
+    async fn get_relationships_request(
+        context: &GrapevineTestContext,
+        user: &mut GrapevineAccount,
+        active: bool,
+    ) -> Option<Vec<String>> {
+        let username = user.username().clone();
+        let signature = generate_nonce_signature(user);
+        let route = if active { "active" } else { "pending" };
+        let res = context
+            .client
+            .get(format!("/user/relationship/{}", route))
+            .header(Header::new("X-Authorization", signature))
+            .header(Header::new("X-Username", username))
+            .dispatch()
+            .await
+            .into_json::<Vec<String>>()
+            .await;
+
+        // Increment nonce after request
+        let _ = user.increment_nonce(None);
+        res
+    }
+
+    async fn reject_relationship_request(context: &GrapevineTestContext, from: &mut GrapevineAccount, to: &String) -> (u16, Option<String>) {
+        let username = from.username().clone();
+        let signature = generate_nonce_signature(from);
+
+        let res = context
+            .client
+            .post(format!("/user/relationship/reject/{}", to))
+            .header(Header::new("X-Authorization", signature))
+            .header(Header::new("X-Username", username))
+            .dispatch()
+            .await;
+
+        let code = res.status().code;
+        let msg = res.into_string().await;
+
+        // Increment nonce after request
+        let _ = from.increment_nonce(None);
+
+        (code, msg)
+    }
+
     #[rocket::async_test]
     async fn test_proof_reordering_with_3_proof_chain() {
         let context = GrapevineTestContext::init().await;
@@ -1190,6 +1234,44 @@ mod test_rocket {
             "Relationship from user_relationship_4_b to user_relationship_4_a activated!",
             "Relationship should be activated"
         );
+
+        // Check no pending relationships
+        let pending_relationships = get_relationships_request(&context, &mut user_b, false)
+            .await
+            .unwrap();
+        assert_eq!(
+            pending_relationships.len(),
+            0,
+            "User A should have no pending relationships"
+        );
+
+        // Check a and b have pending requests
+        let active_relationships = get_relationships_request(&context, &mut user_a, true)
+            .await
+            .unwrap();
+        assert_eq!(
+            active_relationships.len(),
+            1,
+            "User A should have one active relationship"
+        );
+        assert_eq!(
+            active_relationships.get(0).unwrap(),
+            user_b.username(),
+            "User B should be active relationship"
+        );
+        let active_relationships = get_relationships_request(&context, &mut user_b, true)
+            .await
+            .unwrap();
+        assert_eq!(
+            active_relationships.len(),
+            1,
+            "User B should have one active relationship"
+        );
+        assert_eq!(
+            active_relationships.get(0).unwrap(),
+            user_a.username(),
+            "User A should be active relationship"
+        );
     }
 
     #[rocket::async_test]
@@ -1228,6 +1310,48 @@ mod test_rocket {
         assert_eq!(proofs.len(), 1, "Proof should be available");
         let (code, _) = create_degree_proof_request(&proofs[0], &mut user_b).await;
         assert_eq!(code, Status::Created.code, "Proof should be created");
+    }
+
+    #[rocket::async_test]
+    async fn test_reject_relationship() {
+        // Reset db with clean state
+        GrapevineDB::drop("grapevine_mocked").await;
+        let context = GrapevineTestContext::init().await;
+
+        // create users
+        let mut user_a = GrapevineAccount::new(String::from("user_a"));
+        let mut user_b = GrapevineAccount::new(String::from("user_b"));
+        _ = create_user_request(&context, &user_a.create_user_request()).await;
+        _ = create_user_request(&context, &user_b.create_user_request()).await;
+
+        // send pending relationship request from a to b
+        _ = add_relationship_request(&mut user_a, &mut user_b).await;
+        // retrieve pending relationships as b
+        let pending_relationships = get_relationships_request(&context, &mut user_b, false)
+            .await
+            .unwrap();
+        assert_eq!(
+            pending_relationships.len(),
+            1,
+            "User B should have one pending relationship"
+        );
+        assert_eq!(
+            pending_relationships.get(0).unwrap(),
+            user_a.username(),
+            "User A should be pending relationship"
+        );
+        // reject relationship from b to a
+        let (code, _) = reject_relationship_request(&context, &mut user_b, user_a.username()).await;
+        assert_eq!(code, Status::Ok.code, "Relationship should be rejected");
+        // show request was removed from pending relationship
+        let pending_relationships = get_relationships_request(&context, &mut user_b, false)
+            .await
+            .unwrap();
+        assert_eq!(
+            pending_relationships.len(),
+            0,
+            "User B should have one pending relationship"
+        );
     }
 
     #[rocket::async_test]

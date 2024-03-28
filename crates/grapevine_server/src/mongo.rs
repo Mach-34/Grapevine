@@ -266,33 +266,136 @@ impl GrapevineDB {
         from: &String,
         to: &String,
     ) -> Result<(), GrapevineServerError> {
-        let filter = doc! { "sender": from, "recipient": to, "active": false };
+        // setup aggregation pipeline to get the ObjectID of the pending relationship to delete
+        let pipeline = vec![
+            // get the ObjectID of the recipient of the relationship request
+            doc! { "$match": { "username": "user_b" } },
+            doc! { "$project": { "_id": 1 } },
+            // lookup the ObjectID of the sender of the relationship request
+            doc! {
+                "$lookup": {
+                    "from": "users",
+                    "let": { "from": "user_a" },
+                    "as": "sender",
+                    "pipeline": [
+                        doc! { "$match": { "$expr": { "$eq": ["$username", "$$from"] } } },
+                        doc! { "$project": { "_id": 1 } }
+                    ],
+                }
+            },
+            doc! { "$unwind": "$sender" },
+            // project the ObjectID's of the sender and recipient
+            doc! { "$project": { "recipient": "$_id", "sender": "$sender._id" } },
+            // lookup the ObjectID of the pending relationship to delete
+            doc! {
+                "$lookup": {
+                    "from": "relationships",
+                    "let": { "sender": "$sender", "recipient": "$recipient" },
+                    "as": "relationship",
+                    "pipeline": [
+                        doc! {
+                            "$match": {
+                                "$expr": {
+                                    "$and": [
+                                        { "$eq": ["$sender", "$$sender"] },
+                                        { "$eq": ["$recipient", "$$recipient"] },
+                                        { "$eq": ["$active", false ] }
+                                    ]
+                                }
+                            }
+                        },
+                        doc! { "$project": { "_id": 1 } }
+                    ],
+                }
+            },
+            doc! { "$unwind": "$relationship" },
+            // project the ObjectID of the pending relationship to delete
+            doc! { "$project": { "relationship": "$relationship._id", "_id": 0 } },
+        ];
+
+        // get the OID of the pending relationship to delete
+        let mut cursor = self.users.aggregate(pipeline, None).await.unwrap();
+        let oid: ObjectId = match cursor.next().await {
+            Some(Ok(document)) => document.get("relationship").unwrap().as_object_id().unwrap(),
+            Some(Err(e)) => return Err(GrapevineServerError::MongoError(e.to_string())),
+            None => return Err(GrapevineServerError::NoPendingRelationship(from.clone(), to.clone())),
+        };
+
+        // delete the pending relationship
+        let filter = doc! { "_id": oid };
         match self.relationships.delete_one(filter, None).await {
             Ok(res) => match res.deleted_count == 1 {
-                true => Ok(()),
-                false => Err(GrapevineServerError::NoPendingRelationship(
-                    from.clone(),
-                    to.clone(),
-                )),
-            },
-            Err(e) => Err(GrapevineServerError::MongoError(e.to_string())),
+                true => (),
+                false => return Err(GrapevineServerError::MongoError("Failed to delete relationship".to_string())),
+            }
+            Err(e) => return Err(GrapevineServerError::MongoError(e.to_string())),
         }
+
+        Ok(())
     }
 
-    // pub async fn get_pending_relationships(&self, user: &String) -> Result<Vec<String>, GrapevineServerError> {
-    //     let filter = doc! { "recipient": user, "active": false };
-    //     let projection = doc! { "sender": 1 };
-    //     let find_options = FindOptions::builder().projection(projection).build();
-    //     let mut cursor = self.relationships.find(filter, find_options).await.unwrap();
-    //     let mut senders: Vec<String> = vec![];
-    //     while let Some(result) = cursor.next().await {
-    //         match result {
-    //             Ok(document) => senders.push()
-    //             Err(e) => return Err(GrapevineServerError::MongoError(e.to_string()))
-    //         }
-    //     }
-    //     Ok(senders)
-    // }
+    /**
+     * Find all (pending or active) relationships for a user
+     *
+     * @param user - the username of the user to find relationships for
+     * @param active - whether to find active or pending relationships
+     * @returns - a list of usernames of the users the user has relationships with
+     */
+    pub async fn get_relationships(
+        &self,
+        user: &String,
+        active: bool,
+    ) -> Result<Vec<String>, GrapevineServerError> {
+        // setup aggregation pipeline for finding usernames of relationships
+        let pipeline = vec![
+            // get the ObjectID of the user doc for the given username
+            doc! { "$match": { "username": user } },
+            doc! { "$project": { "_id": 1 } },
+            // lookup all (pending/ active) relationships for the user
+            doc! {
+                "$lookup": {
+                    "from": "relationships",
+                    "localField": "_id",
+                    "foreignField": "recipient",
+                    "as": "relationships",
+                    "pipeline": [
+                        doc! { "$match": { "$expr": { "$eq": ["$active", active] } } },
+                        doc! { "$project": { "sender": 1, "_id": 0 } },
+                    ],
+                }
+            },
+            doc! { "$unwind": "$relationships" },
+            // lookup the usernames of the relationships by the ObjectID found in the relationship docs
+            doc! {
+                "$lookup": {
+                    "from": "users",
+                    "localField": "relationships.sender",
+                    "foreignField": "_id",
+                    "as": "relationships",
+                    "pipeline": [
+                        doc! { "$project": { "username": 1, "_id": 0 } },
+                    ],
+                }
+            },
+            doc! { "$unwind": "$relationships" },
+            // project only the usernames of the relationships
+            doc! { "$project": { "username": "$relationships.username", "_id": 0 } },
+        ];
+
+        // get the OID's of degree proofs the user can build from
+        let mut relationships: Vec<String> = vec![];
+        let mut cursor = self.users.aggregate(pipeline, None).await.unwrap();
+        while let Some(result) = cursor.next().await {
+            match result {
+                Ok(document) => {
+                    let username = document.get("username").unwrap().as_str().unwrap();
+                    relationships.push(username.to_string());
+                }
+                Err(e) => println!("Error: {}", e),
+            }
+        }
+        Ok(relationships)
+    }
 
     /**
      * Attempts to find a relationship between to users
