@@ -27,64 +27,86 @@ enum Commands {
     /// usage: `grapevine health`
     #[command(verbatim_doc_comment)]
     Health,
-    /// Print the details of your account
-    /// usage: `grapevine get-account`
-    #[command(verbatim_doc_comment)]
-    GetAccount,
-    /// Create a new Grapevine Account
-    /// usage: `grapevine register-account <username>`
-    #[command(verbatim_doc_comment)]
-    RegisterAccount(RegisterAccountArgs),
-    /// Add yourself as a connection to another Grapevine user
-    /// usage: `grapevine add-relationship <username>`
-    #[command(verbatim_doc_comment)]
-    AddRelationship(AddRelationshipArgs),
-    /// Prove knowledege of a phrase
-    /// usage: `grapevine prove-phrase "<phrase>" <index>`
-    #[command(verbatim_doc_comment)]
-    ProvePhrase(ProvePhraseArgs),
-    /// Prove all the the new degrees of separation available
-    /// usage: `grapevine prove-new`
-    #[command(verbatim_doc_comment)]
-    ProveNewDegrees,    
-    /// Print all of your degrees of separation
-    /// usage: `grapevine get-degrees`
-    #[command(verbatim_doc_comment)]
-    GetDegrees,
-    /// Print all phrases you know (1st degree)
-    /// usage: `grapevine get-known-phrases`
-    #[command(verbatim_doc_comment)]
-    GetKnownPhrases,
-    /// Get all information you know about a given phrase
-    /// usage: `grapevine get-phrase <phrase_index>`
-    #[command(verbatim_doc_comment)]
-    GetPhrase(GetPhraseArgs),
+    /// Commands for managing your Grapevine account
+    #[command(subcommand, verbatim_doc_comment)]
+    Account(AccountCommands),
+    /// Commands for managing relationships
+    #[command(subcommand, verbatim_doc_comment)]
+    Relationship(RelationshipCommands),
+    /// Commands for interacting with phrases and degree proofs
+    #[command(subcommand, verbatim_doc_comment)]
+    Phrase(PhraseCommands),
 }
 
-#[derive(Args)]
-struct RegisterAccountArgs {
-    username: Option<String>,
+#[derive(Subcommand)]
+enum RelationshipCommands {
+    /// Send a new relationship request or accept a pending request
+    /// usage: `grapevine relationship add <username>`
+    #[command(verbatim_doc_comment)]
+    #[clap(value_parser)]
+    Add {
+        username: String,
+    },
+    /// Show pending relationship requests from other users
+    /// usage: `grapevine relationship pending`
+    #[command(verbatim_doc_comment)]
+    Pending,
+    /// Reject a pending relationship request
+    /// usage: `grapevine relationship reject <username>`
+    #[command(verbatim_doc_comment)]
+    #[clap(value_parser)]
+    Reject {
+        username: String,
+    },
+    /// List the username of all of your active relationships
+    /// usage: `grapevine relationship list`
+    #[command(verbatim_doc_comment)]
+    List
 }
 
-#[derive(Args)]
-struct AddRelationshipArgs {
-    username: Option<String>,
+#[derive(Subcommand)]
+enum AccountCommands {
+    /// Register a new Grapevine account
+    /// usage: `grapevine account register <username>`
+    #[command(verbatim_doc_comment)]
+    Register {
+        #[clap(value_parser)]
+        username: String,
+    },
+    /// Get information about your Grapevine account
+    /// usage: `grapevine account info`
+    #[command(verbatim_doc_comment)]
+    Info,
+    /// Export the Baby JubJub private key for your account
+    /// usage: `grapevine account export`
+    #[command(verbatim_doc_comment)]
+    Export
 }
 
-#[derive(Args)]
-struct ProvePhraseArgs {
-    phrase: Option<String>,
-    description: Option<String>,
-}
-
-#[derive(Args)]
-struct GetPhraseArgs {
-    phrase_index: Option<u32>,
-}
-
-#[derive(Args)]
-struct ProveSeparationArgs {
-    username: Option<String>,
+#[derive(Subcommand)]
+enum PhraseCommands {
+    /// Prove knowledge of a phrase. Description is discarded if the phrase already exists
+    /// usage: `grapevine phrase prove "<phrase>" "<description>"`
+    #[command(verbatim_doc_comment)]
+    #[clap(value_parser)]
+    Prove { phrase: String, description: String },
+    /// Check for new degree proofs from relationships and build degrees on top of them
+    /// usage: `grapevine phrase sync`
+    #[command(verbatim_doc_comment)]
+    Sync,
+    /// Get all information known by this account about a given phrase by its index
+    /// usage: `grapevine phrase get <index>`
+    #[command(verbatim_doc_comment)]
+    #[clap(value_parser)]
+    Get { index: u32 },
+    /// Return all phrases known by this account (degree 1)
+    /// usage: `grapevine phrase known`
+    #[command(verbatim_doc_comment)]
+    Known,
+    /// Return all degree proofs created by this account (degree > 1)
+    /// usage: `grapevine phrase degrees`
+    #[command(verbatim_doc_comment)]
+    Degrees,
 }
 
 /**
@@ -96,24 +118,24 @@ pub async fn main() {
 
     let result = match &cli.command {
         Commands::Health => controllers::health().await,
-        Commands::GetAccount => controllers::account_details().await,
-        Commands::RegisterAccount(cmd) => controllers::register(cmd.username.clone()).await,
-        Commands::AddRelationship(cmd) => {
-            controllers::add_relationship(cmd.username.clone().unwrap()).await
-        }
-        Commands::ProvePhrase(cmd) => {
-            controllers::prove_phrase(
-                cmd.phrase.clone().unwrap(),
-                cmd.description.clone().unwrap(),
-            )
-            .await
-        }
-        Commands::ProveNewDegrees => controllers::prove_all_available().await,
-        Commands::GetDegrees => controllers::get_my_proofs().await,
-        Commands::GetKnownPhrases => controllers::get_known_phrases().await,
-        Commands::GetPhrase(cmd) => {
-            controllers::get_phrase(cmd.phrase_index.clone().unwrap()).await
-        }
+        Commands::Account(cmd) => match cmd {
+            AccountCommands::Register { username } => controllers::register(username).await,
+            AccountCommands::Info => controllers::account_details().await,
+            AccountCommands::Export => Ok(String::from("Key export is not yet implemented")),
+        },
+        Commands::Relationship(cmd) => match cmd {
+            RelationshipCommands::Add { username } => controllers::add_relationship(username).await,
+            RelationshipCommands::Pending => Ok(String::from("Pending relationships not yet implemented")),
+            RelationshipCommands::Reject { username } => Ok(String::from("Rejecting relationships not yet implemented")),
+            RelationshipCommands::List => Ok(String::from("Listing relationships not yet implemented")),
+        },
+        Commands::Phrase(cmd) => match cmd {
+            PhraseCommands::Prove { phrase, description } => controllers::prove_phrase(phrase, description).await,
+            PhraseCommands::Sync => controllers::prove_all_available().await,
+            PhraseCommands::Get { index } => controllers::get_phrase(*index).await,
+            PhraseCommands::Known => controllers::get_known_phrases().await,
+            PhraseCommands::Degrees => controllers::get_my_proofs().await
+        },
     };
 
     match result {
