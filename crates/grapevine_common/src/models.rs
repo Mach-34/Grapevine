@@ -21,6 +21,10 @@ pub struct DegreeProof {
 // all data needed from server to prove a degree of separation
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct ProvingData {
+    pub phrase_index: u32,
+    #[serde(default, with = "serde_bytes")]
+    pub phrase_hash: [u8; 32],
+    pub description: String,
     pub degree: u8, // multiply by 2 to get iterations
     pub proof: Vec<u8>,
     pub username: String,

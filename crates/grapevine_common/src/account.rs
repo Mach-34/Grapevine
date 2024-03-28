@@ -220,26 +220,6 @@ impl GrapevineAccount {
         }
     }
 
-    // pub fn new_phrase_request(
-    //     &self,
-    //     phrase: String,
-    //     wc_path: String,
-    //     r1cs: &R1CS<Fr>,
-    //     params: Params,
-    // ) -> NewPhraseRequest {
-    //     let username = vec![account.username().clone()];
-    //     let auth_secret = vec![account.auth_secret().clone()];
-    //     // create proof
-    //     // println!("Auth Secret: {:?}", auth_secret_input[0].to_bytes);
-    //     let res = nova_proof(wc_path, &r1cs, &params, &phrase, &username, &auth_secret);
-    //     let proof = match res {
-    //         Ok(proof) => proof,
-    //         Err(e) => {
-    //             return Err(GrapevineCLIError::PhraseCreationProofFailed(phrase));
-    //         }
-    //     };
-    // }
-
     /// GETTERS ///
 
     /** Return the username associated with this account */
