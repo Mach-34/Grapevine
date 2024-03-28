@@ -174,28 +174,158 @@ impl GrapevineDB {
         }
     }
 
-    pub async fn add_relationship(
+    pub async fn add_pending_relationship(
         &self,
         relationship: &Relationship,
-    ) -> Result<ObjectId, GrapevineServerError> {
-        // @TODO: check to see whether relation already exists between the two users
+    ) -> Result<(), GrapevineServerError> {
+        // create new relationship document
+        match self.relationships.insert_one(relationship, None).await {
+            Ok(_) => Ok(()),
+            Err(e) => Err(GrapevineServerError::MongoError(e.to_string())),
+        }
+    }
+
+    /**
+     * Sets pending relationship to be active (to -> from) and creates a new relationship (from -> to)
+     *
+     * @param relationship - the relationship to activate
+     * @returns - the object id of the activated relationship
+     */
+    pub async fn activate_relationship(
+        &self,
+        relationship: &Relationship,
+    ) -> Result<(), GrapevineServerError> {
+        // set the pending relationship to be active
+        let query = doc! {
+            "sender": relationship.recipient,
+            "recipient": relationship.sender
+        };
+        let update = doc! { "$set": { "active": true } };
+        let recipient_relationship = match self.relationships.update_one(query, update, None).await
+        {
+            Ok(res) => res.upserted_id.unwrap(),
+            Err(e) => return Err(GrapevineServerError::MongoError(e.to_string())),
+        };
+
+        // push the relationship to the recipient's list of relationships
+        let query = doc! { "_id": relationship.recipient };
+        let update = doc! { "$push": { "relationships": recipient_relationship } };
+        match self.users.update_one(query, update, None).await {
+            Ok(_) => (),
+            Err(e) => return Err(GrapevineServerError::MongoError(e.to_string())),
+        }
 
         // create new relationship document
-        let relationship_oid = self
+        let sender_relationship = self
             .relationships
             .insert_one(relationship, None)
             .await
             .unwrap()
-            .inserted_id
-            .as_object_id()
-            .unwrap();
+            .inserted_id;
 
-        // push the relationship to the user's list of relationships
-        let query = doc! { "_id": relationship.recipient };
-        let update =
-            doc! { "$push": { "relationships": bson::to_bson(&relationship_oid).unwrap()} };
+        // push the relationship to the recipien's list of relationships
+        let query = doc! { "_id": relationship.sender };
+        let update = doc! { "$push": { "relationships": sender_relationship } };
         match self.users.update_one(query, update, None).await {
-            Ok(_) => Ok(relationship_oid),
+            Ok(_) => (),
+            Err(e) => return Err(GrapevineServerError::MongoError(e.to_string())),
+        }
+        Ok(())
+    }
+
+    /**
+     * Delete a pending relationship from one user to another
+     * @notice relationship must be pending / not active
+     *         Relationships cannot be removed since degree proofs may be built from them
+     *
+     * @param from - the user enabling relationship
+     * @param to - the user receiving relationship
+     * @returns - Ok if successful, Err otherwise
+     */
+    pub async fn reject_relationship(
+        &self,
+        from: &String,
+        to: &String,
+    ) -> Result<(), GrapevineServerError> {
+        let filter = doc! { "sender": from, "recipient": to, "active": false };
+        match self.relationships.delete_one(filter, None).await {
+            Ok(res) => match res.deleted_count == 1 {
+                true => Ok(()),
+                false => Err(GrapevineServerError::NoPendingRelationship(
+                    from.clone(),
+                    to.clone(),
+                )),
+            },
+            Err(e) => Err(GrapevineServerError::MongoError(e.to_string())),
+        }
+    }
+
+    // pub async fn get_pending_relationships(&self, user: &String) -> Result<Vec<String>, GrapevineServerError> {
+    //     let filter = doc! { "recipient": user, "active": false };
+    //     let projection = doc! { "sender": 1 };
+    //     let find_options = FindOptions::builder().projection(projection).build();
+    //     let mut cursor = self.relationships.find(filter, find_options).await.unwrap();
+    //     let mut senders: Vec<String> = vec![];
+    //     while let Some(result) = cursor.next().await {
+    //         match result {
+    //             Ok(document) => senders.push()
+    //             Err(e) => return Err(GrapevineServerError::MongoError(e.to_string()))
+    //         }
+    //     }
+    //     Ok(senders)
+    // }
+
+    /**
+     * Attempts to find a relationship between to users
+     *
+     * @param from - the user enabling relationship
+     * @param to - the user receiving relationship
+     * @returns - the relationship if found, None otherwise
+     */
+    pub async fn find_pending_relationship(
+        &self,
+        from: &ObjectId,
+        to: &ObjectId,
+    ) -> Result<bool, GrapevineServerError> {
+        let filter = doc! { "sender": from, "recipient": to, "active": false };
+        let projection = doc! { "_id": 1 };
+        let find_options = FindOneOptions::builder().projection(projection).build();
+        match self.relationships.find_one(filter, find_options).await {
+            Ok(res) => match res {
+                Some(document) => Ok(true),
+                None => Ok(false),
+            },
+            Err(e) => Err(GrapevineServerError::MongoError(e.to_string())),
+        }
+    }
+
+    /**
+     * Check to see if a relationship already exists between two users
+     *
+     * @param sender - the user enabling relationship
+     * @param recipient - the user receiving relationship
+     * @returns
+     *  - 0: true if relationship from sender to user exists
+     *  - 1: true if relationship is active
+     */
+    pub async fn check_relationship_exists(
+        &self,
+        sender: &ObjectId,
+        recipient: &ObjectId,
+    ) -> Result<(bool, bool), GrapevineServerError> {
+        let query = doc! { "recipient": recipient, "sender": sender };
+        let projection = doc! { "_id": 1, "active": 1 };
+        let find_options = FindOneOptions::builder().projection(projection).build();
+
+        match self.relationships.find_one(query, find_options).await {
+            Ok(res) => {
+                let exists = res.is_some();
+                let active = match exists {
+                    true => res.unwrap().active.unwrap(),
+                    false => false,
+                };
+                Ok((exists, active))
+            }
             Err(e) => Err(GrapevineServerError::MongoError(e.to_string())),
         }
     }
@@ -1234,25 +1364,6 @@ impl GrapevineDB {
     }
 
     /**
-     * Check to see if a relationship already exists between two users
-     *
-     * @param relationship - relationship between two users
-     */
-    pub async fn check_relationship_exists(
-        &self,
-        relationship: &Relationship,
-    ) -> Result<bool, GrapevineServerError> {
-        let query = doc! { "recipient": relationship.recipient, "sender": relationship.sender };
-        let projection = doc! { "_id": 1 };
-        let find_options = FindOneOptions::builder().projection(projection).build();
-
-        match self.relationships.find_one(query, find_options).await {
-            Ok(res) => Ok(res.is_some()),
-            Err(e) => Err(GrapevineServerError::MongoError(e.to_string())),
-        }
-    }
-
-    /**
      * Checks to see whether the user has already created a degree proof for the phrase
      *
      * @param user - the username of the user to check for
@@ -1485,7 +1596,7 @@ impl GrapevineDB {
                     // get the degree of separation found for this user on this phrase
                     let degree = match document.get_i32("degree") {
                         Ok(val) => Some(val as u8),
-                        Err(_) => None
+                        Err(_) => None,
                     };
                     println!("Degree: {:?}", degree);
                     // get any 1st and 2nd degree relations found for this user on this phrase
@@ -1532,15 +1643,19 @@ impl GrapevineDB {
                         relation,
                         preceding_relation,
                         phrase_hash,
-                        secret_phrase
+                        secret_phrase,
                     });
                 }
                 Err(_) => {
-                    return Err(GrapevineServerError::MongoError("Failed phrase data retrieval".to_string()));
+                    return Err(GrapevineServerError::MongoError(
+                        "Failed phrase data retrieval".to_string(),
+                    ));
                 }
             }
         } else {
-            return Err(GrapevineServerError::MongoError("Failed phrase data retrieval".to_string()))
+            return Err(GrapevineServerError::MongoError(
+                "Failed phrase data retrieval".to_string(),
+            ));
         }
     }
 }

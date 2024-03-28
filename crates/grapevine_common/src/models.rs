@@ -40,6 +40,7 @@ pub struct Relationship {
     pub ephemeral_key: Option<[u8; 32]>,
     #[serde(default, with = "serde_bytes")]
     pub ciphertext: Option<[u8; 48]>,
+    pub active: Option<bool>, // true if both users have accepted, false if pending
 }
 
 // All fields optional to allow projections

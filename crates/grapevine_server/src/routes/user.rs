@@ -149,12 +149,12 @@ pub async fn create_user(
  *            * 404 if from or to user does not exist
  *            * 409 if relationship already exists
  */
-#[post("/relationship", format = "json", data = "<request>")]
+#[post("/relationship/add", format = "json", data = "<request>")]
 pub async fn add_relationship(
     user: AuthenticatedUser,
     request: Json<NewRelationshipRequest>,
     db: &State<GrapevineDB>,
-) -> Result<Status, GrapevineResponse> {
+) -> Result<GrapevineResponse, GrapevineResponse> {
     // ensure from != to
     if &user.0 == &request.to {
         return Err(GrapevineResponse::BadRequest(ErrorMessage(
@@ -163,8 +163,8 @@ pub async fn add_relationship(
         )));
     }
 
+    // todo: can combine into one http request
     let sender = db.get_user(&user.0).await.unwrap();
-    // would be nice to have a zk proof of correct encryption to recipient...
     let recipient = match db.get_user(&request.to).await {
         Some(user) => user,
         None => {
@@ -173,26 +173,23 @@ pub async fn add_relationship(
             )));
         }
     };
-    // add relationship doc and push to recipient array
-    let relationship_doc = Relationship {
-        id: None,
-        sender: Some(sender.id.unwrap()),
-        recipient: Some(recipient.id.unwrap()),
-        ephemeral_key: Some(request.ephemeral_key.clone()),
-        ciphertext: Some(request.ciphertext.clone()),
-    };
 
     // ensure relationship does not alreaday exist between two users
-    match db.check_relationship_exists(&relationship_doc).await {
-        Ok(exists) => match exists {
+    match db
+        .check_relationship_exists(&sender.id.unwrap(), &recipient.id.unwrap())
+        .await
+    {
+        Ok((exists, active)) => match exists {
             true => {
-                return Err(GrapevineResponse::Conflict(ErrorMessage(
-                    Some(GrapevineServerError::RelationshipExists(
-                        sender.username.unwrap(),
-                        recipient.username.unwrap(),
-                    )),
-                    None,
-                )))
+                let err = match active {
+                    true => {
+                        GrapevineServerError::ActiveRelationshipExists(user.0, request.to.clone())
+                    }
+                    false => {
+                        GrapevineServerError::PendingRelationshipExists(user.0, request.to.clone())
+                    }
+                };
+                return Err(GrapevineResponse::Conflict(ErrorMessage(Some(err), None)));
             }
             false => (),
         },
@@ -204,10 +201,47 @@ pub async fn add_relationship(
         }
     }
 
-    match db.add_relationship(&relationship_doc).await {
-        Ok(_) => Ok(Status::Created),
+    // check if a pending relationship from recipient to sender exists
+    let activate = match db
+        .find_pending_relationship(&recipient.id.unwrap(), &sender.id.unwrap())
+        .await
+    {
+        Ok(exists) => exists,
         Err(e) => {
-            println!("Error adding relationship: {:?}", e);
+            return Err(GrapevineResponse::InternalError(ErrorMessage(
+                Some(e),
+                None,
+            )))
+        }
+    };
+
+    // add relationship doc and push to recipient array
+    let relationship_doc = Relationship {
+        id: None,
+        sender: Some(sender.id.unwrap()),
+        recipient: Some(recipient.id.unwrap()),
+        ephemeral_key: Some(request.ephemeral_key.clone()),
+        ciphertext: Some(request.ciphertext.clone()),
+        active: Some(activate),
+    };
+
+    let req = match activate {
+        true => db.activate_relationship(&relationship_doc).await,
+        false => db.add_pending_relationship(&relationship_doc).await,
+    };
+
+    match req {
+        Ok(_) => {
+            let msg = match activate {
+                true => "Activated",
+                false => "Pending",
+            };
+            Ok(GrapevineResponse::Created(format!(
+                "Relationship from {} to {} {} successfully",
+                user.0, request.to, msg
+            )))
+        }
+        Err(e) => {
             Err(GrapevineResponse::InternalError(ErrorMessage(
                 Some(GrapevineServerError::MongoError(String::from(
                     "Failed to add relationship to db",
@@ -218,6 +252,29 @@ pub async fn add_relationship(
     }
 }
 
+#[post("/relationship/reject", format = "json", data = "<request>")]
+pub async fn reject_pending_relationship(
+    user: AuthenticatedUser,
+    request: Json<String>,
+    db: &State<GrapevineDB>,
+) -> Result<Status, GrapevineResponse> {
+    // attempt to delete the pending relationship
+    match db.reject_relationship(&user.0, &request).await {
+        Ok(_) => Ok(Status::Ok),
+        Err(e) => match e {
+            GrapevineServerError::NoPendingRelationship(from, to) => {
+                Err(GrapevineResponse::NotFound(format!(
+                    "No pending relationship exists from {} to {}",
+                    from, to
+                )))
+            }
+            _ => Err(GrapevineResponse::InternalError(ErrorMessage(
+                Some(e),
+                None,
+            ))),
+        },
+    }
+}
 /// GET REQUESTS ///
 
 /**

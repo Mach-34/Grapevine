@@ -9,7 +9,9 @@ pub enum GrapevineServerError {
     UsernameNotAscii(String),
     PubkeyExists(String),
     UserExists(String),
-    RelationshipExists(String, String),
+    NoPendingRelationship(String, String),
+    PendingRelationshipExists(String, String),
+    ActiveRelationshipExists(String, String),
     RelationshipSenderIsTarget,
     PhraseExists,
     PhraseNotFound,
@@ -43,10 +45,24 @@ impl std::fmt::Display for GrapevineServerError {
             GrapevineServerError::UserExists(msg) => {
                 write!(f, "User {} already exists with the supplied pubkey", msg)
             }
-            GrapevineServerError::RelationshipExists(sender, recipient) => {
+            GrapevineServerError::PendingRelationshipExists(sender, recipient) => {
                 write!(
                     f,
-                    "Relationship already exists between {} and {}",
+                    "A pending relationship from {} to {} exists already",
+                    sender, recipient
+                )
+            }
+            GrapevineServerError::ActiveRelationshipExists(sender, recipient) => {
+                write!(
+                    f,
+                    "Active relationship between {} and {} exists already",
+                    sender, recipient
+                )
+            }
+            GrapevineServerError::NoPendingRelationship(sender, recipient) => {
+                write!(
+                    f,
+                    "No pending relationship exists from {} to {}",
                     sender, recipient
                 )
             }

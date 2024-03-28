@@ -7,6 +7,7 @@ lazy_static! {
     pub(crate) static ref USER_ROUTES: Vec<Route> = routes![
         user::create_user,
         user::add_relationship,
+        user::reject_pending_relationship,
         user::get_account_details,
         user::get_user,
         user::get_nonce,
