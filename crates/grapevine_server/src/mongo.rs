@@ -269,13 +269,13 @@ impl GrapevineDB {
         // setup aggregation pipeline to get the ObjectID of the pending relationship to delete
         let pipeline = vec![
             // get the ObjectID of the recipient of the relationship request
-            doc! { "$match": { "username": "user_b" } },
+            doc! { "$match": { "username": to } },
             doc! { "$project": { "_id": 1 } },
             // lookup the ObjectID of the sender of the relationship request
             doc! {
                 "$lookup": {
                     "from": "users",
-                    "let": { "from": "user_a" },
+                    "let": { "from": from },
                     "as": "sender",
                     "pipeline": [
                         doc! { "$match": { "$expr": { "$eq": ["$username", "$$from"] } } },
@@ -316,7 +316,10 @@ impl GrapevineDB {
         // get the OID of the pending relationship to delete
         let mut cursor = self.users.aggregate(pipeline, None).await.unwrap();
         let oid: ObjectId = match cursor.next().await {
-            Some(Ok(document)) => document.get("relationship").unwrap().as_object_id().unwrap(),
+            Some(Ok(document)) => {
+                println!("FOUND DOC: {:?}", document);
+                document.get("relationship").unwrap().as_object_id().unwrap()
+            },
             Some(Err(e)) => return Err(GrapevineError::MongoError(e.to_string())),
             None => return Err(GrapevineError::NoPendingRelationship(from.clone(), to.clone())),
         };

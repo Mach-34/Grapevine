@@ -124,9 +124,9 @@ pub async fn main() {
         },
         Commands::Relationship(cmd) => match cmd {
             RelationshipCommands::Add { username } => controllers::add_relationship(username).await,
-            RelationshipCommands::Pending => Ok(String::from("Pending relationships not yet implemented")),
-            RelationshipCommands::Reject { username } => Ok(String::from("Rejecting relationships not yet implemented")),
-            RelationshipCommands::List => Ok(String::from("Listing relationships not yet implemented")),
+            RelationshipCommands::Pending => controllers::get_relationships(false).await,
+            RelationshipCommands::Reject { username } => controllers::reject_relationship(username).await,
+            RelationshipCommands::List => controllers::get_relationships(true).await,
         },
         Commands::Phrase(cmd) => match cmd {
             PhraseCommands::Prove { phrase, description } => controllers::prove_phrase(phrase, description).await,

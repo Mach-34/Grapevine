@@ -1,7 +1,8 @@
 use crate::http::{
     add_relationship_req, create_user_req, degree_proof_req, get_account_details_req,
     get_available_proofs_req, get_degrees_req, get_known_req, get_nonce_req, get_phrase_req,
-    get_proof_with_params_req, get_pubkey_req, phrase_req, show_connections_req,
+    get_proof_with_params_req, get_pubkey_req, get_relationships_req, phrase_req,
+    reject_relationship_req, show_connections_req,
 };
 use crate::utils::artifacts_guard;
 use crate::utils::fs::{use_public_params, use_r1cs, use_wasm, ACCOUNT_PATH};
@@ -104,10 +105,63 @@ pub async fn add_relationship(username: &String) -> Result<String, GrapevineErro
     // send add relationship request
     let res = add_relationship_req(&mut account, body).await;
     match res {
+        Ok(message) => Ok(message),
+        Err(e) => Err(e),
+    }
+}
+
+/**
+ * Reject a pending relationship request
+ *
+ * @param username - the username of the user to reject the relationship with
+ */
+pub async fn reject_relationship(username: &String) -> Result<String, GrapevineError> {
+    // get account
+    let mut account = get_account()?;
+    // sync nonce
+    synchronize_nonce().await?;
+    // send request
+    let res = reject_relationship_req(username, &mut account).await;
+    match res {
         Ok(_) => Ok(format!(
-            "Success: added this account as a relationship for \"{}\"",
-            &username
+            "Success: rejected pending relationship with \"{}\"",
+            username
         )),
+        Err(e) => Err(e),
+    }
+}
+
+/**
+ * Gets all (pending, active) relationships for the account
+ *
+ * @param active - whether to get active relationships or pending relationships
+ */
+pub async fn get_relationships(active: bool) -> Result<String, GrapevineError> {
+    // get account
+    let mut account = get_account()?;
+    // sync nonce
+    synchronize_nonce().await?;
+    // send request
+    let res = get_relationships_req(active, &mut account).await;
+    match res {
+        Ok(data) => {
+            let relation_type = if active { "Active" } else { "Pending" };
+            if data.len() == 0 {
+                println!("No {} relationships found for this account", relation_type);
+                return Ok(String::from(""));
+            }
+            println!("===============================");
+            println!(
+                "Showing {} {} relationships for {}:",
+                data.len(),
+                relation_type,
+                account.username()
+            );
+            for relationship in data {
+                println!("|=> \"{}\"", relationship);
+            }
+            Ok(String::from(""))
+        }
         Err(e) => Err(e),
     }
 }
@@ -152,10 +206,7 @@ pub async fn synchronize_nonce() -> Result<String, GrapevineError> {
  * @param phrase - the phrase to create
  * @param description - the description of the phrase (discarded if phrase exists)
  */
-pub async fn prove_phrase(
-    phrase: &String,
-    description: &String,
-) -> Result<String, GrapevineError> {
+pub async fn prove_phrase(phrase: &String, description: &String) -> Result<String, GrapevineError> {
     // ensure artifacts are present
     artifacts_guard().await.unwrap();
     let params = use_public_params().unwrap();
@@ -324,7 +375,10 @@ pub async fn get_my_proofs() -> Result<String, GrapevineError> {
         );
         println!("Phrase hash: 0x{}", hex::encode(degree.phrase_hash));
         println!("Phrase description: \"{}\"", degree.description);
-        println!("Degrees of separation from origin: {}", degree.degree.unwrap());
+        println!(
+            "Degrees of separation from origin: {}",
+            degree.degree.unwrap()
+        );
         if degree.relation.is_none() {
             println!("Phrase created by this user");
             let phrase = account.decrypt_phrase(&degree.secret_phrase.unwrap());
