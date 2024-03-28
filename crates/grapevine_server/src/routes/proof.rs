@@ -435,7 +435,6 @@ pub async fn get_phrase(
     db: &State<GrapevineDB>,
 ) -> Result<Json<DegreeData>, GrapevineResponse> {
     // check if phrase exists in db
-    println!("1");
     match db.get_phrase_by_index(phrase_index).await {
         Ok(_) => (),
         Err(e) => match e {

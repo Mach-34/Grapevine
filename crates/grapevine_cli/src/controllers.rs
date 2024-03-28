@@ -304,15 +304,27 @@ pub async fn prove_all_available() -> Result<String, GrapevineError> {
     let public_params = use_public_params().unwrap();
     let r1cs = use_r1cs().unwrap();
     let wc_path = use_wasm().unwrap();
+    if proofs.len() == 0 {
+        return Ok(String::from("No new degree proofs found"));
+    } else {
+        println!("Proving {} new degrees...", proofs.len());
+    }
     for i in 0..proofs.len() {
         let oid = proofs[i].clone();
-        println!("Proving #{}: {}", i, oid);
         // get proof and encrypted auth secret
         let res = get_proof_with_params_req(&mut account, oid.clone()).await;
         let proving_data = match res {
             Ok(proving_data) => proving_data,
             Err(e) => return Err(e),
         };
+        println!(
+            "=-=-=-=-=-=-=[Phrase #{}]=-=-=-=-=-=-=",
+            proving_data.phrase_index
+        );
+        println!("Description: \"{}\"", proving_data.description);
+        println!("Phrase hash: 0x{}", hex::encode(proving_data.phrase_hash));
+        println!("Degree being proved: {}", proving_data.degree + 1);
+        println!("Proving...");
         // prepare inputs
         let auth_secret_encrypted = AuthSecretEncrypted {
             ephemeral_key: proving_data.ephemeral_key,
@@ -363,6 +375,11 @@ pub async fn prove_all_available() -> Result<String, GrapevineError> {
             Ok(_) => (),
             Err(e) => return Err(e),
         }
+        println!(
+            "Proved degree {} for phrase #{}",
+            proving_data.degree + 1,
+            proving_data.phrase_index
+        );
     }
     Ok(format!(
         "Success: proved {} new degree proofs",
@@ -390,8 +407,8 @@ pub async fn get_my_proofs() -> Result<String, GrapevineError> {
             "=-=-=-=-=-=-=[Phrase #{}]=-=-=-=-=-=-=",
             degree.phrase_index
         );
-        println!("Phrase hash: 0x{}", hex::encode(degree.phrase_hash));
         println!("Phrase description: \"{}\"", degree.description);
+        println!("Phrase hash: 0x{}", hex::encode(degree.phrase_hash));
         println!(
             "Degrees of separation from origin: {}",
             degree.degree.unwrap()
@@ -429,10 +446,10 @@ pub async fn get_known_phrases() -> Result<String, GrapevineError> {
             "=-=-=-=-=-=-=[Phrase #{}]=-=-=-=-=-=-=",
             degree.phrase_index
         );
+        println!("Description: \"{}\"", degree.description);
         println!("Phrase hash: 0x{}", hex::encode(degree.phrase_hash));
         let phrase = account.decrypt_phrase(&degree.secret_phrase.unwrap());
         println!("Secret phrase: \"{}\"", phrase);
-        println!("Description: \"{}\"", degree.description);
     }
     Ok(String::from(""))
 }

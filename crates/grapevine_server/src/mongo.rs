@@ -1081,10 +1081,20 @@ impl GrapevineDB {
         // @todo: aggregation pipeline
         // get the proof
         let filter = doc! { "_id": proof };
-        let projection = doc! { "user": 1, "degree": 1, "proof": 1 };
+        let projection = doc! { "user": 1, "degree": 1, "proof": 1, "phrase": 1 };
         let find_options = FindOneOptions::builder().projection(projection).build();
         let proof = self
             .degree_proofs
+            .find_one(filter, Some(find_options))
+            .await
+            .unwrap()
+            .unwrap();
+        // look up the phrase info
+        let filter = doc! { "_id": proof.phrase.unwrap() };
+        let projection = doc! { "index": 1, "hash": 1, "description": 1 };
+        let find_options = FindOneOptions::builder().projection(projection).build();
+        let phrase = self
+            .phrases
             .find_one(filter, Some(find_options))
             .await
             .unwrap()
@@ -1116,7 +1126,7 @@ impl GrapevineDB {
             .unwrap();
         // look up relationship with sender and recipient
         let filter = doc! { "sender": proof_creator, "recipient": caller };
-        let projection = doc! { "ephemeral_key": 1, "ciphertext": 1 };
+        let projection = doc! { "ephemeral_key": 1, "ciphertext": 1};
         let find_options = FindOneOptions::builder().projection(projection).build();
         let relationship = self
             .relationships
@@ -1124,8 +1134,12 @@ impl GrapevineDB {
             .await
             .unwrap()
             .unwrap();
+        
         // return the proof data
         Some(ProvingData {
+            description: phrase.description.unwrap(),
+            phrase_index: phrase.index.unwrap(),
+            phrase_hash: phrase.hash.unwrap(),
             degree: proof.degree.unwrap(),
             proof: proof.proof.unwrap(),
             username: proof_creator_username,
