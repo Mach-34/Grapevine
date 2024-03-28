@@ -1,4 +1,3 @@
-use crate::errors::GrapevineCLIError;
 use crate::http::{
     add_relationship_req, create_user_req, degree_proof_req, get_account_details_req,
     get_available_proofs_req, get_degrees_req, get_known_req, get_nonce_req, get_phrase_req,
@@ -12,8 +11,7 @@ use grapevine_circuits::utils::{compress_proof, decompress_proof};
 use grapevine_common::account::GrapevineAccount;
 use grapevine_common::auth_secret::AuthSecretEncrypted;
 use grapevine_common::compat::{convert_ff_to_ff_ce, ff_ce_from_le_bytes};
-use grapevine_common::crypto::phrase_hash;
-use grapevine_common::errors::GrapevineServerError;
+use grapevine_common::errors::GrapevineError;
 use grapevine_common::http::requests::{
     CreateUserRequest, DegreeProofRequest, NewRelationshipRequest, PhraseRequest,
     TestProofCompressionRequest,
@@ -27,7 +25,7 @@ use std::path::Path;
 /**
  * Get the details of the current account
  */
-pub async fn account_details() -> Result<String, GrapevineCLIError> {
+pub async fn account_details() -> Result<String, GrapevineError> {
     // get account
     let mut account = match get_account() {
         Ok(account) => account,
@@ -56,7 +54,7 @@ pub async fn account_details() -> Result<String, GrapevineCLIError> {
                 details.0
             ))
         }
-        Err(e) => Err(GrapevineCLIError::from(e)),
+        Err(e) => Err(e),
     }
 }
 
@@ -65,14 +63,14 @@ pub async fn account_details() -> Result<String, GrapevineCLIError> {
  *
  * @param username - the username to register
  */
-pub async fn register(username: &String) -> Result<String, GrapevineCLIError> {
+pub async fn register(username: &String) -> Result<String, GrapevineError> {
     // check username is < 30 chars
     if username.len() > 30 {
-        return Err(GrapevineCLIError::UsernameTooLong(username.clone()));
+        return Err(GrapevineError::UsernameTooLong(username.clone()));
     }
     // check username is ascii
     if !username.is_ascii() {
-        return Err(GrapevineCLIError::UsernameNotAscii(username.clone()));
+        return Err(GrapevineError::UsernameNotAscii(username.clone()));
     }
     // make account (or retrieve from fs)
     let account = make_or_get_account(username.clone())?;
@@ -82,7 +80,7 @@ pub async fn register(username: &String) -> Result<String, GrapevineCLIError> {
     let res = create_user_req(body).await;
     match res {
         Ok(_) => Ok(format!("Success: registered account for \"{}\"", username)),
-        Err(e) => Err(GrapevineCLIError::from(e)),
+        Err(e) => Err(e),
     }
 }
 
@@ -91,7 +89,7 @@ pub async fn register(username: &String) -> Result<String, GrapevineCLIError> {
  *
  * @param username - the username of the user to add a connection to
  */
-pub async fn add_relationship(username: &String) -> Result<String, GrapevineCLIError> {
+pub async fn add_relationship(username: &String) -> Result<String, GrapevineError> {
     // get own account
     let mut account = get_account()?;
     // sync nonce
@@ -99,7 +97,7 @@ pub async fn add_relationship(username: &String) -> Result<String, GrapevineCLIE
     // get pubkey for recipient
     let pubkey = match get_pubkey_req(username.clone()).await {
         Ok(pubkey) => pubkey,
-        Err(e) => return Err(GrapevineCLIError::from(e)),
+        Err(e) => return Err(e),
     };
     // build relationship request body with encrypted auth secret payload
     let body = account.new_relationship_request(&username, &pubkey);
@@ -110,14 +108,14 @@ pub async fn add_relationship(username: &String) -> Result<String, GrapevineCLIE
             "Success: added this account as a relationship for \"{}\"",
             &username
         )),
-        Err(e) => Err(GrapevineCLIError::from(e)),
+        Err(e) => Err(e),
     }
 }
 
 /**
  * Retrieve the current nonce for the account and synchronize it with the locally stored account
  */
-pub async fn synchronize_nonce() -> Result<String, GrapevineCLIError> {
+pub async fn synchronize_nonce() -> Result<String, GrapevineError> {
     // get the account
     let mut account = get_account()?;
     // build nonce request body
@@ -126,7 +124,7 @@ pub async fn synchronize_nonce() -> Result<String, GrapevineCLIError> {
     let res = get_nonce_req(body).await;
     let expected_nonce = match res {
         Ok(nonce) => nonce,
-        Err(e) => return Err(GrapevineCLIError::from(e)),
+        Err(e) => return Err(e),
     };
     match expected_nonce == account.nonce() {
         true => Ok(format!(
@@ -157,7 +155,7 @@ pub async fn synchronize_nonce() -> Result<String, GrapevineCLIError> {
 pub async fn prove_phrase(
     phrase: &String,
     description: &String,
-) -> Result<String, GrapevineCLIError> {
+) -> Result<String, GrapevineError> {
     // ensure artifacts are present
     artifacts_guard().await.unwrap();
     let params = use_public_params().unwrap();
@@ -170,7 +168,7 @@ pub async fn prove_phrase(
 
     // check that phrase is > 180 chars
     if phrase.len() > 180 {
-        return Err(GrapevineCLIError::PhraseTooLong);
+        return Err(GrapevineError::PhraseTooLong);
     }
 
     // prove phrase
@@ -202,11 +200,11 @@ pub async fn prove_phrase(
                 data.phrase_index, phrase
             )),
         },
-        Err(e) => Err(GrapevineCLIError::from(e)),
+        Err(e) => Err(e),
     }
 }
 
-pub async fn prove_all_available() -> Result<String, GrapevineCLIError> {
+pub async fn prove_all_available() -> Result<String, GrapevineError> {
     /// GETTING
     // get account
     let mut account = get_account()?;
@@ -219,9 +217,7 @@ pub async fn prove_all_available() -> Result<String, GrapevineCLIError> {
         Ok(proofs) => proofs,
         Err(e) => {
             println!("Failed to get available proofs");
-            return Err(GrapevineCLIError::ServerError(String::from(
-                "Couldn't get available proofs",
-            )));
+            return Err(e);
         }
     };
     match proofs.len() {
@@ -247,7 +243,7 @@ pub async fn prove_all_available() -> Result<String, GrapevineCLIError> {
         let res = get_proof_with_params_req(&mut account, oid.clone()).await;
         let proving_data = match res {
             Ok(proving_data) => proving_data,
-            Err(e) => return Err(GrapevineCLIError::from(e)),
+            Err(e) => return Err(e),
         };
         // prepare inputs
         let auth_secret_encrypted = AuthSecretEncrypted {
@@ -264,7 +260,7 @@ pub async fn prove_all_available() -> Result<String, GrapevineCLIError> {
             Ok(data) => data.0,
             Err(e) => {
                 println!("Verification Failed");
-                return Err(GrapevineCLIError::DegreeProofVerificationFailed);
+                return Err(GrapevineError::DegreeProofVerificationFailed);
             }
         };
         // build nova proof
@@ -282,7 +278,7 @@ pub async fn prove_all_available() -> Result<String, GrapevineCLIError> {
             Ok(_) => (),
             Err(_) => {
                 println!("Proof continuation failed");
-                return Err(GrapevineCLIError::DegreeProofVerificationFailed);
+                return Err(GrapevineError::DegreeProofVerificationFailed);
             }
         }
         let compressed = compress_proof(&proof);
@@ -294,10 +290,10 @@ pub async fn prove_all_available() -> Result<String, GrapevineCLIError> {
             degree: proving_data.degree + 1,
         };
         // handle response from server
-        let res: Result<(), GrapevineServerError> = degree_proof_req(&mut account, body).await;
+        let res: Result<(), GrapevineError> = degree_proof_req(&mut account, body).await;
         match res {
             Ok(_) => (),
-            Err(e) => return Err(GrapevineCLIError::from(e)),
+            Err(e) => return Err(e),
         }
     }
     Ok(format!(
@@ -306,7 +302,7 @@ pub async fn prove_all_available() -> Result<String, GrapevineCLIError> {
     ))
 }
 
-pub async fn get_my_proofs() -> Result<String, GrapevineCLIError> {
+pub async fn get_my_proofs() -> Result<String, GrapevineError> {
     // get account
     let mut account = get_account()?;
     // sync nonce
@@ -315,7 +311,7 @@ pub async fn get_my_proofs() -> Result<String, GrapevineCLIError> {
     let res = get_degrees_req(&mut account).await;
     let data = match res {
         Ok(data) => data,
-        Err(e) => return Err(GrapevineCLIError::from(e)),
+        Err(e) => return Err(e),
     };
     println!(
         "Proofs of {}'s degrees of separation from phrases/ users:",
@@ -346,7 +342,7 @@ pub async fn get_my_proofs() -> Result<String, GrapevineCLIError> {
     Ok(String::from(""))
 }
 
-pub async fn get_known_phrases() -> Result<String, GrapevineCLIError> {
+pub async fn get_known_phrases() -> Result<String, GrapevineError> {
     // get account
     let mut account = get_account()?;
     // sync nonce
@@ -355,7 +351,7 @@ pub async fn get_known_phrases() -> Result<String, GrapevineCLIError> {
     let res = get_known_req(&mut account).await;
     let data = match res {
         Ok(data) => data,
-        Err(e) => return Err(GrapevineCLIError::from(e)),
+        Err(e) => return Err(e),
     };
     for degree in data {
         println!(
@@ -370,7 +366,7 @@ pub async fn get_known_phrases() -> Result<String, GrapevineCLIError> {
     Ok(String::from(""))
 }
 
-pub async fn get_phrase(phrase_index: u32) -> Result<String, GrapevineCLIError> {
+pub async fn get_phrase(phrase_index: u32) -> Result<String, GrapevineError> {
     // get account
     let mut account = get_account()?;
     // sync nonce
@@ -379,13 +375,13 @@ pub async fn get_phrase(phrase_index: u32) -> Result<String, GrapevineCLIError> 
     let res = get_phrase_req(phrase_index, &mut account).await;
     let phrase_data = match res {
         Ok(data) => data,
-        Err(e) => return Err(GrapevineCLIError::from(e)),
+        Err(e) => return Err(e),
     };
     // get connection data
     let res = show_connections_req(phrase_index, &mut account).await;
     let connection_data = match res {
         Ok(data) => data,
-        Err(e) => return Err(GrapevineCLIError::from(e)),
+        Err(e) => return Err(e),
     };
 
     /// OUTPUT
@@ -440,12 +436,12 @@ pub async fn get_phrase(phrase_index: u32) -> Result<String, GrapevineCLIError> 
     Ok(String::from(""))
 }
 
-pub fn make_or_get_account(username: String) -> Result<GrapevineAccount, GrapevineCLIError> {
+pub fn make_or_get_account(username: String) -> Result<GrapevineAccount, GrapevineError> {
     // get grapevine path
     let grapevine_dir_path = match std::env::var("HOME") {
         Ok(home) => Path::new(&home).join(".grapevine"),
         Err(e) => {
-            return Err(GrapevineCLIError::FsError(String::from(
+            return Err(GrapevineError::FsError(String::from(
                 "Couldn't find home directory??",
             )))
         }
@@ -460,7 +456,7 @@ pub fn make_or_get_account(username: String) -> Result<GrapevineAccount, Grapevi
         true => match GrapevineAccount::from_fs(grapevine_account_path) {
             Ok(account) => account,
             Err(e) => {
-                return Err(GrapevineCLIError::FsError(String::from(
+                return Err(GrapevineError::FsError(String::from(
                     "Error reading existing Grapevine account from filesystem",
                 )))
             }
@@ -480,7 +476,7 @@ pub fn make_or_get_account(username: String) -> Result<GrapevineAccount, Grapevi
     Ok(account)
 }
 
-pub async fn health() -> Result<String, GrapevineCLIError> {
+pub async fn health() -> Result<String, GrapevineError> {
     println!("SERVER URL IS: {}", &**crate::http::SERVER_URL);
     // ensure artifacts exist
     artifacts_guard().await.unwrap();
@@ -499,7 +495,7 @@ pub async fn health() -> Result<String, GrapevineCLIError> {
  *
  * @returns - the Grapevine account
  */
-pub fn get_account() -> Result<GrapevineAccount, GrapevineCLIError> {
+pub fn get_account() -> Result<GrapevineAccount, GrapevineError> {
     // get grapevine path
     let grapevine_account_path = Path::new(&std::env::var("HOME").unwrap())
         .join(".grapevine")
@@ -508,12 +504,12 @@ pub fn get_account() -> Result<GrapevineAccount, GrapevineCLIError> {
     match grapevine_account_path.exists() {
         true => match GrapevineAccount::from_fs(grapevine_account_path) {
             Ok(account) => Ok(account),
-            Err(e) => Err(GrapevineCLIError::FsError(String::from(
+            Err(e) => Err(GrapevineError::FsError(String::from(
                 "Error reading existing Grapevine account from filesystem",
             ))),
         },
         false => {
-            return Err(GrapevineCLIError::FsError(String::from(
+            return Err(GrapevineError::FsError(String::from(
                 "No Grapevine account found",
             )));
         }

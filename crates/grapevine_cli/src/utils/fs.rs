@@ -1,4 +1,4 @@
-use grapevine_common::{Fr, Params, G1, G2};
+use grapevine_common::{Fr, Params, G1, G2, errors::GrapevineError};
 use nova_scotia::circom::circuit::R1CS;
 use nova_scotia::circom::reader::load_r1cs;
 use nova_scotia::FileLocation;
@@ -6,7 +6,6 @@ use std::env::{var, VarError};
 use std::fs::write;
 use std::path::{Path, PathBuf};
 use lazy_static::lazy_static;
-use crate::errors::GrapevineCLIError;
 use crate::http::SERVER_URL;
 
 lazy_static! {
@@ -18,12 +17,12 @@ lazy_static! {
  *
  * @returns {PathBuf} path to the grapevine account file   
  */
-pub fn get_account_path() -> Result<PathBuf, GrapevineCLIError> {
+pub fn get_account_path() -> Result<PathBuf, GrapevineError> {
     // get grapevine path
     let grapevine_dir_path = match std::env::var("HOME") {
         Ok(home) => Path::new(&home).join(".grapevine"),
         Err(e) => {
-            return Err(GrapevineCLIError::FsError(String::from(
+            return Err(GrapevineError::FsError(String::from(
                 "Couldn't find home directory??",
             )))
         }

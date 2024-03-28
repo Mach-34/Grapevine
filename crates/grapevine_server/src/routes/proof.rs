@@ -3,7 +3,7 @@ use crate::mongo::GrapevineDB;
 use crate::utils::PUBLIC_PARAMS;
 use crate::{catchers::GrapevineResponse, guards::AuthenticatedUser};
 use grapevine_circuits::{nova::verify_nova_proof, utils::decompress_proof};
-use grapevine_common::errors::GrapevineServerError;
+use grapevine_common::errors::GrapevineError;
 use grapevine_common::{
     http::{
         requests::{DegreeProofRequest, PhraseRequest},
@@ -58,7 +58,7 @@ pub async fn prove_phrase(
                 e
             );
             return Err(GrapevineResponse::BadRequest(ErrorMessage(
-                Some(GrapevineServerError::SerdeError(String::from(
+                Some(GrapevineError::SerdeError(String::from(
                     "NewPhraseRequest",
                 ))),
                 None,
@@ -74,7 +74,7 @@ pub async fn prove_phrase(
         Err(e) => {
             println!("Proof verification failed: {:?}", e);
             return Err(GrapevineResponse::BadRequest(ErrorMessage(
-                Some(GrapevineServerError::DegreeProofVerificationFailed),
+                Some(GrapevineError::DegreeProofVerificationFailed),
                 None,
             )));
         }
@@ -84,7 +84,7 @@ pub async fn prove_phrase(
     let mut phrase_oid: Option<ObjectId> = match db.get_phrase_by_hash(&phrase_hash).await {
         Ok(oid) => Some(oid),
         Err(e) => match e {
-            GrapevineServerError::PhraseNotFound => None,
+            GrapevineError::PhraseNotFound => None,
             _ => {
                 return Err(GrapevineResponse::InternalError(ErrorMessage(
                     Some(e),
@@ -115,7 +115,7 @@ pub async fn prove_phrase(
                 Ok(conflict) => match conflict {
                     true => {
                         return Err(GrapevineResponse::Conflict(ErrorMessage(
-                            Some(GrapevineServerError::DegreeProofExists),
+                            Some(GrapevineError::DegreeProofExists),
                             None,
                         )))
                     }
@@ -177,7 +177,7 @@ pub async fn prove_phrase(
         Err(e) => {
             println!("Error adding proof: {:?}", e);
             Err(GrapevineResponse::InternalError(ErrorMessage(
-                Some(GrapevineServerError::MongoError(String::from(
+                Some(GrapevineError::MongoError(String::from(
                     "Failed to add proof to db",
                 ))),
                 None,
@@ -221,7 +221,7 @@ pub async fn degree_proof(
         Ok(req) => req,
         Err(_) => {
             return Err(GrapevineResponse::BadRequest(ErrorMessage(
-                Some(GrapevineServerError::SerdeError(String::from(
+                Some(GrapevineError::SerdeError(String::from(
                     "DegreeProofRequest",
                 ))),
                 None,
@@ -241,7 +241,7 @@ pub async fn degree_proof(
         Err(e) => {
             println!("Proof verification failed: {:?}", e);
             return Err(GrapevineResponse::BadRequest(ErrorMessage(
-                Some(GrapevineServerError::DegreeProofVerificationFailed),
+                Some(GrapevineError::DegreeProofVerificationFailed),
                 None,
             )));
         }
@@ -280,7 +280,7 @@ pub async fn degree_proof(
         Ok(exists) => match exists {
             true => {
                 return Err(GrapevineResponse::Conflict(ErrorMessage(
-                    Some(GrapevineServerError::DegreeProofExists),
+                    Some(GrapevineError::DegreeProofExists),
                     None,
                 )))
             }
@@ -300,7 +300,7 @@ pub async fn degree_proof(
         Err(e) => {
             println!("Error adding proof: {:?}", e);
             Err(GrapevineResponse::InternalError(ErrorMessage(
-                Some(GrapevineServerError::MongoError(String::from(
+                Some(GrapevineError::MongoError(String::from(
                     "Failed to add proof to db",
                 ))),
                 None,
@@ -377,7 +377,7 @@ pub async fn get_known_phrases(
     match db.get_known(user.0).await {
         Some(proofs) => Ok(Json(proofs)),
         None => Err(GrapevineResponse::InternalError(ErrorMessage(
-            Some(GrapevineServerError::MongoError(String::from(
+            Some(GrapevineError::MongoError(String::from(
                 "Error retrieving degrees in db",
             ))),
             None,
@@ -398,7 +398,7 @@ pub async fn get_phrase_connections(
     match db.get_phrase_by_index(phrase_index).await {
         Ok(_) => (),
         Err(e) => match e {
-            GrapevineServerError::PhraseNotFound => {
+            GrapevineError::PhraseNotFound => {
                 return Err(GrapevineResponse::NotFound(format!(
                     "No phrase found with id {}",
                     phrase_index
@@ -417,7 +417,7 @@ pub async fn get_phrase_connections(
     match db.get_phrase_connections(user.0, phrase_index).await {
         Some(connection_data) => Ok(Json(connection_data)),
         None => Err(GrapevineResponse::InternalError(ErrorMessage(
-            Some(GrapevineServerError::MongoError(String::from(
+            Some(GrapevineError::MongoError(String::from(
                 "Error retrieving degrees in db",
             ))),
             None,
@@ -439,7 +439,7 @@ pub async fn get_phrase(
     match db.get_phrase_by_index(phrase_index).await {
         Ok(_) => (),
         Err(e) => match e {
-            GrapevineServerError::PhraseNotFound => {
+            GrapevineError::PhraseNotFound => {
                 return Err(GrapevineResponse::NotFound(format!(
                     "No phrase found with id {}",
                     phrase_index

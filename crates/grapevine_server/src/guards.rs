@@ -1,5 +1,5 @@
 use crate::catchers::ErrorMessage;
-use grapevine_common::errors::GrapevineServerError;
+use grapevine_common::errors::GrapevineError;
 use crate::mongo::GrapevineDB;
 use babyjubjub_rs::{decompress_point, decompress_signature, verify};
 use grapevine_common::crypto::nonce_hash;
@@ -27,7 +27,7 @@ impl<'r> FromRequest<'r> for AuthenticatedUser {
                 return Failure((
                     Status::InternalServerError,
                     ErrorMessage(
-                        Some(GrapevineServerError::MongoError(String::from(
+                        Some(GrapevineError::MongoError(String::from(
                             "Error connecting to database",
                         ))),
                         None,
@@ -42,7 +42,7 @@ impl<'r> FromRequest<'r> for AuthenticatedUser {
                 return Failure((
                     Status::BadRequest,
                     ErrorMessage(
-                        Some(GrapevineServerError::HeaderError(String::from(
+                        Some(GrapevineError::HeaderError(String::from(
                             "couldn't find X-Username",
                         ))),
                         None,
@@ -61,7 +61,7 @@ impl<'r> FromRequest<'r> for AuthenticatedUser {
                         return Failure((
                             Status::BadRequest,
                             ErrorMessage(
-                                Some(GrapevineServerError::HeaderError(String::from(
+                                Some(GrapevineError::HeaderError(String::from(
                                     "couldn't parse X-Authorization",
                                 ))),
                                 None,
@@ -74,7 +74,7 @@ impl<'r> FromRequest<'r> for AuthenticatedUser {
                 return Failure((
                     Status::BadRequest,
                     ErrorMessage(
-                        Some(GrapevineServerError::HeaderError(String::from(
+                        Some(GrapevineError::HeaderError(String::from(
                             "couldn't find X-Authorization",
                         ))),
                         None,
@@ -88,7 +88,7 @@ impl<'r> FromRequest<'r> for AuthenticatedUser {
             None => {
                 return Failure((
                     Status::NotFound,
-                    ErrorMessage(Some(GrapevineServerError::UserNotFound(username)), None),
+                    ErrorMessage(Some(GrapevineError::UserNotFound(username)), None),
                 ));
             }
         };
@@ -103,7 +103,7 @@ impl<'r> FromRequest<'r> for AuthenticatedUser {
                 return Failure((
                     Status::Unauthorized,
                     ErrorMessage(
-                        Some(GrapevineServerError::Signature(String::from(
+                        Some(GrapevineError::Signature(String::from(
                             "Failed to verify nonce signature",
                         ))),
                         Some(nonce),
@@ -117,7 +117,7 @@ impl<'r> FromRequest<'r> for AuthenticatedUser {
             Err(_) => Failure((
                 Status::InternalServerError,
                 ErrorMessage(
-                    Some(GrapevineServerError::MongoError(String::from(
+                    Some(GrapevineError::MongoError(String::from(
                         "Error incrementing nonce",
                     ))),
                     None,

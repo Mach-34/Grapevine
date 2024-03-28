@@ -1,6 +1,6 @@
 use crate::{DATABASE_NAME, MONGODB_URI};
 use futures::stream::StreamExt;
-use grapevine_common::errors::GrapevineServerError;
+use grapevine_common::errors::GrapevineError;
 use grapevine_common::http::responses::DegreeData;
 use grapevine_common::models::{DegreeProof, Phrase, ProvingData, Relationship, User};
 use mongodb::bson::{self, doc, oid::ObjectId, Binary, Bson};
@@ -47,12 +47,12 @@ impl GrapevineDB {
 
     /// USER FUNCTIONS ///
 
-    pub async fn increment_nonce(&self, username: &str) -> Result<(), GrapevineServerError> {
+    pub async fn increment_nonce(&self, username: &str) -> Result<(), GrapevineError> {
         let filter = doc! { "username": username };
         let update = doc! { "$inc": { "nonce": 1 } };
         match self.users.update_one(filter, update, None).await {
             Ok(_) => Ok(()),
-            Err(e) => Err(GrapevineServerError::MongoError(e.to_string())),
+            Err(e) => Err(GrapevineError::MongoError(e.to_string())),
         }
     }
 
@@ -85,7 +85,7 @@ impl GrapevineDB {
         &self,
         username: &String,
         pubkey: &[u8; 32],
-    ) -> Result<[bool; 2], GrapevineServerError> {
+    ) -> Result<[bool; 2], GrapevineError> {
         // Verify user existence
         let pubkey_binary = Binary {
             subtype: bson::spec::BinarySubtype::Generic,
@@ -113,7 +113,7 @@ impl GrapevineDB {
                         found[1] = true;
                     }
                 }
-                Err(e) => return Err(GrapevineServerError::MongoError(e.to_string())),
+                Err(e) => return Err(GrapevineError::MongoError(e.to_string())),
             }
         }
         Ok(found)
@@ -127,7 +127,7 @@ impl GrapevineDB {
      * @param auth_secret - the encrypted auth secret used by this user
      * @returns - an error if the user already exists, or Ok otherwise
      */
-    pub async fn create_user(&self, user: User) -> Result<ObjectId, GrapevineServerError> {
+    pub async fn create_user(&self, user: User) -> Result<ObjectId, GrapevineError> {
         // check if the username exists already in the database
         let query = doc! { "username": &user.username };
         let options = FindOneOptions::builder()
@@ -135,7 +135,7 @@ impl GrapevineDB {
             .build();
         match self.users.find_one(query, options).await.unwrap() {
             Some(_) => {
-                return Err(GrapevineServerError::UserExists(
+                return Err(GrapevineError::UserExists(
                     user.username.clone().unwrap(),
                 ))
             }
@@ -145,7 +145,7 @@ impl GrapevineDB {
         // insert the user into the collection
         match self.users.insert_one(&user, None).await {
             Ok(result) => Ok(result.inserted_id.as_object_id().unwrap()),
-            Err(e) => Err(GrapevineServerError::MongoError(e.to_string())),
+            Err(e) => Err(GrapevineError::MongoError(e.to_string())),
         }
     }
 
@@ -177,11 +177,11 @@ impl GrapevineDB {
     pub async fn add_pending_relationship(
         &self,
         relationship: &Relationship,
-    ) -> Result<(), GrapevineServerError> {
+    ) -> Result<(), GrapevineError> {
         // create new relationship document
         match self.relationships.insert_one(relationship, None).await {
             Ok(_) => Ok(()),
-            Err(e) => Err(GrapevineServerError::MongoError(e.to_string())),
+            Err(e) => Err(GrapevineError::MongoError(e.to_string())),
         }
     }
 
@@ -194,7 +194,7 @@ impl GrapevineDB {
     pub async fn activate_relationship(
         &self,
         relationship: &Relationship,
-    ) -> Result<(), GrapevineServerError> {
+    ) -> Result<(), GrapevineError> {
         // set the pending relationship to be active
         let query = doc! {
             "sender": relationship.recipient.unwrap(),
@@ -207,7 +207,7 @@ impl GrapevineDB {
             .await
         {
             Ok(_) => (),
-            Err(e) => return Err(GrapevineServerError::MongoError(e.to_string())),
+            Err(e) => return Err(GrapevineError::MongoError(e.to_string())),
         };
 
         // retrieve the oid of the activated relationship
@@ -231,7 +231,7 @@ impl GrapevineDB {
         let update = doc! { "$push": { "relationships": sender_relationship } };
         match self.users.update_one(query, update, None).await {
             Ok(_) => (),
-            Err(e) => return Err(GrapevineServerError::MongoError(e.to_string())),
+            Err(e) => return Err(GrapevineError::MongoError(e.to_string())),
         }
 
         // create new relationship document
@@ -247,7 +247,7 @@ impl GrapevineDB {
         let update = doc! { "$push": { "relationships": recipient_relationship } };
         match self.users.update_one(query, update, None).await {
             Ok(_) => (),
-            Err(e) => return Err(GrapevineServerError::MongoError(e.to_string())),
+            Err(e) => return Err(GrapevineError::MongoError(e.to_string())),
         }
         Ok(())
     }
@@ -265,7 +265,7 @@ impl GrapevineDB {
         &self,
         from: &String,
         to: &String,
-    ) -> Result<(), GrapevineServerError> {
+    ) -> Result<(), GrapevineError> {
         // setup aggregation pipeline to get the ObjectID of the pending relationship to delete
         let pipeline = vec![
             // get the ObjectID of the recipient of the relationship request
@@ -317,8 +317,8 @@ impl GrapevineDB {
         let mut cursor = self.users.aggregate(pipeline, None).await.unwrap();
         let oid: ObjectId = match cursor.next().await {
             Some(Ok(document)) => document.get("relationship").unwrap().as_object_id().unwrap(),
-            Some(Err(e)) => return Err(GrapevineServerError::MongoError(e.to_string())),
-            None => return Err(GrapevineServerError::NoPendingRelationship(from.clone(), to.clone())),
+            Some(Err(e)) => return Err(GrapevineError::MongoError(e.to_string())),
+            None => return Err(GrapevineError::NoPendingRelationship(from.clone(), to.clone())),
         };
 
         // delete the pending relationship
@@ -326,9 +326,9 @@ impl GrapevineDB {
         match self.relationships.delete_one(filter, None).await {
             Ok(res) => match res.deleted_count == 1 {
                 true => (),
-                false => return Err(GrapevineServerError::MongoError("Failed to delete relationship".to_string())),
+                false => return Err(GrapevineError::MongoError("Failed to delete relationship".to_string())),
             }
-            Err(e) => return Err(GrapevineServerError::MongoError(e.to_string())),
+            Err(e) => return Err(GrapevineError::MongoError(e.to_string())),
         }
 
         Ok(())
@@ -345,7 +345,7 @@ impl GrapevineDB {
         &self,
         user: &String,
         active: bool,
-    ) -> Result<Vec<String>, GrapevineServerError> {
+    ) -> Result<Vec<String>, GrapevineError> {
         // setup aggregation pipeline for finding usernames of relationships
         let pipeline = vec![
             // get the ObjectID of the user doc for the given username
@@ -408,7 +408,7 @@ impl GrapevineDB {
         &self,
         from: &ObjectId,
         to: &ObjectId,
-    ) -> Result<bool, GrapevineServerError> {
+    ) -> Result<bool, GrapevineError> {
         let filter = doc! { "sender": from, "recipient": to, "active": false };
         let projection = doc! { "_id": 1 };
         let find_options = FindOneOptions::builder().projection(projection).build();
@@ -417,7 +417,7 @@ impl GrapevineDB {
                 Some(document) => Ok(true),
                 None => Ok(false),
             },
-            Err(e) => Err(GrapevineServerError::MongoError(e.to_string())),
+            Err(e) => Err(GrapevineError::MongoError(e.to_string())),
         }
     }
 
@@ -434,7 +434,7 @@ impl GrapevineDB {
         &self,
         sender: &ObjectId,
         recipient: &ObjectId,
-    ) -> Result<(bool, bool), GrapevineServerError> {
+    ) -> Result<(bool, bool), GrapevineError> {
         let query = doc! { "recipient": recipient, "sender": sender };
         let projection = doc! { "_id": 1, "active": 1 };
         let find_options = FindOneOptions::builder().projection(projection).build();
@@ -448,7 +448,7 @@ impl GrapevineDB {
                 };
                 Ok((exists, active))
             }
-            Err(e) => Err(GrapevineServerError::MongoError(e.to_string())),
+            Err(e) => Err(GrapevineError::MongoError(e.to_string())),
         }
     }
 
@@ -466,7 +466,7 @@ impl GrapevineDB {
         &self,
         phrase_hash: [u8; 32],
         description: String,
-    ) -> Result<(ObjectId, u32), GrapevineServerError> {
+    ) -> Result<(ObjectId, u32), GrapevineError> {
         // query for the highest phrase id
         let find_options = FindOneOptions::builder().sort(doc! {"index": -1}).build();
 
@@ -477,7 +477,7 @@ impl GrapevineDB {
                 previous_index + 1
             }
             Ok(None) => 1,
-            Err(e) => return Err(GrapevineServerError::MongoError(e.to_string())),
+            Err(e) => return Err(GrapevineError::MongoError(e.to_string())),
         };
 
         // create new phrase document
@@ -489,7 +489,7 @@ impl GrapevineDB {
         };
         let oid = match self.phrases.insert_one(&phrase, None).await {
             Ok(res) => res.inserted_id.as_object_id().unwrap(),
-            Err(e) => return Err(GrapevineServerError::MongoError(e.to_string())),
+            Err(e) => return Err(GrapevineError::MongoError(e.to_string())),
         };
 
         Ok((oid, index))
@@ -499,7 +499,7 @@ impl GrapevineDB {
         &self,
         user: &ObjectId,
         proof: &DegreeProof,
-    ) -> Result<ObjectId, GrapevineServerError> {
+    ) -> Result<ObjectId, GrapevineError> {
         // fetch all proofs preceding this one
         let mut proof_chain: Vec<DegreeProof> = vec![];
         let mut cursor = self
@@ -1431,14 +1431,14 @@ impl GrapevineDB {
     pub async fn check_degree_exists(
         &self,
         proof: &DegreeProof,
-    ) -> Result<bool, GrapevineServerError> {
+    ) -> Result<bool, GrapevineError> {
         let query = doc! {"preceding": proof.preceding.unwrap(), "user": proof.user.unwrap()};
         let projection = doc! { "_id": 1 };
         let find_options = FindOneOptions::builder().projection(projection).build();
 
         match self.degree_proofs.find_one(query, find_options).await {
             Ok(res) => Ok(res.is_some()),
-            Err(e) => Err(GrapevineServerError::MongoError(e.to_string())),
+            Err(e) => Err(GrapevineError::MongoError(e.to_string())),
         }
     }
 
@@ -1450,7 +1450,7 @@ impl GrapevineDB {
     pub async fn get_phrase_by_hash(
         &self,
         phrase_hash: &[u8; 32],
-    ) -> Result<ObjectId, GrapevineServerError> {
+    ) -> Result<ObjectId, GrapevineError> {
         let phrase_hash_bson: Vec<i32> = phrase_hash.to_vec().iter().map(|x| *x as i32).collect();
 
         let query = doc! {"hash": phrase_hash_bson};
@@ -1460,9 +1460,9 @@ impl GrapevineDB {
         match self.phrases.find_one(query, find_options).await {
             Ok(res) => match res {
                 Some(document) => Ok(document.id.unwrap()),
-                None => Err(GrapevineServerError::PhraseNotFound),
+                None => Err(GrapevineError::PhraseNotFound),
             },
-            Err(e) => Err(GrapevineServerError::MongoError(e.to_string())),
+            Err(e) => Err(GrapevineError::MongoError(e.to_string())),
         }
     }
 
@@ -1472,16 +1472,16 @@ impl GrapevineDB {
      * @param index - index of the phrase
      * @return - ObjectId of the phrase if it exists
      */
-    pub async fn get_phrase_by_index(&self, index: u32) -> Result<ObjectId, GrapevineServerError> {
+    pub async fn get_phrase_by_index(&self, index: u32) -> Result<ObjectId, GrapevineError> {
         let options = FindOneOptions::builder()
             .projection(doc! { "_id": 1 })
             .build();
         match self.phrases.find_one(doc! {"index": index}, options).await {
             Ok(res) => match res {
                 Some(document) => Ok(document.id.unwrap()),
-                None => Err(GrapevineServerError::PhraseNotFound),
+                None => Err(GrapevineError::PhraseNotFound),
             },
-            Err(e) => Err(GrapevineServerError::MongoError(e.to_string())),
+            Err(e) => Err(GrapevineError::MongoError(e.to_string())),
         }
     }
 
@@ -1498,7 +1498,7 @@ impl GrapevineDB {
         user: &String,
         phrase_index: u32,
         degree: u8,
-    ) -> Result<bool, GrapevineServerError> {
+    ) -> Result<bool, GrapevineError> {
         let mut cursor = self
             .users
             .aggregate(
@@ -1557,21 +1557,21 @@ impl GrapevineDB {
         let cursor_res = cursor.next().await;
         return match cursor_res {
             Some(Ok(_)) => Ok(true),
-            Some(Err(e)) => Err(GrapevineServerError::MongoError(e.to_string())),
+            Some(Err(e)) => Err(GrapevineError::MongoError(e.to_string())),
             None => Ok(false),
         };
     }
 
-    pub async fn get_phrase_index(&self, oid: &ObjectId) -> Result<u32, GrapevineServerError> {
+    pub async fn get_phrase_index(&self, oid: &ObjectId) -> Result<u32, GrapevineError> {
         let options = FindOneOptions::builder()
             .projection(doc! { "index": 1 })
             .build();
         match self.phrases.find_one(doc! {"_id": oid}, options).await {
             Ok(res) => match res {
                 Some(document) => Ok(document.index.unwrap()),
-                None => Err(GrapevineServerError::PhraseNotFound),
+                None => Err(GrapevineError::PhraseNotFound),
             },
-            Err(e) => Err(GrapevineServerError::MongoError(e.to_string())),
+            Err(e) => Err(GrapevineError::MongoError(e.to_string())),
         }
     }
 
@@ -1588,7 +1588,7 @@ impl GrapevineDB {
         &self,
         username: &String,
         index: u32,
-    ) -> Result<DegreeData, GrapevineServerError> {
+    ) -> Result<DegreeData, GrapevineError> {
         // find the degree data for a given proof
         let pipeline = vec![
             // look up the user by username
@@ -1769,13 +1769,13 @@ impl GrapevineDB {
                     });
                 }
                 Err(_) => {
-                    return Err(GrapevineServerError::MongoError(
+                    return Err(GrapevineError::MongoError(
                         "Failed phrase data retrieval".to_string(),
                     ));
                 }
             }
         } else {
-            return Err(GrapevineServerError::MongoError(
+            return Err(GrapevineError::MongoError(
                 "Failed phrase data retrieval".to_string(),
             ));
         }

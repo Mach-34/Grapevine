@@ -1,7 +1,6 @@
 use clap::{Args, Parser, Subcommand};
-
+use grapevine_common::errors::GrapevineError;
 mod controllers;
-mod errors;
 mod http;
 mod utils;
 
