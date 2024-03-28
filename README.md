@@ -18,3 +18,12 @@
 
 See [the test file](./scripts/moving_degree_test.sh) for insights on driving the CLI manually.
 Docs will come once the codebase is not as messy and edge cases are handled
+
+## Run with Deployed server 
+
+1. Clone the repo
+`git clone https://github.com/mach-34/grapevine && cd grapevine`
+2. `echo "GRAPEVINE_SERVER=https://grapevine.mach34.space" > ./crates/grapevine_cli/.env`
+3. cargo +nightly build
+4. `cd target/debug`
+5. ./grapevine
