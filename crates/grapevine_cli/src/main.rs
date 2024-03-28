@@ -120,7 +120,7 @@ pub async fn main() {
         Commands::Account(cmd) => match cmd {
             AccountCommands::Register { username } => controllers::register(username).await,
             AccountCommands::Info => controllers::account_details().await,
-            AccountCommands::Export => Ok(String::from("Key export is not yet implemented")),
+            AccountCommands::Export => controllers::export_key(),
         },
         Commands::Relationship(cmd) => match cmd {
             RelationshipCommands::Add { username } => controllers::add_relationship(username).await,
