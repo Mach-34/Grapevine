@@ -197,26 +197,45 @@ impl GrapevineDB {
     ) -> Result<(), GrapevineServerError> {
         // set the pending relationship to be active
         let query = doc! {
-            "sender": relationship.recipient,
-            "recipient": relationship.sender
+            "sender": relationship.recipient.unwrap(),
+            "recipient": relationship.sender.unwrap()
         };
         let update = doc! { "$set": { "active": true } };
-        let recipient_relationship = match self.relationships.update_one(query, update, None).await
+        match self
+            .relationships
+            .update_one(query.clone(), update, None)
+            .await
         {
-            Ok(res) => res.upserted_id.unwrap(),
+            Ok(_) => (),
             Err(e) => return Err(GrapevineServerError::MongoError(e.to_string())),
         };
 
-        // push the relationship to the recipient's list of relationships
-        let query = doc! { "_id": relationship.recipient };
-        let update = doc! { "$push": { "relationships": recipient_relationship } };
+        // retrieve the oid of the activated relationship
+        let find_options = FindOneOptions::builder()
+            .projection(doc! {"_id": 1})
+            .build();
+        // probably safe to unwrap here since we just activated the relationship
+        // annoying that API does not return the oid of the updated document
+        let sender_relationship: Bson = self
+            .relationships
+            .find_one(query, Some(find_options))
+            .await
+            .unwrap()
+            .unwrap()
+            .id
+            .unwrap()
+            .into();
+
+        // push the relationship to the 's list of relationships
+        let query = doc! { "_id": relationship.sender.unwrap() };
+        let update = doc! { "$push": { "relationships": sender_relationship } };
         match self.users.update_one(query, update, None).await {
             Ok(_) => (),
             Err(e) => return Err(GrapevineServerError::MongoError(e.to_string())),
         }
 
         // create new relationship document
-        let sender_relationship = self
+        let recipient_relationship = self
             .relationships
             .insert_one(relationship, None)
             .await
@@ -224,8 +243,8 @@ impl GrapevineDB {
             .inserted_id;
 
         // push the relationship to the recipien's list of relationships
-        let query = doc! { "_id": relationship.sender };
-        let update = doc! { "$push": { "relationships": sender_relationship } };
+        let query = doc! { "_id": relationship.recipient.unwrap() };
+        let update = doc! { "$push": { "relationships": recipient_relationship } };
         match self.users.update_one(query, update, None).await {
             Ok(_) => (),
             Err(e) => return Err(GrapevineServerError::MongoError(e.to_string())),

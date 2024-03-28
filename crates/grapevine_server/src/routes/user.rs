@@ -233,11 +233,11 @@ pub async fn add_relationship(
     match req {
         Ok(_) => {
             let msg = match activate {
-                true => "Activated",
-                false => "Pending",
+                true => "activated",
+                false => "pending",
             };
             Ok(GrapevineResponse::Created(format!(
-                "Relationship from {} to {} {} successfully",
+                "Relationship from {} to {} {}!",
                 user.0, request.to, msg
             )))
         }

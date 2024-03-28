@@ -128,7 +128,7 @@ mod test_rocket {
 
         let res = context
             .client
-            .post("/user/relationship")
+            .post("/user/relationship/add")
             .header(Header::new("X-Authorization", signature))
             .header(Header::new("X-Username", username))
             .json(&body)
@@ -440,18 +440,20 @@ mod test_rocket {
             // Proceeding is now an index below after removal
             let mut proceeding = users.remove(i);
             add_relationship_request(&mut preceding, &mut proceeding).await;
+            add_relationship_request(&mut proceeding, &mut preceding).await;
 
             // Create degree proofs: A <- B <- C
             let proofs = get_available_degrees_request(&mut proceeding)
                 .await
                 .unwrap();
 
-            // create_degree_proof_request(&proofs[0], &mut proceeding).await;
+            create_degree_proof_request(&proofs[0], &mut proceeding).await;
 
             // Add users back to vector
             users.insert(i, preceding);
             users.insert(i + 1, proceeding);
         }
+        println!("8====================================D");
 
         let mut user_a = users.remove(0);
         // User C is now an index below after removal
@@ -459,6 +461,7 @@ mod test_rocket {
 
         // Establish relationship between A and C now
         add_relationship_request(&mut user_a, &mut user_c).await;
+        add_relationship_request(&mut user_c, &mut user_a).await;
 
         // Check that C now has an available degree request
         let proofs_c = get_available_degrees_request(&mut user_c).await.unwrap();
@@ -501,6 +504,8 @@ mod test_rocket {
             let mut proceeding = users.remove(i);
 
             add_relationship_request(&mut preceding, &mut proceeding).await;
+            add_relationship_request(&mut proceeding, &mut preceding).await;
+
             let proofs = get_available_degrees_request(&mut proceeding)
                 .await
                 .unwrap();
@@ -515,6 +520,8 @@ mod test_rocket {
         let mut user_c = users.remove(1);
         // Establish relationship between A and C now
         add_relationship_request(&mut user_a, &mut user_c).await;
+        add_relationship_request(&mut user_c, &mut user_a).await;
+
         // Check that C now has an available degree request
         let proofs_c = get_available_degrees_request(&mut user_c).await.unwrap();
         // Create new deree proof between A and C
@@ -564,6 +571,8 @@ mod test_rocket {
             let mut proceeding = users.remove(i);
 
             add_relationship_request(&mut preceding, &mut proceeding).await;
+            add_relationship_request(&mut proceeding, &mut preceding).await;
+
             let proofs = get_available_degrees_request(&mut proceeding)
                 .await
                 .unwrap();
@@ -581,6 +590,8 @@ mod test_rocket {
             let mut proceeding = users.remove(i + 2);
 
             add_relationship_request(&mut preceding, &mut proceeding).await;
+            add_relationship_request(&mut proceeding, &mut preceding).await;
+
             let proofs = get_available_degrees_request(&mut proceeding)
                 .await
                 .unwrap();
@@ -597,6 +608,8 @@ mod test_rocket {
             let mut proceeding = users.remove(i + 1);
 
             add_relationship_request(&mut preceding, &mut proceeding).await;
+            add_relationship_request(&mut proceeding, &mut preceding).await;
+
             let proofs = get_available_degrees_request(&mut proceeding)
                 .await
                 .unwrap();
@@ -651,6 +664,8 @@ mod test_rocket {
             let mut proceeding = users.remove(i);
 
             add_relationship_request(&mut preceding, &mut proceeding).await;
+            add_relationship_request(&mut proceeding, &mut preceding).await;
+
             let proofs = get_available_degrees_request(&mut proceeding)
                 .await
                 .unwrap();
@@ -680,6 +695,8 @@ mod test_rocket {
             let mut proceeding = users.remove(i + 2);
 
             add_relationship_request(&mut preceding, &mut proceeding).await;
+            add_relationship_request(&mut proceeding, &mut preceding).await;
+
             let proofs = get_available_degrees_request(&mut proceeding)
                 .await
                 .unwrap();
@@ -709,6 +726,8 @@ mod test_rocket {
             let mut proceeding = users.remove(i + 8);
 
             add_relationship_request(&mut preceding, &mut proceeding).await;
+            add_relationship_request(&mut proceeding, &mut preceding).await;
+
             let proofs = get_available_degrees_request(&mut proceeding)
                 .await
                 .unwrap();
@@ -737,6 +756,8 @@ mod test_rocket {
             // Proceeding is now an index below after removal
             let mut proceeding = users.remove(i + 2);
             add_relationship_request(&mut preceding, &mut proceeding).await;
+            add_relationship_request(&mut proceeding, &mut preceding).await;
+
             let proofs = get_available_degrees_request(&mut proceeding)
                 .await
                 .unwrap();
@@ -788,6 +809,8 @@ mod test_rocket {
             let mut proceeding = users.remove(i);
 
             add_relationship_request(&mut preceding, &mut proceeding).await;
+            add_relationship_request(&mut proceeding, &mut preceding).await;
+
             let proofs = get_available_degrees_request(&mut proceeding)
                 .await
                 .unwrap();
@@ -842,6 +865,8 @@ mod test_rocket {
             let mut proceeding = users.remove(i);
 
             add_relationship_request(&mut preceding, &mut proceeding).await;
+            add_relationship_request(&mut proceeding, &mut preceding).await;
+
             let proofs = get_available_degrees_request(&mut proceeding)
                 .await
                 .unwrap();
@@ -860,6 +885,8 @@ mod test_rocket {
             let mut proceeding = users.remove(i + 1);
 
             add_relationship_request(&mut preceding, &mut proceeding).await;
+            add_relationship_request(&mut proceeding, &mut preceding).await;
+
             let proofs = get_available_degrees_request(&mut proceeding)
                 .await
                 .unwrap();
@@ -1138,17 +1165,73 @@ mod test_rocket {
         create_user_request(&context, &user_a_request).await;
         create_user_request(&context, &user_b_request).await;
 
-        let (code, _) = add_relationship_request(&mut user_a, &mut user_b).await;
-
+        // Check add pending relationship request
+        let (code, msg) = add_relationship_request(&mut user_a, &mut user_b).await;
         assert_eq!(
             code,
             Status::Created.code,
-            "Relationship should be successfully created"
-        )
+            "Relationship add code should be 201"
+        );
+        assert_eq!(
+            msg.unwrap(),
+            "Relationship from user_relationship_4_a to user_relationship_4_b pending!",
+            "Relationship should be pending"
+        );
+
+        // Check activate relationship request
+        let (code, msg) = add_relationship_request(&mut user_b, &mut user_a).await;
+        assert_eq!(
+            code,
+            Status::Created.code,
+            "Relationship add code should be 201"
+        );
+        assert_eq!(
+            msg.unwrap(),
+            "Relationship from user_relationship_4_b to user_relationship_4_a activated!",
+            "Relationship should be activated"
+        );
     }
 
     #[rocket::async_test]
-    async fn test_duplicate_relationship() {
+    async fn test_only_prove_with_active_relationship() {
+        // Reset db with clean state
+        GrapevineDB::drop("grapevine_mocked").await;
+
+        let context = GrapevineTestContext::init().await;
+
+        let mut user_a = GrapevineAccount::new(String::from("user_a"));
+        let mut user_b = GrapevineAccount::new(String::from("user_b"));
+
+        // Create user
+        let user_a_request = user_a.create_user_request();
+        let user_b_request = user_b.create_user_request();
+        create_user_request(&context, &user_a_request).await;
+        create_user_request(&context, &user_b_request).await;
+
+        // Add relationship from a to b
+        _ = add_relationship_request(&mut user_a, &mut user_b).await;
+
+        // Create phrase a phrase as User A
+        let phrase = String::from("The sheep waited patiently in the field");
+        let description = String::from("Sheep have no patience");
+        _ = phrase_request(&phrase, description, &mut user_a).await;
+
+        // Get available proofs as b and check 0 returned
+        let proofs = get_available_degrees_request(&mut user_b).await.unwrap();
+        assert_eq!(proofs.len(), 0, "No proofs should be available");
+
+        // Add relationship from b to a
+        _ = add_relationship_request(&mut user_b, &mut user_a).await;
+
+        // Get available proofs as b and check can prove
+        let proofs = get_available_degrees_request(&mut user_b).await.unwrap();
+        assert_eq!(proofs.len(), 1, "Proof should be available");
+        let (code, _) = create_degree_proof_request(&proofs[0], &mut user_b).await;
+        assert_eq!(code, Status::Created.code, "Proof should be created");
+    }
+
+    #[rocket::async_test]
+    async fn test_duplicate_pending_relationship() {
         // Reset db with clean state
         GrapevineDB::drop("grapevine_mocked").await;
 
@@ -1164,13 +1247,50 @@ mod test_rocket {
         create_user_request(&context, &user_b_request).await;
 
         add_relationship_request(&mut user_a, &mut user_b).await;
-        let (_, msg_res) = add_relationship_request(&mut user_a, &mut user_b).await;
+
+        let (code, msg_res) = add_relationship_request(&mut user_a, &mut user_b).await;
+        assert_eq!(
+            code,
+            Status::Conflict.code,
+            "Relationship should be a conflict"
+        );
         let msg = msg_res.unwrap();
-        let condition = msg.contains("RelationshipExists")
+        let condition = msg.contains("PendingRelationshipExists")
             && msg.contains("user_relationship_5_a")
             && msg.contains("user_relationship_5_b");
+        assert!(condition, "Duplicate pending relationships cannot exist.");
+    }
 
-        assert!(condition, "Duplicate relationships cannot exist.");
+    #[rocket::async_test]
+    async fn test_duplicate_active_relationship() {
+        // Reset db with clean state
+        GrapevineDB::drop("grapevine_mocked").await;
+
+        let context = GrapevineTestContext::init().await;
+
+        let mut user_a = GrapevineAccount::new(String::from("user_relationship_5_a"));
+        let mut user_b = GrapevineAccount::new(String::from("user_relationship_5_b"));
+
+        // Create user
+        let user_a_request = user_a.create_user_request();
+        let user_b_request = user_b.create_user_request();
+        create_user_request(&context, &user_a_request).await;
+        create_user_request(&context, &user_b_request).await;
+
+        add_relationship_request(&mut user_a, &mut user_b).await;
+        add_relationship_request(&mut user_b, &mut user_a).await;
+
+        let (code, msg_res) = add_relationship_request(&mut user_a, &mut user_b).await;
+        assert_eq!(
+            code,
+            Status::Conflict.code,
+            "Relationship should be a conflict"
+        );
+        let msg = msg_res.unwrap();
+        let condition = msg.contains("ActiveRelationshipExists")
+            && msg.contains("user_relationship_5_a")
+            && msg.contains("user_relationship_5_b");
+        assert!(condition, "Duplicate active relationships cannot exist.");
     }
 
     #[rocket::async_test]
@@ -1284,6 +1404,7 @@ mod test_rocket {
         create_user_request(&context, &user_b_request).await;
 
         add_relationship_request(&mut user_a, &mut user_b).await;
+        add_relationship_request(&mut user_b, &mut user_a).await;
 
         // Create phrase a phrase as User A
         let phrase = String::from("The first phrase to end them all");
@@ -1315,7 +1436,9 @@ mod test_rocket {
         let user_b_request = user_b.create_user_request();
         create_user_request(&context, &user_a_request).await;
         create_user_request(&context, &user_b_request).await;
+
         add_relationship_request(&mut user_a, &mut user_b).await;
+        add_relationship_request(&mut user_b, &mut user_a).await;
 
         // Create phrase a phrase as User A
         let phrase = String::from("The first phrase to end them all");
@@ -1388,31 +1511,28 @@ mod test_rocket {
 
         // Add first degree connection and second degree connection
         add_relationship_request(&mut user_b, &mut user_a).await;
-        add_relationship_request(&mut user_c, &mut user_b).await;
-
-        let details = get_account_details_request(&mut user_a).await.unwrap();
-        assert_eq!(details.0, 1, "Phrase count should be 1");
-        assert_eq!(details.1, 1, "First degree count should be 1");
-        assert_eq!(details.2, 1, "Second degree count should be 1");
-
-        // Relationships with calling account should be excluded
         add_relationship_request(&mut user_a, &mut user_b).await;
+        add_relationship_request(&mut user_c, &mut user_b).await;
+        add_relationship_request(&mut user_b, &mut user_c).await;
         let details = get_account_details_request(&mut user_a).await.unwrap();
         assert_eq!(details.0, 1, "Phrase count should be 1");
         assert_eq!(details.1, 1, "First degree count should be 1");
         assert_eq!(details.2, 1, "Second degree count should be 1");
 
-        // Second degree connections that becomes a first degree connection should no longer be treated as second degree
+        // Add more second degree connections
         add_relationship_request(&mut user_d, &mut user_b).await;
+        add_relationship_request(&mut user_b, &mut user_d).await;
         add_relationship_request(&mut user_e, &mut user_b).await;
+        add_relationship_request(&mut user_b, &mut user_e).await;
         let details = get_account_details_request(&mut user_a).await.unwrap();
         assert_eq!(details.0, 1, "Phrase count should be 1");
         assert_eq!(details.1, 1, "First degree count should be 1");
         assert_eq!(details.2, 3, "Second degree count should be 3");
 
+        // Second degree connections become first degree connections
         add_relationship_request(&mut user_d, &mut user_a).await;
-        add_relationship_request(&mut user_e, &mut user_a).await;
         add_relationship_request(&mut user_a, &mut user_d).await;
+        add_relationship_request(&mut user_e, &mut user_a).await;
         add_relationship_request(&mut user_a, &mut user_e).await;
         let details = get_account_details_request(&mut user_a).await.unwrap();
         assert_eq!(details.0, 1, "Phrase count should be 1");
@@ -1420,10 +1540,14 @@ mod test_rocket {
         assert_eq!(details.2, 1, "Second degree count should be 1");
 
         // Test where 3 new degree 2 connections added at once
-        add_relationship_request(&mut user_g, &mut user_f).await;
-        add_relationship_request(&mut user_h, &mut user_f).await;
-        add_relationship_request(&mut user_i, &mut user_f).await;
         add_relationship_request(&mut user_f, &mut user_a).await;
+        add_relationship_request(&mut user_a, &mut user_f).await;
+        add_relationship_request(&mut user_f, &mut user_g).await;
+        add_relationship_request(&mut user_g, &mut user_f).await;
+        add_relationship_request(&mut user_f, &mut user_h).await;
+        add_relationship_request(&mut user_h, &mut user_f).await;
+        add_relationship_request(&mut user_f, &mut user_i).await;
+        add_relationship_request(&mut user_i, &mut user_f).await;
         let details = get_account_details_request(&mut user_a).await.unwrap();
         assert_eq!(details.0, 1, "Phrase count should be 1");
         assert_eq!(details.1, 4, "First degree count should be 3");
@@ -1466,6 +1590,8 @@ mod test_rocket {
             let mut proceeding = users.remove(i);
 
             add_relationship_request(&mut preceding, &mut proceeding).await;
+            add_relationship_request(&mut proceeding, &mut preceding).await;
+
             let proofs = get_available_degrees_request(&mut proceeding)
                 .await
                 .unwrap();
@@ -1483,25 +1609,43 @@ mod test_rocket {
         let mut user_f = users.remove(1);
         let mut user_g = users.remove(1);
 
+        // user_b <- user_c -> user_d
         let connections = get_phrase_connection_request(&mut user_c, data.phrase_index)
             .await
             .unwrap();
-
-        assert_eq!(connections.0, 1);
+        // has 2 total connections
+        assert_eq!(connections.0, 2);
+        // not connected to user_a at 1st degree spot
+        assert_eq!(*connections.1.get(0).unwrap(), 0);
+        // user_b is is at 2nd degree spot, showing 1 2nd degree connection
         assert_eq!(*connections.1.get(1).unwrap(), 1);
+        // user_c is not connected to themselves and no other 3rd degree connections
+        assert_eq!(*connections.1.get(2).unwrap(), 0);
+        // user d is at 4th degree spot, showing 1 4th degree connection
+        assert_eq!(*connections.1.get(3).unwrap(), 1);
+        // connection vector is length 4, implying no connections past degree 4
+        assert_eq!(connections.1.len(), 4);
 
         add_relationship_request(&mut user_a, &mut user_f).await;
+        add_relationship_request(&mut user_f, &mut user_a).await;
+
         let proofs = get_available_degrees_request(&mut user_f).await.unwrap();
         // User F has proof of degree 2
         create_degree_proof_request(&proofs[0], &mut user_f).await;
         // User G has degree proof 3
         add_relationship_request(&mut user_b, &mut user_g).await;
+        add_relationship_request(&mut user_g, &mut user_b).await;
+
         let proofs = get_available_degrees_request(&mut user_g).await.unwrap();
         create_degree_proof_request(&proofs[0], &mut user_g).await;
 
+        add_relationship_request(&mut user_c, &mut user_a).await;
         add_relationship_request(&mut user_a, &mut user_c).await;
+        add_relationship_request(&mut user_c, &mut user_d).await;
         add_relationship_request(&mut user_d, &mut user_c).await;
+        add_relationship_request(&mut user_c, &mut user_f).await;
         add_relationship_request(&mut user_f, &mut user_c).await;
+        add_relationship_request(&mut user_c, &mut user_g).await;
         add_relationship_request(&mut user_g, &mut user_c).await;
 
         // User C should have:
@@ -1519,6 +1663,7 @@ mod test_rocket {
         assert_eq!(*connections.1.get(1).unwrap(), 2);
         assert_eq!(*connections.1.get(2).unwrap(), 1);
         assert_eq!(*connections.1.get(3).unwrap(), 1);
+        assert_eq!(connections.1.len(), 4);
 
         // create phrase 2
         let phrase = String::from("Raindrops are falling on my head");
