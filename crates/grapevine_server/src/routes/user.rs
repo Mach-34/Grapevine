@@ -2,7 +2,7 @@ use crate::catchers::{ErrorMessage, GrapevineResponse};
 use crate::guards::AuthenticatedUser;
 use crate::mongo::GrapevineDB;
 use babyjubjub_rs::{decompress_point, decompress_signature, verify};
-use grapevine_common::errors::GrapevineServerError;
+use grapevine_common::errors::GrapevineError;
 use grapevine_common::http::requests::GetNonceRequest;
 use grapevine_common::http::{requests::CreateUserRequest, responses::DegreeData};
 use grapevine_common::utils::convert_username_to_fr;
@@ -41,7 +41,7 @@ pub async fn create_user(
     // check username length is valid
     if request.username.len() > MAX_USERNAME_CHARS {
         return Err(GrapevineResponse::BadRequest(ErrorMessage(
-            Some(GrapevineServerError::UsernameTooLong(
+            Some(GrapevineError::UsernameTooLong(
                 request.username.clone(),
             )),
             None,
@@ -50,7 +50,7 @@ pub async fn create_user(
     // check request is ascii
     if !request.username.is_ascii() {
         return Err(GrapevineResponse::BadRequest(ErrorMessage(
-            Some(GrapevineServerError::UsernameNotAscii(
+            Some(GrapevineError::UsernameNotAscii(
                 request.username.clone(),
             )),
             None,
@@ -67,7 +67,7 @@ pub async fn create_user(
         true => (),
         false => {
             return Err(GrapevineResponse::BadRequest(ErrorMessage(
-                Some(GrapevineServerError::Signature(String::from(
+                Some(GrapevineError::Signature(String::from(
                     "Could not verify user creation signature",
                 ))),
                 None,
@@ -82,13 +82,13 @@ pub async fn create_user(
         Ok(found) => match found {
             [true, true] => {
                 return Err(GrapevineResponse::Conflict(ErrorMessage(
-                    Some(GrapevineServerError::UserExists(request.username.clone())),
+                    Some(GrapevineError::UserExists(request.username.clone())),
                     None,
                 )));
             }
             [true, false] => {
                 return Err(GrapevineResponse::Conflict(ErrorMessage(
-                    Some(GrapevineServerError::UsernameExists(
+                    Some(GrapevineError::UsernameExists(
                         request.username.clone(),
                     )),
                     None,
@@ -96,7 +96,7 @@ pub async fn create_user(
             }
             [false, true] => {
                 return Err(GrapevineResponse::Conflict(ErrorMessage(
-                    Some(GrapevineServerError::PubkeyExists(format!(
+                    Some(GrapevineError::PubkeyExists(format!(
                         "0x{}",
                         hex::encode(request.pubkey.clone())
                     ))),
@@ -158,7 +158,7 @@ pub async fn add_relationship(
     // ensure from != to
     if &user.0 == &request.to {
         return Err(GrapevineResponse::BadRequest(ErrorMessage(
-            Some(GrapevineServerError::RelationshipSenderIsTarget),
+            Some(GrapevineError::RelationshipSenderIsTarget),
             None,
         )));
     }
@@ -183,10 +183,10 @@ pub async fn add_relationship(
             true => {
                 let err = match active {
                     true => {
-                        GrapevineServerError::ActiveRelationshipExists(user.0, request.to.clone())
+                        GrapevineError::ActiveRelationshipExists(user.0, request.to.clone())
                     }
                     false => {
-                        GrapevineServerError::PendingRelationshipExists(user.0, request.to.clone())
+                        GrapevineError::PendingRelationshipExists(user.0, request.to.clone())
                     }
                 };
                 return Err(GrapevineResponse::Conflict(ErrorMessage(Some(err), None)));
@@ -233,17 +233,17 @@ pub async fn add_relationship(
     match req {
         Ok(_) => {
             let msg = match activate {
-                true => "Activated",
-                false => "Pending",
+                true => "activated",
+                false => "pending",
             };
             Ok(GrapevineResponse::Created(format!(
-                "Relationship from {} to {} {} successfully",
+                "Relationship from {} to {} {}!",
                 user.0, request.to, msg
             )))
         }
         Err(e) => {
             Err(GrapevineResponse::InternalError(ErrorMessage(
-                Some(GrapevineServerError::MongoError(String::from(
+                Some(GrapevineError::MongoError(String::from(
                     "Failed to add relationship to db",
                 ))),
                 None,
@@ -252,17 +252,18 @@ pub async fn add_relationship(
     }
 }
 
-#[post("/relationship/reject", format = "json", data = "<request>")]
+#[post("/relationship/reject/<username>")]
 pub async fn reject_pending_relationship(
     user: AuthenticatedUser,
-    request: Json<String>,
+    username: String,
     db: &State<GrapevineDB>,
 ) -> Result<Status, GrapevineResponse> {
     // attempt to delete the pending relationship
-    match db.reject_relationship(&user.0, &request).await {
+    println!("Rejecting relationship from {} to {}", username, user.0);
+    match db.reject_relationship(&username, &user.0).await {
         Ok(_) => Ok(Status::Ok),
         Err(e) => match e {
-            GrapevineServerError::NoPendingRelationship(from, to) => {
+            GrapevineError::NoPendingRelationship(from, to) => {
                 Err(GrapevineResponse::NotFound(format!(
                     "No pending relationship exists from {} to {}",
                     from, to
@@ -275,6 +276,35 @@ pub async fn reject_pending_relationship(
         },
     }
 }
+
+#[get("/relationship/pending")]
+pub async fn get_pending_relationships(
+    user: AuthenticatedUser,
+    db: &State<GrapevineDB>,
+) -> Result<Json<Vec<String>>, GrapevineResponse> {
+    match db.get_relationships(&user.0, false).await {
+        Ok(relationships) => Ok(Json(relationships)),
+        Err(e) => Err(GrapevineResponse::InternalError(ErrorMessage(
+            Some(e),
+            None,
+        ))),
+    }
+}
+
+#[get("/relationship/active")]
+pub async fn get_active_relationships(
+    user: AuthenticatedUser,
+    db: &State<GrapevineDB>,
+) -> Result<Json<Vec<String>>, GrapevineResponse> {
+    match db.get_relationships(&user.0, true).await {
+        Ok(relationships) => Ok(Json(relationships)),
+        Err(e) => Err(GrapevineResponse::InternalError(ErrorMessage(
+            Some(e),
+            None,
+        ))),
+    }
+}
+
 /// GET REQUESTS ///
 
 /**
@@ -319,7 +349,7 @@ pub async fn get_nonce(
         true => (),
         false => {
             return Err(GrapevineResponse::BadRequest(ErrorMessage(
-                Some(GrapevineServerError::Signature(String::from(
+                Some(GrapevineError::Signature(String::from(
                     "Could not verify nonce recovery signature",
                 ))),
                 None,
@@ -376,7 +406,7 @@ pub async fn get_all_degrees(
     match db.get_all_degrees(user.0).await {
         Some(proofs) => Ok(Json(proofs)),
         None => Err(GrapevineResponse::InternalError(ErrorMessage(
-            Some(GrapevineServerError::MongoError(String::from(
+            Some(GrapevineError::MongoError(String::from(
                 "Error retrieving degrees in db",
             ))),
             None,
@@ -410,7 +440,7 @@ pub async fn get_account_details(
     match db.get_account_details(&recipient.id.unwrap()).await {
         Some(details) => Ok(Json(details)),
         None => Err(GrapevineResponse::InternalError(ErrorMessage(
-            Some(GrapevineServerError::MongoError(String::from(
+            Some(GrapevineError::MongoError(String::from(
                 "Error user states",
             ))),
             None,

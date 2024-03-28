@@ -1,4 +1,4 @@
-use grapevine_common::errors::GrapevineServerError;
+use grapevine_common::errors::GrapevineError;
 use rocket::{
     http::{ContentType, Status},
     request::Request,
@@ -33,12 +33,12 @@ pub enum GrapevineResponse {
 // pub fn bad_request(req: &Request) -> GrapevineResponse {
 //     match req.local_cache(|| ErrorMessage(None)) {
 //         ErrorMessage(Some(err)) => {
-//             let x = GrapevineServerError::Signature(("".to_string(), 0));
+//             let x = GrapevineError::Signature(("".to_string(), 0));
 //             let y = x.into();
 //             GrapevineResponse::BadRequest(ErrorMessage(Some(err.clone())))
 //         }
 //         ErrorMessage(None) => {
-//             GrapevineResponse::BadRequest(ErrorMessage(Some(GrapevineServerError::InternalError)))
+//             GrapevineResponse::BadRequest(ErrorMessage(Some(GrapevineError::InternalError)))
 //         }
 //     }
 // }
@@ -62,13 +62,13 @@ pub enum GrapevineResponse {
 // }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct ErrorMessage(pub Option<GrapevineServerError>, pub Option<u64>);
+pub struct ErrorMessage(pub Option<GrapevineError>, pub Option<u64>);
 
 impl<'r> Responder<'r, 'static> for ErrorMessage {
     fn respond_to(self, req: &'r Request<'_>) -> response::Result<'static> {
         let body = match self.0.is_some() {
             true => Json(self.0.unwrap()),
-            false => Json(GrapevineServerError::InternalError),
+            false => Json(GrapevineError::InternalError),
         };
         let mut res = Response::build_from(body.respond_to(req)?);
 

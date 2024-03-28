@@ -1,4 +1,3 @@
-use crate::errors::GrapevineCLIError;
 use crate::utils::fs::ACCOUNT_PATH;
 use babyjubjub_rs::{decompress_point, Point};
 use grapevine_common::http::requests::{
@@ -7,7 +6,7 @@ use grapevine_common::http::requests::{
 };
 use grapevine_common::http::responses::{DegreeData, PhraseCreationResponse};
 use grapevine_common::models::ProvingData;
-use grapevine_common::{account::GrapevineAccount, errors::GrapevineServerError};
+use grapevine_common::{account::GrapevineAccount, errors::GrapevineError};
 use lazy_static::lazy_static;
 use reqwest::{Client, StatusCode};
 
@@ -24,7 +23,7 @@ lazy_static! {
  * @param username - the username of the user to get the public key of
  * @returns - the public key of the user
  */
-pub async fn get_pubkey_req(username: String) -> Result<Point, GrapevineServerError> {
+pub async fn get_pubkey_req(username: String) -> Result<Point, GrapevineError> {
     let url = format!("{}/user/{}/pubkey", &**SERVER_URL, username);
     let res = reqwest::get(&url).await.unwrap();
     match res.status() {
@@ -32,12 +31,12 @@ pub async fn get_pubkey_req(username: String) -> Result<Point, GrapevineServerEr
             let pubkey = res.text().await.unwrap();
             Ok(decompress_point(hex::decode(pubkey).unwrap().try_into().unwrap()).unwrap())
         }
-        StatusCode::NOT_FOUND => Err(GrapevineServerError::UserNotFound(username)),
-        _ => Err(res.json::<GrapevineServerError>().await.unwrap()),
+        StatusCode::NOT_FOUND => Err(GrapevineError::UserNotFound(username)),
+        _ => Err(res.json::<GrapevineError>().await.unwrap()),
     }
 }
 
-pub async fn get_nonce_req(body: GetNonceRequest) -> Result<u64, GrapevineServerError> {
+pub async fn get_nonce_req(body: GetNonceRequest) -> Result<u64, GrapevineError> {
     let url = format!("{}/user/nonce", &**SERVER_URL);
     let client = Client::new();
     let res = client.post(&url).json(&body).send().await.unwrap();
@@ -46,13 +45,13 @@ pub async fn get_nonce_req(body: GetNonceRequest) -> Result<u64, GrapevineServer
             let nonce = res.text().await.unwrap();
             Ok(nonce.parse().unwrap())
         }
-        _ => Err(res.json::<GrapevineServerError>().await.unwrap()),
+        _ => Err(res.json::<GrapevineError>().await.unwrap()),
     }
 }
 
 pub async fn get_available_proofs_req(
     account: &mut GrapevineAccount,
-) -> Result<Vec<String>, GrapevineServerError> {
+) -> Result<Vec<String>, GrapevineError> {
     let url = format!("{}/proof/available", &**SERVER_URL);
     // produce signature over current nonce
     let signature = hex::encode(account.sign_nonce().compress());
@@ -73,14 +72,14 @@ pub async fn get_available_proofs_req(
             let proofs = res.json::<Vec<String>>().await.unwrap();
             Ok(proofs)
         }
-        _ => Err(res.json::<GrapevineServerError>().await.unwrap()),
+        _ => Err(res.json::<GrapevineError>().await.unwrap()),
     }
 }
 
 pub async fn get_proof_with_params_req(
     account: &mut GrapevineAccount,
     oid: String,
-) -> Result<ProvingData, GrapevineServerError> {
+) -> Result<ProvingData, GrapevineError> {
     let url = format!("{}/proof/params/{}", &**SERVER_URL, oid);
     // produce signature over current nonce
     let signature = hex::encode(account.sign_nonce().compress());
@@ -101,7 +100,7 @@ pub async fn get_proof_with_params_req(
             let proof = res.json::<ProvingData>().await.unwrap();
             Ok(proof)
         }
-        _ => Err(res.json::<GrapevineServerError>().await.unwrap()),
+        _ => Err(res.json::<GrapevineError>().await.unwrap()),
     }
 }
 
@@ -112,13 +111,13 @@ pub async fn get_proof_with_params_req(
  * @param body - the CreateUserRequest data to provide as the body of the http request
  * @returns - Ok if 201, or the error type otherwise
  */
-pub async fn create_user_req(body: CreateUserRequest) -> Result<(), GrapevineServerError> {
+pub async fn create_user_req(body: CreateUserRequest) -> Result<(), GrapevineError> {
     let url = format!("{}/user/create", &**SERVER_URL);
     let client = Client::new();
     let res = client.post(&url).json(&body).send().await.unwrap();
     match res.status() {
         StatusCode::CREATED => return Ok(()),
-        _ => Err(res.json::<GrapevineServerError>().await.unwrap()),
+        _ => Err(res.json::<GrapevineError>().await.unwrap()),
     }
 }
 
@@ -131,8 +130,8 @@ pub async fn create_user_req(body: CreateUserRequest) -> Result<(), GrapevineSer
 pub async fn add_relationship_req(
     account: &mut GrapevineAccount,
     body: NewRelationshipRequest,
-) -> Result<(), GrapevineServerError> {
-    let url = format!("{}/user/relationship", &**SERVER_URL);
+) -> Result<String, GrapevineError> {
+    let url = format!("{}/user/relationship/add", &**SERVER_URL);
     // produce signature over current nonce
     let signature = hex::encode(account.sign_nonce().compress());
     let client = Client::new();
@@ -146,13 +145,15 @@ pub async fn add_relationship_req(
         .unwrap();
     match res.status() {
         StatusCode::CREATED => {
+            // get message
+            let message = res.text().await.unwrap();
             // increment nonce
             account
                 .increment_nonce(Some((&**ACCOUNT_PATH).to_path_buf()))
                 .unwrap();
-            return Ok(());
+            return Ok(message);
         }
-        _ => Err(res.json::<GrapevineServerError>().await.unwrap()),
+        _ => Err(res.json::<GrapevineError>().await.unwrap()),
     }
 }
 
@@ -165,7 +166,7 @@ pub async fn add_relationship_req(
 pub async fn phrase_req(
     account: &mut GrapevineAccount,
     body: PhraseRequest,
-) -> Result<PhraseCreationResponse, GrapevineServerError> {
+) -> Result<PhraseCreationResponse, GrapevineError> {
     let url = format!("{}/proof/phrase", &**SERVER_URL);
     // serialize the proof
     let serialized: Vec<u8> = bincode::serialize(&body).unwrap();
@@ -190,15 +191,15 @@ pub async fn phrase_req(
             return Ok(data);
         }
         _ => {
-            // Err(res.json::<GrapevineServerError>().await.unwrap())
-            Err(GrapevineServerError::InternalError)
+            // Err(res.json::<GrapevineError>().await.unwrap())
+            Err(GrapevineError::InternalError)
         }
     }
 }
 
 pub async fn get_account_details_req(
     account: &mut GrapevineAccount,
-) -> Result<(u64, u64, u64), GrapevineServerError> {
+) -> Result<(u64, u64, u64), GrapevineError> {
     let url = format!("{}/user/details", &**SERVER_URL);
     // produce signature over current nonce
     let signature = hex::encode(account.sign_nonce().compress());
@@ -219,13 +220,13 @@ pub async fn get_account_details_req(
             let details = res.json::<(u64, u64, u64)>().await.unwrap();
             Ok(details)
         }
-        _ => Err(res.json::<GrapevineServerError>().await.unwrap()),
+        _ => Err(res.json::<GrapevineError>().await.unwrap()),
     }
 }
 
 pub async fn get_degrees_req(
     account: &mut GrapevineAccount,
-) -> Result<Vec<DegreeData>, GrapevineServerError> {
+) -> Result<Vec<DegreeData>, GrapevineError> {
     let url = format!("{}/user/degrees", &**SERVER_URL);
     // produce signature over current nonce
     let signature = hex::encode(account.sign_nonce().compress());
@@ -246,7 +247,7 @@ pub async fn get_degrees_req(
             let degrees = res.json::<Vec<DegreeData>>().await.unwrap();
             Ok(degrees)
         }
-        _ => Err(res.json::<GrapevineServerError>().await.unwrap()),
+        _ => Err(res.json::<GrapevineError>().await.unwrap()),
     }
 }
 
@@ -259,7 +260,7 @@ pub async fn get_degrees_req(
 pub async fn degree_proof_req(
     account: &mut GrapevineAccount,
     body: DegreeProofRequest,
-) -> Result<(), GrapevineServerError> {
+) -> Result<(), GrapevineError> {
     let url = format!("{}/proof/degree", &**SERVER_URL);
     // serialize the proof
     let serialized: Vec<u8> = bincode::serialize(&body).unwrap();
@@ -282,13 +283,13 @@ pub async fn degree_proof_req(
                 .unwrap();
             return Ok(());
         }
-        _ => Err(res.json::<GrapevineServerError>().await.unwrap()),
+        _ => Err(res.json::<GrapevineError>().await.unwrap()),
     }
 }
 
 pub async fn get_known_req(
     account: &mut GrapevineAccount,
-) -> Result<Vec<DegreeData>, GrapevineServerError> {
+) -> Result<Vec<DegreeData>, GrapevineError> {
     let url = format!("{}/proof/known", &**SERVER_URL);
     // produce signature over current nonce
     let signature = hex::encode(account.sign_nonce().compress());
@@ -309,14 +310,14 @@ pub async fn get_known_req(
             let proofs = res.json::<Vec<DegreeData>>().await.unwrap();
             Ok(proofs)
         }
-        _ => Err(res.json::<GrapevineServerError>().await.unwrap()),
+        _ => Err(res.json::<GrapevineError>().await.unwrap()),
     }
 }
 
 pub async fn get_phrase_req(
     phrase_index: u32,
     account: &mut GrapevineAccount,
-) -> Result<DegreeData, GrapevineServerError> {
+) -> Result<DegreeData, GrapevineError> {
     let url = format!("{}/proof/phrase/{}", &**SERVER_URL, phrase_index);
     // produce signature over current nonce
     let signature = hex::encode(account.sign_nonce().compress());
@@ -337,14 +338,14 @@ pub async fn get_phrase_req(
             let data = res.json::<DegreeData>().await.unwrap();
             Ok(data)
         }
-        _ => Err(res.json::<GrapevineServerError>().await.unwrap()),
+        _ => Err(res.json::<GrapevineError>().await.unwrap()),
     }
 }
 
 pub async fn show_connections_req(
     phrase_index: u32,
     account: &mut GrapevineAccount,
-) -> Result<(u64, Vec<u64>), GrapevineServerError> {
+) -> Result<(u64, Vec<u64>), GrapevineError> {
     let url = format!("{}/proof/connections/{}", &**SERVER_URL, phrase_index);
     // produce signature over current nonce
     let signature = hex::encode(account.sign_nonce().compress());
@@ -365,6 +366,56 @@ pub async fn show_connections_req(
             let connection_data = res.json::<(u64, Vec<u64>)>().await.unwrap();
             Ok(connection_data)
         }
-        _ => Err(res.json::<GrapevineServerError>().await.unwrap()),
+        _ => Err(res.json::<GrapevineError>().await.unwrap()),
+    }
+}
+
+pub async fn get_relationships_req(active: bool, account: &mut GrapevineAccount) -> Result<Vec<String>, GrapevineError> {
+    let route = if active { "active" } else { "pending" };
+    let url = format!("{}/user/relationship/{}", &**SERVER_URL, route);
+    // produce signature over current nonce
+    let signature = hex::encode(account.sign_nonce().compress());
+    let client = Client::new();
+    let res = client
+        .get(&url)
+        .header("X-Username", account.username())
+        .header("X-Authorization", signature)
+        .send()
+        .await
+        .unwrap();
+    match res.status() {
+        StatusCode::OK => {
+            // increment nonce
+            account
+                .increment_nonce(Some((&**ACCOUNT_PATH).to_path_buf()))
+                .unwrap();
+            let relationships = res.json::<Vec<String>>().await.unwrap();
+            Ok(relationships)
+        }
+        _ => Err(res.json::<GrapevineError>().await.unwrap()),
+    }
+}
+
+pub async fn reject_relationship_req(username: &String, account: &mut GrapevineAccount) -> Result<(), GrapevineError> {
+    let url = format!("{}/user/relationship/reject/{}", &**SERVER_URL, username);
+    // produce signature over current nonce
+    let signature = hex::encode(account.sign_nonce().compress());
+    let client = Client::new();
+    let res = client
+        .post(&url)
+        .header("X-Username", account.username())
+        .header("X-Authorization", signature)
+        .send()
+        .await
+        .unwrap();
+    match res.status() {
+        StatusCode::OK => {
+            // increment nonce
+            account
+                .increment_nonce(Some((&**ACCOUNT_PATH).to_path_buf()))
+                .unwrap();
+            Ok(())
+        }
+        _ => Err(res.json::<GrapevineError>().await.unwrap()),
     }
 }
