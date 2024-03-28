@@ -34,8 +34,6 @@ pub async fn account_details() -> Result<String, GrapevineError> {
     };
     // sync nonce
     synchronize_nonce().await?;
-    let auth_secret = hex::encode(account.auth_secret().to_bytes());
-    let pk = hex::encode(account.private_key_raw());
     let pubkey = hex::encode(account.pubkey().compress());
 
     // Fetch account stats
@@ -45,10 +43,8 @@ pub async fn account_details() -> Result<String, GrapevineError> {
         Ok(_) => {
             let details = res.unwrap();
             Ok(format!(
-                "Username: {}\nAuth secret: 0x{}\nPrivate key: 0x{}\nPublic key: 0x{}\n# 1st degree connections: {}\n# 2nd degree connections: {}\n# phrases created: {}",
+                "Username: {}\nPublic key: 0x{}\n# 1st degree connections: {}\n# 2nd degree connections: {}\n# phrases created: {}",
                 account.username(),
-                auth_secret,
-                pk,
                 pubkey,
                 details.1,
                 details.2,
@@ -57,6 +53,27 @@ pub async fn account_details() -> Result<String, GrapevineError> {
         }
         Err(e) => Err(e),
     }
+}
+
+/**
+ * Export the private key of the current account
+ */
+pub fn export_key() -> Result<String, GrapevineError> {
+    // get account
+    let account = match get_account() {
+        Ok(account) => account,
+        Err(e) => return Err(e),
+    };
+    // Get private key
+    let pk = hex::encode(account.private_key_raw());
+    // Get auth secret
+    let auth_secret = hex::encode(account.auth_secret().to_bytes());
+    Ok(format!(
+        "Sensitive account details for {}:\nPrivate Key: 0x{}\nAuth Secret: 0x{}",
+        account.username(),
+        pk,
+        auth_secret
+    ))
 }
 
 /**
