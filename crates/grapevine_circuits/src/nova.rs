@@ -411,7 +411,6 @@ mod test {
 
         let res = verify_nova_proof(&proof, &public_params, 1 + degree * 2).unwrap();
         let z0_last = res.0; // step_out for the circuit execution
-        println!("z0_last: {:?}", z0_last);
         assert!(z0_last[0].eq(&Fr::from(degree as u64)));
 
         // safe to fs
