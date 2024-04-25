@@ -77,6 +77,10 @@ pub fn build_step_inputs(
     chaff_step.insert("auth_secrets".to_string(), json!([ZERO, ZERO]));
 
     // push the compute and chaff step inputs to the input vector
+    // println!("Auth secrets: {:?}", auth_secrets);
+    if auth_secrets[0].is_none() {
+        input.push(chaff_step.clone()); // Add initial chaff step for degree 0
+    }
     input.push(compute_step);
     input.push(chaff_step);
 }

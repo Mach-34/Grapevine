@@ -94,6 +94,8 @@ pub fn nova_proof(
         );
     }
 
+    println!("Start input: {:?}", start_input());
+
     // generate the a recursive Nova proof of the grapevine circuit
     create_recursive_circuit(
         FileLocation::PathBuf(wc_path),
@@ -210,7 +212,7 @@ mod test {
         )
         .unwrap();
 
-        let iterations = usernames.len() * 2;
+        let iterations = 1 + usernames.len() * 2;
         let verified = verify_nova_proof(&proof, &public_params, iterations).unwrap();
         println!("Verified: {:?}", verified);
     }
@@ -243,7 +245,7 @@ mod test {
         )
         .unwrap();
 
-        let iterations = usernames.len() * 2;
+        let iterations = 1 + usernames.len() * 2;
         let verified = verify_nova_proof(&proof, &public_params, iterations).unwrap();
         println!("Verified: {:?}", verified);
     }
@@ -278,7 +280,7 @@ mod test {
         )
         .unwrap();
 
-        let iterations = usernames.len() * 2;
+        let iterations = 1 + usernames.len() * 2;
         let verified = verify_nova_proof(&proof, &public_params, iterations).unwrap();
 
         // todo: compute expected output
@@ -320,7 +322,7 @@ mod test {
         )
         .unwrap();
 
-        let res = verify_nova_proof(&proof, &public_params, degree * 2).unwrap();
+        let res = verify_nova_proof(&proof, &public_params, 1 + degree * 2).unwrap();
         let z0_last = res.0; // step_out for the circuit execution
         assert!(z0_last[0].eq(&Fr::from(degree as u64)));
 
@@ -407,8 +409,9 @@ mod test {
         )
         .unwrap();
 
-        let res = verify_nova_proof(&proof, &public_params, degree * 2).unwrap();
+        let res = verify_nova_proof(&proof, &public_params, 1 + degree * 2).unwrap();
         let z0_last = res.0; // step_out for the circuit execution
+        println!("z0_last: {:?}", z0_last);
         assert!(z0_last[0].eq(&Fr::from(degree as u64)));
 
         // safe to fs
@@ -421,7 +424,7 @@ mod test {
         // read proof from fs
         let mut proof = read_proof(proof_path.clone());
         // get z0_last
-        let z0_last = verify_nova_proof(&proof, &public_params, degree * 2)
+        let z0_last = verify_nova_proof(&proof, &public_params, 1 + degree * 2)
             .unwrap()
             .0;
         // prove second degree
@@ -436,7 +439,7 @@ mod test {
             &public_params,
         )
         .unwrap();
-        let res = verify_nova_proof(&proof, &public_params, degree * 2).unwrap();
+        let res = verify_nova_proof(&proof, &public_params, 1 + degree * 2).unwrap();
         let z0_last = res.0;
         assert!(z0_last[0].eq(&Fr::from(degree as u64)));
     }
@@ -479,7 +482,7 @@ mod test {
         let decompressed_proof = decompress_proof(&compressed_proof[..]);
 
         // verify the compressed then uncompressed proof
-        let iterations = usernames.len() * 2;
+        let iterations = 1 + usernames.len() * 2;
         verify_nova_proof(&decompressed_proof, &public_params, iterations).unwrap();
     }
 }
