@@ -338,7 +338,7 @@ mod test {
             &public_params,
         )
         .unwrap();
-        let res = verify_nova_proof(&proof, &public_params, degree * 2).unwrap();
+        let res = verify_nova_proof(&proof, &public_params, 1 + degree * 2).unwrap();
         let z0_last = res.0;
         assert!(z0_last[0].eq(&Fr::from(degree as u64)));
 
@@ -354,7 +354,7 @@ mod test {
             &public_params,
         )
         .unwrap();
-        let res = verify_nova_proof(&proof, &public_params, degree * 2).unwrap();
+        let res = verify_nova_proof(&proof, &public_params, 1 + degree * 2).unwrap();
         let z0_last = res.0;
         assert!(z0_last[0].eq(&Fr::from(degree as u64)));
 
@@ -370,7 +370,7 @@ mod test {
             &public_params,
         )
         .unwrap();
-        let res = verify_nova_proof(&proof, &public_params, degree * 2).unwrap();
+        let res = verify_nova_proof(&proof, &public_params, 1 + degree * 2).unwrap();
         let z0_last = res.0;
         assert!(z0_last[0].eq(&Fr::from(degree as u64)));
     }
