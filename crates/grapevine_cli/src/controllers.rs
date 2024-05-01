@@ -265,7 +265,7 @@ pub async fn prove_phrase(phrase: &String, description: &String) -> Result<Strin
 }
 
 pub async fn prove_all_available() -> Result<String, GrapevineError> {
-    /// GETTING
+    // GETTING
     // get account
     let mut account = get_account()?;
     // sync nonce
@@ -290,7 +290,7 @@ pub async fn prove_all_available() -> Result<String, GrapevineError> {
         }
         _ => (),
     }
-    /// PROVING
+    // PROVING
     // ensure proving artifacts are downloaded
     artifacts_guard().await.unwrap();
     let public_params = use_public_params().unwrap();
@@ -464,7 +464,7 @@ pub async fn get_phrase(phrase_index: u32) -> Result<String, GrapevineError> {
         Err(e) => return Err(e),
     };
 
-    /// OUTPUT
+    // OUTPUT
     // header (always shown)
     println!("=-=-=-=-=-=-=[Phrase #{}]=-=-=-=-=-=-=", phrase_index);
     println!("Phrase description: \"{}\"", &phrase_data.description);
