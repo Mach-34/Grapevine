@@ -41,18 +41,14 @@ pub async fn create_user(
     // check username length is valid
     if request.username.len() > MAX_USERNAME_CHARS {
         return Err(GrapevineResponse::BadRequest(ErrorMessage(
-            Some(GrapevineError::UsernameTooLong(
-                request.username.clone(),
-            )),
+            Some(GrapevineError::UsernameTooLong(request.username.clone())),
             None,
         )));
     };
     // check request is ascii
     if !request.username.is_ascii() {
         return Err(GrapevineResponse::BadRequest(ErrorMessage(
-            Some(GrapevineError::UsernameNotAscii(
-                request.username.clone(),
-            )),
+            Some(GrapevineError::UsernameNotAscii(request.username.clone())),
             None,
         )));
     };
@@ -88,9 +84,7 @@ pub async fn create_user(
             }
             [true, false] => {
                 return Err(GrapevineResponse::Conflict(ErrorMessage(
-                    Some(GrapevineError::UsernameExists(
-                        request.username.clone(),
-                    )),
+                    Some(GrapevineError::UsernameExists(request.username.clone())),
                     None,
                 )));
             }
@@ -182,12 +176,8 @@ pub async fn add_relationship(
         Ok((exists, active)) => match exists {
             true => {
                 let err = match active {
-                    true => {
-                        GrapevineError::ActiveRelationshipExists(user.0, request.to.clone())
-                    }
-                    false => {
-                        GrapevineError::PendingRelationshipExists(user.0, request.to.clone())
-                    }
+                    true => GrapevineError::ActiveRelationshipExists(user.0, request.to.clone()),
+                    false => GrapevineError::PendingRelationshipExists(user.0, request.to.clone()),
                 };
                 return Err(GrapevineResponse::Conflict(ErrorMessage(Some(err), None)));
             }
@@ -241,14 +231,12 @@ pub async fn add_relationship(
                 user.0, request.to, msg
             )))
         }
-        Err(e) => {
-            Err(GrapevineResponse::InternalError(ErrorMessage(
-                Some(GrapevineError::MongoError(String::from(
-                    "Failed to add relationship to db",
-                ))),
-                None,
-            )))
-        }
+        Err(_) => Err(GrapevineResponse::InternalError(ErrorMessage(
+            Some(GrapevineError::MongoError(String::from(
+                "Failed to add relationship to db",
+            ))),
+            None,
+        ))),
     }
 }
 
@@ -263,12 +251,9 @@ pub async fn reject_pending_relationship(
     match db.reject_relationship(&username, &user.0).await {
         Ok(_) => Ok(Status::Ok),
         Err(e) => match e {
-            GrapevineError::NoPendingRelationship(from, to) => {
-                Err(GrapevineResponse::NotFound(format!(
-                    "No pending relationship exists from {} to {}",
-                    from, to
-                )))
-            }
+            GrapevineError::NoPendingRelationship(from, to) => Err(GrapevineResponse::NotFound(
+                format!("No pending relationship exists from {} to {}", from, to),
+            )),
             _ => Err(GrapevineResponse::InternalError(ErrorMessage(
                 Some(e),
                 None,

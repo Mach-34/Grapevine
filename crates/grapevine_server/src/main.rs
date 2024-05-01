@@ -1,6 +1,5 @@
 #[macro_use]
 extern crate rocket;
-use crate::guards::AuthenticatedUser;
 // use catchers::{bad_request, not_found, unauthorized};
 use lazy_static::lazy_static;
 use mongo::GrapevineDB;
@@ -432,7 +431,11 @@ mod test_rocket {
         res
     }
 
-    async fn reject_relationship_request(context: &GrapevineTestContext, from: &mut GrapevineAccount, to: &String) -> (u16, Option<String>) {
+    async fn reject_relationship_request(
+        context: &GrapevineTestContext,
+        from: &mut GrapevineAccount,
+        to: &String,
+    ) -> (u16, Option<String>) {
         let username = from.username().clone();
         let signature = generate_nonce_signature(from);
 
