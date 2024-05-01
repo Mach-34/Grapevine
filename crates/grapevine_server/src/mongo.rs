@@ -1,4 +1,3 @@
-use crate::{DATABASE_NAME, MONGODB_URI};
 use futures::stream::StreamExt;
 use grapevine_common::errors::GrapevineError;
 use grapevine_common::http::responses::DegreeData;
@@ -36,14 +35,14 @@ impl GrapevineDB {
     /**
      * Drops the entire database to start off with clean state for testing
      */
-    pub async fn drop(database_name: &str) {
-        let mut client_options = ClientOptions::parse(&**MONGODB_URI).await.unwrap();
-        let server_api = ServerApi::builder().version(ServerApiVersion::V1).build();
-        client_options.server_api = Some(server_api);
-        let client = Client::with_options(client_options).unwrap();
+    // pub async fn drop(database_name: &str) {
+    //     let mut client_options = ClientOptions::parse(&**MONGODB_URI).await.unwrap();
+    //     let server_api = ServerApi::builder().version(ServerApiVersion::V1).build();
+    //     client_options.server_api = Some(server_api);
+    //     let client = Client::with_options(client_options).unwrap();
 
-        client.database(database_name).drop(None).await.unwrap();
-    }
+    //     client.database(database_name).drop(None).await.unwrap();
+    // }
 
     /// USER FUNCTIONS ///
 
@@ -134,11 +133,7 @@ impl GrapevineDB {
             .projection(doc! {"_id": 1})
             .build();
         match self.users.find_one(query, options).await.unwrap() {
-            Some(_) => {
-                return Err(GrapevineError::UserExists(
-                    user.username.clone().unwrap(),
-                ))
-            }
+            Some(_) => return Err(GrapevineError::UserExists(user.username.clone().unwrap())),
             None => (),
         };
 
@@ -318,10 +313,19 @@ impl GrapevineDB {
         let oid: ObjectId = match cursor.next().await {
             Some(Ok(document)) => {
                 println!("FOUND DOC: {:?}", document);
-                document.get("relationship").unwrap().as_object_id().unwrap()
-            },
+                document
+                    .get("relationship")
+                    .unwrap()
+                    .as_object_id()
+                    .unwrap()
+            }
             Some(Err(e)) => return Err(GrapevineError::MongoError(e.to_string())),
-            None => return Err(GrapevineError::NoPendingRelationship(from.clone(), to.clone())),
+            None => {
+                return Err(GrapevineError::NoPendingRelationship(
+                    from.clone(),
+                    to.clone(),
+                ))
+            }
         };
 
         // delete the pending relationship
@@ -329,8 +333,12 @@ impl GrapevineDB {
         match self.relationships.delete_one(filter, None).await {
             Ok(res) => match res.deleted_count == 1 {
                 true => (),
-                false => return Err(GrapevineError::MongoError("Failed to delete relationship".to_string())),
-            }
+                false => {
+                    return Err(GrapevineError::MongoError(
+                        "Failed to delete relationship".to_string(),
+                    ))
+                }
+            },
             Err(e) => return Err(GrapevineError::MongoError(e.to_string())),
         }
 
@@ -417,7 +425,7 @@ impl GrapevineDB {
         let find_options = FindOneOptions::builder().projection(projection).build();
         match self.relationships.find_one(filter, find_options).await {
             Ok(res) => match res {
-                Some(document) => Ok(true),
+                Some(_) => Ok(true),
                 None => Ok(false),
             },
             Err(e) => Err(GrapevineError::MongoError(e.to_string())),
@@ -628,7 +636,7 @@ impl GrapevineDB {
 
         // Update document
         let update_filter = doc! {"_id": update_entitity.0};
-        let mut update = doc! {};
+        let update;
         if update_entitity.1 {
             update = doc! {"$set": { "inactive": true }};
         } else {
@@ -675,19 +683,19 @@ impl GrapevineDB {
         Ok(proof_oid)
     }
 
-    pub async fn get_proof(&self, proof_oid: &ObjectId) -> Option<DegreeProof> {
-        self.degree_proofs
-            .find_one(doc! { "_id": proof_oid }, None)
-            .await
-            .unwrap()
-    }
+    // pub async fn get_proof(&self, proof_oid: &ObjectId) -> Option<DegreeProof> {
+    //     self.degree_proofs
+    //         .find_one(doc! { "_id": proof_oid }, None)
+    //         .await
+    //         .unwrap()
+    // }
 
-    pub async fn remove_user(&self, user: &ObjectId) {
-        self.users
-            .delete_one(doc! { "_id": user }, None)
-            .await
-            .expect("Failed to remove user");
-    }
+    // pub async fn remove_user(&self, user: &ObjectId) {
+    //     self.users
+    //         .delete_one(doc! { "_id": user }, None)
+    //         .await
+    //         .expect("Failed to remove user");
+    // }
 
     /**
      * Given a user, find available degrees of separation proofs they can build from
@@ -1134,7 +1142,7 @@ impl GrapevineDB {
             .await
             .unwrap()
             .unwrap();
-        
+
         // return the proof data
         Some(ProvingData {
             description: phrase.description.unwrap(),
@@ -1445,10 +1453,7 @@ impl GrapevineDB {
      *
      * @param proof - Degree proof to be inserted
      */
-    pub async fn check_degree_exists(
-        &self,
-        proof: &DegreeProof,
-    ) -> Result<bool, GrapevineError> {
+    pub async fn check_degree_exists(&self, proof: &DegreeProof) -> Result<bool, GrapevineError> {
         let query = doc! {"preceding": proof.preceding.unwrap(), "user": proof.user.unwrap()};
         let projection = doc! { "_id": 1 };
         let find_options = FindOneOptions::builder().projection(projection).build();

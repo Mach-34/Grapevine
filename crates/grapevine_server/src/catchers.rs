@@ -15,8 +15,8 @@ pub enum GrapevineResponse {
     Created(String),
     #[response(status = 400)]
     BadRequest(ErrorMessage),
-    #[response(status = 401)]
-    Unauthorized(ErrorMessage),
+    // #[response(status = 401)]
+    // Unauthorized(ErrorMessage),
     #[response(status = 404)]
     NotFound(String),
     #[response(status = 409)]
@@ -25,8 +25,8 @@ pub enum GrapevineResponse {
     TooLarge(String),
     #[response(status = 500)]
     InternalError(ErrorMessage),
-    #[response(status = 501)]
-    NotImplemented(String),
+    // #[response(status = 501)]
+    // NotImplemented(String),
 }
 
 // #[catch(400)]

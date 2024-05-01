@@ -25,6 +25,8 @@ pub fn use_public_params() -> Result<Params, Box<dyn std::error::Error>> {
     Ok(public_params)
 }
 
+// Code actually used inside test. Need to move test to separate file
+#[allow(dead_code)]
 pub fn use_r1cs() -> Result<R1CS<Fr>, Box<dyn std::error::Error>> {
     // get the path to grapevine (will create if it does not exist)
     let filepath = current_dir().unwrap().join("static/grapevine.r1cs");
@@ -32,6 +34,8 @@ pub fn use_r1cs() -> Result<R1CS<Fr>, Box<dyn std::error::Error>> {
     Ok(load_r1cs::<G1, G2>(&FileLocation::PathBuf(filepath)))
 }
 
+// Code actually used inside test. Need to move test to separate file
+#[allow(dead_code)]
 pub fn use_wasm() -> Result<PathBuf, Box<dyn std::error::Error>> {
     // get the path to grapevine (will create if it does not exist)
     let filepath = current_dir().unwrap().join("static/grapevine.wasm");
