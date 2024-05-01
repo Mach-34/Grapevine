@@ -143,9 +143,6 @@ pub fn continue_nova_proof(
     r1cs: &R1CS<Fr>,
     public_params: &Params,
 ) -> Result<(), std::io::Error> {
-    // get WC file location
-    let root = current_dir().unwrap();
-
     // compute the private inputs for this degree's compute/ chaff step
     let mut private_inputs = Vec::new();
     build_step_inputs(

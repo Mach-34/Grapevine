@@ -162,8 +162,9 @@ pub fn decompress_proof(proof: &[u8]) -> NovaProof {
     serde_json::from_str(&serialized).unwrap()
 }
 
+#[cfg(test)]
 mod test {
-    use grapevine_common::utils::{convert_phrase_to_fr, convert_username_to_fr};
+    use super::*;
 
     #[test]
     fn test_phrase_to_fr() {

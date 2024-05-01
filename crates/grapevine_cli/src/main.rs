@@ -1,5 +1,4 @@
-use clap::{Args, Parser, Subcommand};
-use grapevine_common::errors::GrapevineError;
+use clap::{Parser, Subcommand};
 mod controllers;
 mod http;
 mod utils;
@@ -43,9 +42,7 @@ enum RelationshipCommands {
     /// usage: `grapevine relationship add <username>`
     #[command(verbatim_doc_comment)]
     #[clap(value_parser)]
-    Add {
-        username: String,
-    },
+    Add { username: String },
     /// Show pending relationship requests from other users
     /// usage: `grapevine relationship pending`
     #[command(verbatim_doc_comment)]
@@ -54,13 +51,11 @@ enum RelationshipCommands {
     /// usage: `grapevine relationship reject <username>`
     #[command(verbatim_doc_comment)]
     #[clap(value_parser)]
-    Reject {
-        username: String,
-    },
+    Reject { username: String },
     /// List the username of all of your active relationships
     /// usage: `grapevine relationship list`
     #[command(verbatim_doc_comment)]
-    List
+    List,
 }
 
 #[derive(Subcommand)]
@@ -79,7 +74,7 @@ enum AccountCommands {
     /// Export the Baby JubJub private key for your account
     /// usage: `grapevine account export`
     #[command(verbatim_doc_comment)]
-    Export
+    Export,
 }
 
 #[derive(Subcommand)]
@@ -125,15 +120,20 @@ pub async fn main() {
         Commands::Relationship(cmd) => match cmd {
             RelationshipCommands::Add { username } => controllers::add_relationship(username).await,
             RelationshipCommands::Pending => controllers::get_relationships(false).await,
-            RelationshipCommands::Reject { username } => controllers::reject_relationship(username).await,
+            RelationshipCommands::Reject { username } => {
+                controllers::reject_relationship(username).await
+            }
             RelationshipCommands::List => controllers::get_relationships(true).await,
         },
         Commands::Phrase(cmd) => match cmd {
-            PhraseCommands::Prove { phrase, description } => controllers::prove_phrase(phrase, description).await,
+            PhraseCommands::Prove {
+                phrase,
+                description,
+            } => controllers::prove_phrase(phrase, description).await,
             PhraseCommands::Sync => controllers::prove_all_available().await,
             PhraseCommands::Get { index } => controllers::get_phrase(*index).await,
             PhraseCommands::Known => controllers::get_known_phrases().await,
-            PhraseCommands::Degrees => controllers::get_my_proofs().await
+            PhraseCommands::Degrees => controllers::get_my_proofs().await,
         },
     };
 

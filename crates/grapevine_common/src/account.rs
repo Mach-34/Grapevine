@@ -1,10 +1,8 @@
 use crate::auth_secret::{AuthSecret, AuthSecretEncrypted, AuthSecretEncryptedUser};
 use crate::crypto::{gen_aes_key, new_private_key, nonce_hash};
-use crate::http::requests::{
-    CreateUserRequest, GetNonceRequest, PhraseRequest, NewRelationshipRequest,
-};
-use crate::utils::{convert_phrase_to_fr, convert_username_to_fr, random_fr};
-use crate::{Fr, Params};
+use crate::http::requests::{CreateUserRequest, GetNonceRequest, NewRelationshipRequest};
+use crate::utils::{convert_username_to_fr, random_fr};
+use crate::Fr;
 use aes::cipher::{block_padding::Pkcs7, BlockDecryptMut, BlockEncryptMut, KeyIvInit};
 use babyjubjub_rs::{Point, PrivateKey, Signature};
 use num_bigint::{BigInt, Sign};
@@ -270,7 +268,7 @@ mod test {
         assert_eq!(deserialized_key, hex::encode(account.private_key));
     }
 
-    #[test] 
+    #[test]
     fn test_phrase_encryption() {
         let username = String::from("JP4G");
         let account = GrapevineAccount::new(username);
