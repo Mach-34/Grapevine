@@ -6,20 +6,12 @@ use crate::http::{
 };
 use crate::utils::artifacts_guard;
 use crate::utils::fs::{use_public_params, use_r1cs, use_wasm, ACCOUNT_PATH};
-use babyjubjub_rs::{decompress_point, PrivateKey};
 use grapevine_circuits::nova::{continue_nova_proof, nova_proof, verify_nova_proof};
 use grapevine_circuits::utils::{compress_proof, decompress_proof};
 use grapevine_common::account::GrapevineAccount;
 use grapevine_common::auth_secret::AuthSecretEncrypted;
-use grapevine_common::compat::{convert_ff_to_ff_ce, ff_ce_from_le_bytes};
 use grapevine_common::errors::GrapevineError;
-use grapevine_common::http::requests::{
-    CreateUserRequest, DegreeProofRequest, NewRelationshipRequest, PhraseRequest,
-    TestProofCompressionRequest,
-};
-use grapevine_common::http::responses::DegreeData;
-use grapevine_common::models::ProvingData;
-use grapevine_common::utils::{convert_phrase_to_fr, random_fr};
+use grapevine_common::http::requests::{DegreeProofRequest, PhraseRequest};
 
 use std::path::Path;
 
@@ -273,7 +265,7 @@ pub async fn prove_phrase(phrase: &String, description: &String) -> Result<Strin
 }
 
 pub async fn prove_all_available() -> Result<String, GrapevineError> {
-    /// GETTING
+    // GETTING
     // get account
     let mut account = get_account()?;
     // sync nonce
@@ -298,7 +290,7 @@ pub async fn prove_all_available() -> Result<String, GrapevineError> {
         }
         _ => (),
     }
-    /// PROVING
+    // PROVING
     // ensure proving artifacts are downloaded
     artifacts_guard().await.unwrap();
     let public_params = use_public_params().unwrap();
@@ -338,7 +330,7 @@ pub async fn prove_all_available() -> Result<String, GrapevineError> {
             verify_nova_proof(&proof, &public_params, (proving_data.degree * 2) as usize);
         let previous_output = match verified {
             Ok(data) => data.0,
-            Err(e) => {
+            Err(_) => {
                 println!("Verification Failed");
                 return Err(GrapevineError::DegreeProofVerificationFailed);
             }
@@ -472,7 +464,7 @@ pub async fn get_phrase(phrase_index: u32) -> Result<String, GrapevineError> {
         Err(e) => return Err(e),
     };
 
-    /// OUTPUT
+    // OUTPUT
     // header (always shown)
     println!("=-=-=-=-=-=-=[Phrase #{}]=-=-=-=-=-=-=", phrase_index);
     println!("Phrase description: \"{}\"", &phrase_data.description);
@@ -528,7 +520,7 @@ pub fn make_or_get_account(username: String) -> Result<GrapevineAccount, Grapevi
     // get grapevine path
     let grapevine_dir_path = match std::env::var("HOME") {
         Ok(home) => Path::new(&home).join(".grapevine"),
-        Err(e) => {
+        Err(_) => {
             return Err(GrapevineError::FsError(String::from(
                 "Couldn't find home directory??",
             )))
@@ -543,7 +535,7 @@ pub fn make_or_get_account(username: String) -> Result<GrapevineAccount, Grapevi
     let account = match grapevine_account_path.exists() {
         true => match GrapevineAccount::from_fs(grapevine_account_path) {
             Ok(account) => account,
-            Err(e) => {
+            Err(_) => {
                 return Err(GrapevineError::FsError(String::from(
                     "Error reading existing Grapevine account from filesystem",
                 )))
@@ -569,7 +561,7 @@ pub async fn health() -> Result<String, GrapevineError> {
     // ensure artifacts exist
     artifacts_guard().await.unwrap();
     // get health status
-    let text = reqwest::get(&**crate::http::SERVER_URL)
+    reqwest::get(&**crate::http::SERVER_URL)
         .await
         .unwrap()
         .text()
@@ -592,7 +584,7 @@ pub fn get_account() -> Result<GrapevineAccount, GrapevineError> {
     match grapevine_account_path.exists() {
         true => match GrapevineAccount::from_fs(grapevine_account_path) {
             Ok(account) => Ok(account),
-            Err(e) => Err(GrapevineError::FsError(String::from(
+            Err(_) => Err(GrapevineError::FsError(String::from(
                 "Error reading existing Grapevine account from filesystem",
             ))),
         },
