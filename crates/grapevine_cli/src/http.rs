@@ -30,6 +30,9 @@ pub async fn get_pubkey_req(username: String) -> Result<Point, GrapevineError> {
             let pubkey = res.text().await.unwrap();
             Ok(decompress_point(hex::decode(pubkey).unwrap().try_into().unwrap()).unwrap())
         }
+        StatusCode::UNAUTHORIZED => Err(GrapevineError::Other(
+            "Nonce mistmatch. Syncing, please try again".to_string(),
+        )),
         StatusCode::NOT_FOUND => Err(GrapevineError::UserNotFound(username)),
         _ => Err(GrapevineError::Other(res.text().await.unwrap())),
     }
@@ -44,6 +47,9 @@ pub async fn get_nonce_req(body: GetNonceRequest) -> Result<u64, GrapevineError>
             let nonce = res.text().await.unwrap();
             Ok(nonce.parse().unwrap())
         }
+        StatusCode::UNAUTHORIZED => Err(GrapevineError::Other(
+            "Nonce mistmatch. Syncing, please try again".to_string(),
+        )),
         _ => Err(GrapevineError::Other(res.text().await.unwrap())),
     }
 }
@@ -71,6 +77,9 @@ pub async fn get_available_proofs_req(
             let proofs = res.json::<Vec<String>>().await.unwrap();
             Ok(proofs)
         }
+        StatusCode::UNAUTHORIZED => Err(GrapevineError::Other(
+            "Nonce mistmatch. Syncing, please try again".to_string(),
+        )),
         _ => Err(GrapevineError::Other(res.text().await.unwrap())),
     }
 }
@@ -99,6 +108,9 @@ pub async fn get_proof_with_params_req(
             let proof = res.json::<ProvingData>().await.unwrap();
             Ok(proof)
         }
+        StatusCode::UNAUTHORIZED => Err(GrapevineError::Other(
+            "Nonce mistmatch. Syncing, please try again".to_string(),
+        )),
         _ => Err(GrapevineError::Other(res.text().await.unwrap())),
     }
 }
@@ -116,6 +128,9 @@ pub async fn create_user_req(body: CreateUserRequest) -> Result<(), GrapevineErr
     let res = client.post(&url).json(&body).send().await.unwrap();
     match res.status() {
         StatusCode::CREATED => return Ok(()),
+        StatusCode::UNAUTHORIZED => Err(GrapevineError::Other(
+            "Nonce mistmatch. Syncing, please try again".to_string(),
+        )),
         _ => Err(GrapevineError::Other(res.text().await.unwrap())),
     }
 }
@@ -142,7 +157,6 @@ pub async fn add_relationship_req(
         .send()
         .await
         .unwrap();
-    println!("Res: {:?}", res);
     match res.status() {
         StatusCode::CREATED => {
             // get message
@@ -153,6 +167,9 @@ pub async fn add_relationship_req(
                 .unwrap();
             return Ok(message);
         }
+        StatusCode::UNAUTHORIZED => Err(GrapevineError::Other(
+            "Nonce mistmatch. Syncing, please try again".to_string(),
+        )),
         _ => Err(GrapevineError::Other(res.text().await.unwrap())),
     }
 }
@@ -191,6 +208,9 @@ pub async fn phrase_req(
                 .unwrap();
             return Ok(data);
         }
+        StatusCode::UNAUTHORIZED => Err(GrapevineError::Other(
+            "Nonce mistmatch. Syncing, please try again".to_string(),
+        )),
         _ => {
             // Err(res.json::<GrapevineError>().await.unwrap())
             Err(GrapevineError::InternalError)
@@ -221,6 +241,9 @@ pub async fn get_account_details_req(
             let details = res.json::<(u64, u64, u64)>().await.unwrap();
             Ok(details)
         }
+        StatusCode::UNAUTHORIZED => Err(GrapevineError::Other(
+            "Nonce mistmatch. Syncing, please try again".to_string(),
+        )),
         _ => Err(GrapevineError::Other(res.text().await.unwrap())),
     }
 }
@@ -248,6 +271,9 @@ pub async fn get_degrees_req(
             let degrees = res.json::<Vec<DegreeData>>().await.unwrap();
             Ok(degrees)
         }
+        StatusCode::UNAUTHORIZED => Err(GrapevineError::Other(
+            "Nonce mistmatch. Syncing, please try again".to_string(),
+        )),
         _ => Err(GrapevineError::Other(res.text().await.unwrap())),
     }
 }
@@ -284,6 +310,9 @@ pub async fn degree_proof_req(
                 .unwrap();
             return Ok(());
         }
+        StatusCode::UNAUTHORIZED => Err(GrapevineError::Other(
+            "Nonce mistmatch. Syncing, please try again".to_string(),
+        )),
         _ => Err(GrapevineError::Other(res.text().await.unwrap())),
     }
 }
@@ -311,6 +340,9 @@ pub async fn get_known_req(
             let proofs = res.json::<Vec<DegreeData>>().await.unwrap();
             Ok(proofs)
         }
+        StatusCode::UNAUTHORIZED => Err(GrapevineError::Other(
+            "Nonce mistmatch. Syncing, please try again".to_string(),
+        )),
         _ => Err(GrapevineError::Other(res.text().await.unwrap())),
     }
 }
@@ -339,6 +371,9 @@ pub async fn get_phrase_req(
             let data = res.json::<DegreeData>().await.unwrap();
             Ok(data)
         }
+        StatusCode::UNAUTHORIZED => Err(GrapevineError::Other(
+            "Nonce mistmatch. Syncing, please try again".to_string(),
+        )),
         _ => Err(GrapevineError::Other(res.text().await.unwrap())),
     }
 }
@@ -367,6 +402,9 @@ pub async fn show_connections_req(
             let connection_data = res.json::<(u64, Vec<u64>)>().await.unwrap();
             Ok(connection_data)
         }
+        StatusCode::UNAUTHORIZED => Err(GrapevineError::Other(
+            "Nonce mistmatch. Syncing, please try again".to_string(),
+        )),
         _ => Err(GrapevineError::Other(res.text().await.unwrap())),
     }
 }
@@ -396,6 +434,9 @@ pub async fn get_relationships_req(
             let relationships = res.json::<Vec<String>>().await.unwrap();
             Ok(relationships)
         }
+        StatusCode::UNAUTHORIZED => Err(GrapevineError::Other(
+            "Nonce mismatch. Syncing, please try again".to_string(),
+        )),
         _ => Err(GrapevineError::Other(res.text().await.unwrap())),
     }
 }
@@ -423,6 +464,9 @@ pub async fn reject_relationship_req(
                 .unwrap();
             Ok(())
         }
+        StatusCode::UNAUTHORIZED => Err(GrapevineError::Other(
+            "Nonce mismatch. Syncing, please try again".to_string(),
+        )),
         _ => Err(GrapevineError::Other(res.text().await.unwrap())),
     }
 }
