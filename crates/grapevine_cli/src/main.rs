@@ -142,7 +142,7 @@ pub async fn main() {
             println!("{}", message);
         }
         Err(e) => {
-            println!("Error: {}", e);
+            eprintln!("\x1b[0;31merror\x1b[0m: {}", e);
         }
     };
 }

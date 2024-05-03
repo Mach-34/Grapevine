@@ -24,7 +24,8 @@ pub enum GrapevineError {
     SerdeError(String),
     DegreeProofExists,
     DegreeProofVerificationFailed,
-    FsError(String)
+    FsError(String),
+    Other(String),
 }
 
 impl std::fmt::Display for GrapevineError {
@@ -46,7 +47,7 @@ impl std::fmt::Display for GrapevineError {
             }
             GrapevineError::UserExists(msg) => {
                 write!(f, "User {} already exists with the supplied pubkey", msg)
-            },
+            }
             GrapevineError::PhraseTooLong => write!(f, "Phrase is too long"),
             GrapevineError::PendingRelationshipExists(sender, recipient) => {
                 write!(
@@ -94,8 +95,9 @@ impl std::fmt::Display for GrapevineError {
             }
             GrapevineError::DegreeProofVerificationFailed => {
                 write!(f, "Failed to verify degree proof")
-            },
+            }
             GrapevineError::FsError(msg) => write!(f, "Filesystem error: {}", msg),
+            GrapevineError::Other(msg) => write!(f, "{}", msg),
         }
     }
 }
