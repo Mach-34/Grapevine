@@ -5,6 +5,7 @@ members = [
     "crates/grapevine_circuits",
     "crates/grapevine_server",
     "crates/grapevine_common",
+    "crates/grapevine_sonobe"
 ]
 default-members = ["crates/grapevine_cli"]
 resolver = "2"

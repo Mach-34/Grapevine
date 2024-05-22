@@ -1,0 +1,50 @@
+[package]
+name = "grapevine_sonobe"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+#grapevine_common.workspace = true
+#ark-pallas = { version = "0.4.0", features = ["r1cs"] }
+#ark-vesta = {version="0.4.0", features=["r1cs"]}
+ark-circom = { git = "https://github.com/arnaucube/circom-compat.git" }
+#ark-ec = "0.4.1"
+# ark-ff = "0.4.1"
+ark-r1cs-std = { git = "https://github.com/winderica/r1cs-std", branch="cherry-pick" }
+#ark-relations = { version = "0.4.0", default-features = false }
+ark-crypto-primitives = { version = "^0.4.0", default-features = false, features = [
+    "r1cs",
+    "sponge",
+    "crh",
+] }
+#ark-std = "0.4.0"
+#color-eyre = "0.6.2"
+num-bigint = "0.4.3"
+#sonobe = { git = "https://github.com/privacy-scaling-explorations/sonobe", package = "folding-schemes", branch = "main" }
+#serde = "1.0.198"
+#serde_json = "1.0.116"
+
+
+# nova-scotia.workspace = true
+# nova-snark.workspace = true
+# serde_json.workspace = true
+# rand.workspace = true
+# serde.workspace = true
+# ff.workspace = true
+# hex.workspace = true
+# flate2 = "1.0.28"
+
+[dev-dependencies]
+criterion = "0.5.1"
+
+[patch.crates-io]
+byteorder = "=1.4.3"
+
+[[bench]]
+name = "proof"
+path = "benches/proof.rs"
+harness = false
