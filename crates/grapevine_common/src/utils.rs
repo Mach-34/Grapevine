@@ -6,8 +6,24 @@ use std::error::Error;
  *
  * @return - a stringified random field element
  */
+#[cfg(not(target_family = "wasm"))]
 pub fn random_fr() -> Fr {
     ff::Field::random(rand::rngs::OsRng)
+}
+
+#[cfg(target_family = "wasm")]
+pub fn random_fr() -> Fr {
+    // todo: implement random sampling for wasm
+    let mut buf = [0u8; 31];
+    getrandom::getrandom(&mut buf).unwrap();
+    // convert to 32 bytes
+    let mut fr_buf = [0u8; 32];
+    fr_buf[0..buf.len()].copy_from_slice(&buf);
+    fr_buf[31] = 0;
+    // check valid fr
+    Fr::from_repr(fr_buf).unwrap();
+    // return hex string
+    format!("0x{}", hex::encode(fr_buf))
 }
 
 /**

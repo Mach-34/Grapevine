@@ -1,3 +1,4 @@
+use crate::MONGODB_URI;
 use futures::stream::StreamExt;
 use grapevine_common::errors::GrapevineError;
 use grapevine_common::http::responses::DegreeData;
@@ -35,14 +36,14 @@ impl GrapevineDB {
     /**
      * Drops the entire database to start off with clean state for testing
      */
-    // pub async fn drop(database_name: &str) {
-    //     let mut client_options = ClientOptions::parse(&**MONGODB_URI).await.unwrap();
-    //     let server_api = ServerApi::builder().version(ServerApiVersion::V1).build();
-    //     client_options.server_api = Some(server_api);
-    //     let client = Client::with_options(client_options).unwrap();
+    pub async fn drop(database_name: &str) {
+        let mut client_options = ClientOptions::parse(&**MONGODB_URI).await.unwrap();
+        let server_api = ServerApi::builder().version(ServerApiVersion::V1).build();
+        client_options.server_api = Some(server_api);
+        let client = Client::with_options(client_options).unwrap();
 
-    //     client.database(database_name).drop(None).await.unwrap();
-    // }
+        client.database(database_name).drop(None).await.unwrap();
+    }
 
     /// USER FUNCTIONS ///
 
