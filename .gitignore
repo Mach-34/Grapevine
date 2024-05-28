@@ -1,6 +1,7 @@
-/target
+target
 node_modules
 phrasedos_degree_*
 grapevine_degree_*
 crates/grapevine_server/db
 .env
+params_chunked

@@ -1,12 +1,13 @@
 use grapevine_common::{Fq, Fr, SECRET_FIELD_LENGTH};
 pub mod nova;
+mod params_gen;
 pub mod utils;
 
 pub const ZERO: &str = "0x0000000000000000000000000000000000000000000000000000000000000000";
 pub const EMPTY_SECRET: [&str; SECRET_FIELD_LENGTH] = [ZERO; SECRET_FIELD_LENGTH];
 pub const DEFAULT_WC_PATH: &str =
-    "crates/grapevine_circuits/circom/artifacts/folded_js/folded.wasm";
-pub const DEFAULT_R1CS_PATH: &str = "crates/grapevine_circuits/circom/artifacts/folded.r1cs";
+    "crates/grapevine_circuits/circom/artifacts/grapevine.wasm";
+pub const DEFAULT_R1CS_PATH: &str = "crates/grapevine_circuits/circom/artifacts/grapevine.r1cs";
 pub const DEFAULT_PUBLIC_PARAMS_PATH: &str =
     "crates/grapevine_circuits/circom/artifacts/public_params.json";
 

@@ -195,7 +195,7 @@ mod test {
         let r1cs_path = String::from("circom/artifacts/grapevine.r1cs");
         let wc_path = current_dir()
             .unwrap()
-            .join("circom/artifacts/grapevine_js/grapevine.wasm");
+            .join("circom/artifacts/grapevine.wasm");
         let r1cs = get_r1cs(Some(r1cs_path));
         let public_params = get_public_params(Some(params_path));
 
@@ -228,7 +228,7 @@ mod test {
         let r1cs_path = String::from("circom/artifacts/grapevine.r1cs");
         let wc_path = current_dir()
             .unwrap()
-            .join("circom/artifacts/grapevine_js/grapevine.wasm");
+            .join("circom/artifacts/grapevine.wasm");
         let r1cs = get_r1cs(Some(r1cs_path));
         let public_params = get_public_params(Some(params_path));
 
@@ -263,7 +263,7 @@ mod test {
         let r1cs_path = String::from("circom/artifacts/grapevine.r1cs");
         let wc_path = current_dir()
             .unwrap()
-            .join("circom/artifacts/grapevine_js/grapevine.wasm");
+            .join("circom/artifacts/grapevine.wasm");
         let r1cs = get_r1cs(Some(r1cs_path));
         let public_params = get_public_params(Some(params_path));
 
@@ -301,7 +301,7 @@ mod test {
         let r1cs_path = String::from("circom/artifacts/grapevine.r1cs");
         let wc_path = current_dir()
             .unwrap()
-            .join("circom/artifacts/grapevine_js/grapevine.wasm");
+            .join("circom/artifacts/grapevine.wasm");
 
         // load public params and r1cs
         let r1cs = get_r1cs(Some(r1cs_path));
@@ -388,7 +388,7 @@ mod test {
         let r1cs_path = String::from("circom/artifacts/grapevine.r1cs");
         let wc_path = current_dir()
             .unwrap()
-            .join("circom/artifacts/grapevine_js/grapevine.wasm");
+            .join("circom/artifacts/grapevine.wasm");
 
         // load public params and r1cs
         let r1cs = get_r1cs(Some(r1cs_path));
@@ -453,7 +453,7 @@ mod test {
         let r1cs_path = String::from("circom/artifacts/grapevine.r1cs");
         let wc_path = current_dir()
             .unwrap()
-            .join("circom/artifacts/grapevine_js/grapevine.wasm");
+            .join("circom/artifacts/grapevine.wasm");
         let r1cs = get_r1cs(Some(r1cs_path));
         let public_params = get_public_params(Some(params_path));
         let proof = nova_proof(
