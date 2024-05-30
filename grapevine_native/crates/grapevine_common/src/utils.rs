@@ -1,4 +1,6 @@
 use crate::{Fr, MAX_SECRET_CHARS, MAX_USERNAME_CHARS, SECRET_FIELD_LENGTH};
+#[cfg(target_family = "wasm")]
+use ff::PrimeField;
 use std::error::Error;
 
 /**
@@ -21,9 +23,7 @@ pub fn random_fr() -> Fr {
     fr_buf[0..buf.len()].copy_from_slice(&buf);
     fr_buf[31] = 0;
     // check valid fr
-    Fr::from_repr(fr_buf).unwrap();
-    // return hex string
-    format!("0x{}", hex::encode(fr_buf))
+    Fr::from_repr(fr_buf).unwrap()
 }
 
 /**

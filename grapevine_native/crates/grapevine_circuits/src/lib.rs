@@ -1,5 +1,7 @@
 use grapevine_common::{Fq, Fr, SECRET_FIELD_LENGTH};
+#[cfg(not(target_family = "wasm"))]
 pub mod nova;
+#[cfg(not(target_family = "wasm"))]
 mod params_gen;
 pub mod utils;
 

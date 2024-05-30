@@ -9,6 +9,7 @@ pub mod http;
 pub mod utils;
 pub mod models;
 pub mod errors;
+pub mod nova;
 
 pub type G1 = provider::bn256_grumpkin::bn256::Point;
 pub type G2 = provider::bn256_grumpkin::grumpkin::Point;

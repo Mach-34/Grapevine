@@ -1,3 +1,6 @@
+[env]
+RUST_TEST_THREADS = "1"
+
 [target.wasm32-unknown-unknown]
 rustflags = [
     "-C",
@@ -5,9 +8,3 @@ rustflags = [
     "-C",
     "link-arg=--max-memory=4294967296",
 ]
-
-[unstable]
-build-std = ["panic_abort", "std"]
-
-[build]
-target = "wasm32-unknown-unknown"

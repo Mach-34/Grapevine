@@ -13,7 +13,6 @@ bincode.workspace = true
 grapevine_common.workspace = true
 grapevine_circuits.workspace = true
 nova-scotia.workspace = true
-babyjubjub-rs.workspace = true
 tokio.workspace = true
 serde.workspace = true
 serde_json.workspace = true
@@ -27,6 +26,7 @@ tracing-subscriber = "0.3.17"
 tracing = "0.1.40"
 rocket = { version = "0.5.0", features = ["json", "tls"] }
 futures = "0.3.30"
+babyjubjub-rs.workspace = true
 
 [build-dependencies]
 dotenv.workspace = true
