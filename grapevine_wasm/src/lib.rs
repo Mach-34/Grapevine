@@ -81,12 +81,16 @@ pub async fn identity_proof(
 
     // get logic step inputs (chaff -> degree 0 -> chaff)
     let mut private_inputs: Vec<HashMap<String, Value>> = Vec::new();
+    console_log!("xxx");
+    let x = bigint_to_fr(String::from("0x00"));
+    console_log!("Building inputs");
     build_step_inputs(
         &mut private_inputs,
         Some(phrase),
         [None, Some(username)],
         [None, Some(bigint_to_fr(auth_secret))],
     );
+    console_log!("Inputs built");
 
     // compute the first fold (identity proof)
     let proof = create_recursive_circuit(

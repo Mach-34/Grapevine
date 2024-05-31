@@ -1,10 +1,11 @@
-use ff::PrimeField;
+use ff::{FromUniformBytes, PrimeField};
 use flate2::read::GzDecoder;
 use grapevine_common::Fr;
 use num::{BigInt, Num};
 use reqwest::header::CONTENT_TYPE;
 use std::io::Read;
 use wasm_bindgen::prelude::*;
+use wasm_bindgen_test::console_log;
 
 pub const PARAMS_CHUNKS: usize = 10;
 
@@ -43,6 +44,13 @@ pub async fn retrieve_chunked_params(url: String) -> String {
     serialized
 }
 
+#[cfg(target_family = "wasm")]
+pub fn random_fr() -> Fr {
+    let mut buf = [0u8; 64];
+    getrandom::getrandom(&mut buf).unwrap();
+    Fr::from_uniform_bytes(&buf)
+}
+
 /**
  * Converts a stringified bigint to bn254 Fr
  * @notice assumes little endian order
@@ -58,7 +66,8 @@ pub fn bigint_to_fr(val: String) -> Fr {
         val
     };
     // parse the string
-    let mut bytes = BigInt::from_str_radix(&val, 10).unwrap().to_bytes_le().1;
+    let mut bytes = BigInt::from_str_radix(&val, 16).unwrap().to_bytes_le().1;
+    
     // pad bytes to end if necessary (LE)
     if bytes.len() < 32 {
         let mut padded = vec![0; 32 - bytes.len()];
@@ -70,7 +79,7 @@ pub fn bigint_to_fr(val: String) -> Fr {
 
 /**
  * Converts a bn254 Fr to a stringified bigint in little endian
- * 
+ *
  * @param val - the field element to convert
  * @return - the stringified bigint in hex
  */
