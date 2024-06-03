@@ -108,7 +108,7 @@ dependencies = [
  "num",
  "num-bigint 0.4.5",
  "num-traits",
- "poseidon-rs",
+ "poseidon-rs 0.0.8",
  "rand 0.8.5",
 ]
 
@@ -838,6 +838,7 @@ dependencies = [
  "babyjubjub-rs",
  "bson",
  "cbc",
+ "console_error_panic_hook",
  "ff",
  "ff_ce",
  "getrandom",
@@ -845,7 +846,7 @@ dependencies = [
  "nova-scotia",
  "nova-snark",
  "num-bigint 0.4.5",
- "poseidon-rs",
+ "poseidon-rs 0.0.8",
  "rand 0.8.5",
  "reqwest",
  "serde",
@@ -854,6 +855,7 @@ dependencies = [
  "sha256",
  "sha3",
  "uuid",
+ "wasm-bindgen",
 ]
 
 [[package]]
@@ -873,6 +875,7 @@ dependencies = [
  "nova-scotia",
  "nova-snark",
  "num",
+ "poseidon-rs 0.0.10",
  "rayon",
  "reqwest",
  "serde",
@@ -1011,9 +1014,9 @@ checksum = "df3b46402a9d5adb4c86a0cf463f42e19994e3ee891101b1841f30a545cb49a9"
 
 [[package]]
 name = "hyper"
-version = "0.14.28"
+version = "0.14.29"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bf96e135eb83a2a8ddf766e426a841d8ddd7449d5f00d34ea02b41d2f19eef80"
+checksum = "f361cde2f109281a220d4307746cdfd5ee3f410da58a70377762396775634b33"
 dependencies = [
  "bytes",
  "futures-channel",
@@ -1556,6 +1559,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "poseidon-rs"
+version = "0.0.10"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f7bd44e953add4c619a75a970cc4335e3175dfecc61ab64ee6caa8fffde95c95"
+dependencies = [
+ "ff_ce",
+ "rand 0.4.6",
+ "serde_json",
+]
+
+[[package]]
 name = "powerfmt"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1569,9 +1583,9 @@ checksum = "5b40af805b3121feab8a3c29f04d8ad262fa8e0561883e7653e024ae4479e6de"
 
 [[package]]
 name = "proc-macro2"
-version = "1.0.84"
+version = "1.0.85"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ec96c6a92621310b51366f1e28d05ef11489516e93be030060e5fc12024a49d6"
+checksum = "22244ce15aa966053a896d1accb3a6e68469b97c7f33f284b99f0d576879fc23"
 dependencies = [
  "unicode-ident",
 ]
@@ -2129,9 +2143,9 @@ checksum = "1f3ccbac311fea05f86f61904b462b55fb3df8837a366dfc601a0161d0532f20"
 
 [[package]]
 name = "tokio"
-version = "1.37.0"
+version = "1.38.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1adbebffeca75fcfd058afa480fb6c0b81e165a0323f9c9d39c9697e37c46787"
+checksum = "ba4f4a02a7a80d6f274636f0aa95c7e383b912d41fe721a31f29e29698585a4a"
 dependencies = [
  "backtrace",
  "bytes",

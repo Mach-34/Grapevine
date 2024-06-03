@@ -1,11 +1,13 @@
 use ff::{FromUniformBytes, PrimeField};
 use flate2::read::GzDecoder;
-use grapevine_common::Fr;
+use grapevine_common::{
+    compat::ff_ce_from_le_bytes, console_log, utils::convert_phrase_to_fr, wasm::init_panic_hook,
+    Fr,
+};
 use num::{BigInt, Num};
 use reqwest::header::CONTENT_TYPE;
 use std::io::Read;
 use wasm_bindgen::prelude::*;
-use wasm_bindgen_test::console_log;
 
 pub const PARAMS_CHUNKS: usize = 10;
 
@@ -67,7 +69,7 @@ pub fn bigint_to_fr(val: String) -> Fr {
     };
     // parse the string
     let mut bytes = BigInt::from_str_radix(&val, 16).unwrap().to_bytes_le().1;
-    
+
     // pad bytes to end if necessary (LE)
     if bytes.len() < 32 {
         let mut padded = vec![0; 32 - bytes.len()];
@@ -86,3 +88,21 @@ pub fn bigint_to_fr(val: String) -> Fr {
 pub fn fr_to_bigint(val: Fr) -> String {
     format!("0x{}", hex::encode(val.to_bytes()))
 }
+
+// /**
+//  * Computes the phrase hash given the secret input
+//  *
+//  * @param phrase - the secret input to hash
+//  * @return - the phrase hash as the Fr element used in Nova-Scotia
+//  */
+// pub fn phrase_hash(phrase: String) -> Fr {
+//     // serialize the phrase
+//     let serialized_bytes = convert_phrase_to_fr(&phrase).unwrap();
+//     // convert to ff community edition used in poseidon_rs
+//     let serialized = serialized_bytes
+//         .iter()
+//         .map(|chunk| ff_ce_from_le_bytes(*chunk))
+//         .collect::<Vec<>>();
+//     let poseidon = poseidon_rs::Poseidon::new();
+//     let hash = poseidon.hash(serialized).unwrap();
+// }
