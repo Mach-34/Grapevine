@@ -1,7 +1,9 @@
-use crate::crypto::gen_aes_key;
+use crate::compat::convert_ff_ce_to_ff;
 use crate::Fr;
+use crate::{crypto::gen_aes_key, utils::to_array_32};
 use aes::cipher::{block_padding::Pkcs7, BlockDecryptMut, BlockEncryptMut, KeyIvInit};
-use babyjubjub_rs::{Point, PrivateKey, Signature};
+use babyjubjub_rs::{decompress_signature, Point, PrivateKey, Signature};
+use ff::PrimeField;
 use serde::{Deserialize, Serialize};
 type Aes128CbcEnc = cbc::Encryptor<aes::Aes128>;
 type Aes128CbcDec = cbc::Decryptor<aes::Aes128>;
@@ -29,7 +31,18 @@ pub struct AuthSignature {
 }
 
 impl AuthSignature {
-    fn fmt_circom() {}
+    // TODO: Add documentation
+    pub fn fmt_circom(&self) -> [Fr; 3] {
+        // decompress signature
+        let decompressed = decompress_signature(&self.auth_signature).unwrap();
+        // convert s value of signature to Fr
+        let s_bytes = to_array_32(decompressed.s.to_bytes_le().1);
+        [
+            convert_ff_ce_to_ff(&decompressed.r_b8.x),
+            convert_ff_ce_to_ff(&decompressed.r_b8.y),
+            Fr::from_repr(s_bytes).unwrap(),
+        ]
+    }
 }
 
 pub trait AuthSignatureEncryptedUser {
