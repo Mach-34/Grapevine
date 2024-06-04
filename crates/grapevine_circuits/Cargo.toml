@@ -8,6 +8,7 @@ license.workspace = true
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
+babyjubjub-rs.workspace = true
 grapevine_common.workspace = true
 nova-scotia.workspace = true
 nova-snark.workspace = true
@@ -15,6 +16,7 @@ serde_json.workspace = true
 rand.workspace = true
 serde.workspace = true
 ff.workspace = true
+ff_ce.workspace = true
 hex.workspace = true
 flate2 = "1.0.28"
 

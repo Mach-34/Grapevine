@@ -1,9 +1,12 @@
 use crate::{EMPTY_SECRET, SECRET_FIELD_LENGTH, ZERO};
+use babyjubjub_rs::Point;
+use ff_ce::PrimeField;
 use flate2::read::GzDecoder;
 use flate2::write::GzEncoder;
 use flate2::Compression;
+use grapevine_common::compat::{convert_ff_ce_to_ff, convert_ff_to_ff_ce};
 use grapevine_common::utils::{convert_phrase_to_fr, convert_username_to_fr};
-use grapevine_common::{Fr, NovaProof, Params};
+use grapevine_common::{auth_signature, Fr, NovaProof, Params};
 use serde_json::{json, Value};
 use std::io::{Read, Write};
 use std::{collections::HashMap, env::current_dir};
@@ -21,8 +24,8 @@ use std::{collections::HashMap, env::current_dir};
 pub fn build_step_inputs(
     input: &mut Vec<HashMap<String, Value>>,
     secret: Option<String>,
-    usernames: [Option<String>; 2],
-    auth_secrets: [Option<Fr>; 2],
+    pubkey: &Point,
+    auth_signature: [Option<Fr>; 3],
 ) {
     // @TODO: FIX convert_phrase_to_fr and convert_username_to_fr inputs
 
@@ -43,22 +46,14 @@ pub fn build_step_inputs(
             .try_into()
             .unwrap(),
     };
-    let usernames_input: [String; 2] = usernames
+    let pubkey_input: [String; 2] = [
+        pubkey.x.into_repr().to_string(),
+        pubkey.y.into_repr().to_string(),
+    ];
+    let auth_signature_input: [String; 3] = auth_signature
         .iter()
-        .map(|username| match username {
-            Some(username) => format!(
-                "0x{}",
-                hex::encode(convert_username_to_fr(username).unwrap())
-            ),
-            None => String::from(ZERO),
-        })
-        .collect::<Vec<String>>()
-        .try_into()
-        .unwrap();
-    let auth_secrets_input: [String; 2] = auth_secrets
-        .iter()
-        .map(|auth_secret| match auth_secret {
-            Some(auth_secret) => format!("0x{}", hex::encode(auth_secret.to_bytes())),
+        .map(|sig_val| match sig_val {
+            Some(sig_val) => convert_ff_to_ff_ce(sig_val).into_repr().to_string(), // TODO: Fix hacky solution
             None => String::from(ZERO),
         })
         .collect::<Vec<String>>()
@@ -68,16 +63,16 @@ pub fn build_step_inputs(
     // build the input hashmaps
     let mut compute_step = HashMap::new();
     compute_step.insert("phrase".to_string(), json!(secret_input));
-    compute_step.insert("usernames".to_string(), json!(usernames_input));
-    compute_step.insert("auth_secrets".to_string(), json!(auth_secrets_input));
+    compute_step.insert("pubkey".to_string(), json!(pubkey_input));
+    compute_step.insert("auth_signature".to_string(), json!(auth_signature_input));
 
     let mut chaff_step = HashMap::new();
     chaff_step.insert("phrase".to_string(), json!(EMPTY_SECRET));
-    chaff_step.insert("usernames".to_string(), json!([ZERO, ZERO]));
-    chaff_step.insert("auth_secrets".to_string(), json!([ZERO, ZERO]));
+    chaff_step.insert("pubkey".to_string(), json!([ZERO, ZERO]));
+    chaff_step.insert("auth_signature".to_string(), json!([ZERO, ZERO, ZERO]));
 
     // push the compute and chaff step inputs to the input vector
-    if auth_secrets[0].is_none() {
+    if auth_signature[0].is_none() {
         input.push(chaff_step.clone()); // Add initial chaff step for degree 0
     }
     input.push(compute_step);
