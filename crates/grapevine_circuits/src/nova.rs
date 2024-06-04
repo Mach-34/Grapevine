@@ -181,6 +181,20 @@ mod test {
     use super::*;
     use crate::utils::{compress_proof, decompress_proof, read_proof, write_proof};
     use grapevine_common::utils::random_fr;
+    use nova_scotia::create_public_params;
+
+    #[test]
+    fn gen_public_params() {
+        let root = current_dir().unwrap();
+        let r1cs_path = String::from("circom/artifacts/grapevine.r1cs");
+        let r1cs = get_r1cs(Some(r1cs_path));
+        let public_params: Params = create_public_params(r1cs.clone());
+
+        // save the full params
+        let params_json = serde_json::to_string(&public_params).unwrap();
+        let full_params_path = root.clone().join("public_params.json");
+        std::fs::write(&full_params_path, &params_json).unwrap();
+    }
 
     #[test]
     fn test_degree_0() {
