@@ -9,7 +9,7 @@ use crate::utils::fs::{use_public_params, use_r1cs, use_wasm, ACCOUNT_PATH};
 use grapevine_circuits::nova::{continue_nova_proof, nova_proof, verify_nova_proof};
 use grapevine_circuits::utils::{compress_proof, decompress_proof};
 use grapevine_common::account::GrapevineAccount;
-use grapevine_common::auth_signature::{self, AuthSecretEncrypted};
+use grapevine_common::auth_signature::AuthSignatureEncrypted;
 use grapevine_common::errors::GrapevineError;
 use grapevine_common::http::requests::{DegreeProofRequest, PhraseRequest};
 use grapevine_common::utils::random_fr;
@@ -316,7 +316,7 @@ pub async fn prove_all_available() -> Result<String, GrapevineError> {
         println!("Degree being proved: {}", proving_data.degree + 1);
         println!("Proving...");
         // prepare inputs
-        let auth_signature_encrypted = AuthSecretEncrypted {
+        let auth_signature_encrypted = AuthSignatureEncrypted {
             ephemeral_key: proving_data.ephemeral_key,
             ciphertext: proving_data.ciphertext,
             username: proving_data.username,

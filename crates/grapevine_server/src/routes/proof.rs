@@ -78,8 +78,6 @@ pub async fn prove_phrase(
         }
     };
 
-    println!("Phrase hash: {:?}", phrase_hash);
-
     // check if phrase exists in db
     let mut phrase_oid: Option<ObjectId> = match db.get_phrase_by_hash(&phrase_hash).await {
         Ok(oid) => Some(oid),
@@ -246,8 +244,6 @@ pub async fn degree_proof(
             )));
         }
     };
-
-    println!("Phrase hash: {:?}", phrase_hash);
 
     // get the phrase oid from the hash
     let phrase_oid = match db.get_phrase_by_hash(&phrase_hash).await {

@@ -21,7 +21,7 @@ pub struct AuthSignatureEncrypted {
 }
 
 /**
- * The confidential AuthSecret used when proving a degree of separation in Grapevine
+ * The confidential AuthSignature used when proving a degree of separation in Grapevine
  */
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct AuthSignature {
