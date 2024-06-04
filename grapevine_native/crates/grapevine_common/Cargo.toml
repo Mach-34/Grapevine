@@ -32,6 +32,9 @@ ahash = "0.8.9"
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 babyjubjub-rs = "0.0.11"
 getrandom = { version = "0.2", features = ["js"]}
+wasm-bindgen = "0.2.92"
+console_error_panic_hook = "0.1.7"
+
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 babyjubjub-rs.workspace = true

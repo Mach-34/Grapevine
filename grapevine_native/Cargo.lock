@@ -606,6 +606,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0b6a852b24ab71dffc585bcb46eaf7959d175cb865a7152e35b348d1b2960422"
 
 [[package]]
+name = "console_error_panic_hook"
+version = "0.1.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a06aeb73f470f66dcdbf7223caeebb85984942f22f1adb2a088cf9668146bbbc"
+dependencies = [
+ "cfg-if",
+ "wasm-bindgen",
+]
+
+[[package]]
 name = "constant_time_eq"
 version = "0.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1329,6 +1339,7 @@ dependencies = [
  "babyjubjub-rs",
  "bson",
  "cbc",
+ "console_error_panic_hook",
  "ff",
  "ff_ce",
  "getrandom",
@@ -1345,6 +1356,7 @@ dependencies = [
  "sha256",
  "sha3",
  "uuid",
+ "wasm-bindgen",
 ]
 
 [[package]]

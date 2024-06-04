@@ -1,7 +1,9 @@
 use crate::{Fr, MAX_SECRET_CHARS, MAX_USERNAME_CHARS, SECRET_FIELD_LENGTH};
 #[cfg(target_family = "wasm")]
-use ff::PrimeField;
+use ff::{PrimeField, FromUniformBytes};
 use std::error::Error;
+#[cfg(target_family = "wasm")]
+use crate::console_log;
 
 /**
  * Generates a new stringified random bn254 field element
@@ -15,15 +17,11 @@ pub fn random_fr() -> Fr {
 
 #[cfg(target_family = "wasm")]
 pub fn random_fr() -> Fr {
-    // todo: implement random sampling for wasm
-    let mut buf = [0u8; 31];
+    let mut buf = [0u8; 64];
     getrandom::getrandom(&mut buf).unwrap();
-    // convert to 32 bytes
-    let mut fr_buf = [0u8; 32];
-    fr_buf[0..buf.len()].copy_from_slice(&buf);
-    fr_buf[31] = 0;
-    // check valid fr
-    Fr::from_repr(fr_buf).unwrap()
+    let x = Fr::from_uniform_bytes(&buf);
+    console_log!("Fr: {:?}", x);
+    x
 }
 
 /**

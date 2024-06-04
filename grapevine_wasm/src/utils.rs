@@ -46,13 +46,6 @@ pub async fn retrieve_chunked_params(url: String) -> String {
     serialized
 }
 
-#[cfg(target_family = "wasm")]
-pub fn random_fr() -> Fr {
-    let mut buf = [0u8; 64];
-    getrandom::getrandom(&mut buf).unwrap();
-    Fr::from_uniform_bytes(&buf)
-}
-
 /**
  * Converts a stringified bigint to bn254 Fr
  * @notice assumes little endian order
@@ -68,14 +61,13 @@ pub fn bigint_to_fr(val: String) -> Fr {
         val
     };
     // parse the string
-    let mut bytes = BigInt::from_str_radix(&val, 16).unwrap().to_bytes_le().1;
-
+    let mut bytes = BigInt::from_str_radix(&val, 16).unwrap().to_bytes_be().1;
     // pad bytes to end if necessary (LE)
     if bytes.len() < 32 {
         let mut padded = vec![0; 32 - bytes.len()];
         bytes.append(&mut padded);
     }
-    let bytes = bytes.try_into().unwrap();
+    let bytes: [u8; 32] = bytes.try_into().unwrap();
     Fr::from_repr(bytes).unwrap()
 }
 
@@ -88,21 +80,3 @@ pub fn bigint_to_fr(val: String) -> Fr {
 pub fn fr_to_bigint(val: Fr) -> String {
     format!("0x{}", hex::encode(val.to_bytes()))
 }
-
-// /**
-//  * Computes the phrase hash given the secret input
-//  *
-//  * @param phrase - the secret input to hash
-//  * @return - the phrase hash as the Fr element used in Nova-Scotia
-//  */
-// pub fn phrase_hash(phrase: String) -> Fr {
-//     // serialize the phrase
-//     let serialized_bytes = convert_phrase_to_fr(&phrase).unwrap();
-//     // convert to ff community edition used in poseidon_rs
-//     let serialized = serialized_bytes
-//         .iter()
-//         .map(|chunk| ff_ce_from_le_bytes(*chunk))
-//         .collect::<Vec<>>();
-//     let poseidon = poseidon_rs::Poseidon::new();
-//     let hash = poseidon.hash(serialized).unwrap();
-// }

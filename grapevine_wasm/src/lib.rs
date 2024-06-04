@@ -11,6 +11,9 @@ use wasm_bindgen::prelude::*;
 
 pub use wasm_bindgen_rayon::init_thread_pool;
 pub mod utils;
+pub mod types;
+
+
 
 /**
  * Create a nova folding proof for 0th degree (identity proof/ knowledge of phrase)
@@ -43,16 +46,13 @@ pub async fn identity_proof(
 
     // get logic step inputs (chaff -> degree 0 -> chaff)
     let mut private_inputs: Vec<HashMap<String, Value>> = Vec::new();
-    console_log!("xxx");
-    let x = bigint_to_fr(String::from("0x00"));
-    console_log!("Building inputs");
+
     build_step_inputs(
         &mut private_inputs,
         Some(phrase),
         [None, Some(username)],
         [None, Some(bigint_to_fr(auth_secret))],
     );
-    console_log!("Inputs built");
 
     // compute the first fold (identity proof)
     let proof = create_recursive_circuit(
@@ -149,6 +149,29 @@ pub async fn degree_proof(
     // serialize the proof into a string and return
     serde_json::to_string(&proof).unwrap()
 }
+
+// /**
+//  * Convenient utility for turning known values into the serialized prev_inputs for a proof
+//  * 
+//  * @param phrase_hash - the phrase hash as a stringified bigint
+//  * @param auth_hash - the auth hash as a stringified bigint
+//  * @param degree - the degree of separation of the proof outputting this auth_hash
+//  * @return - the array used as prev_inputs for the next proof
+//  */
+// #[wasm_bindgen]
+// pub async fn serialize_prev_outputs(
+//     phrase_hash: String,
+//     auth_hash: String,
+//     degree: Number
+// ) -> Array {
+//     // fill array with hashes and return
+//     let arr = Array::new_with_length(4);
+//     arr.set(0, degree.into());
+//     arr.set(1, JsValue::from_str(&phrase_hash));
+//     arr.set(2, JsValue::from_str(&auth_hash));
+//     arr.set(3, JsValue::from_str("0x00"));
+//     arr
+// }
 
 /**
  * Verify a nova proof of a given degree of separation

@@ -7,6 +7,8 @@ use grapevine_common::{Fr, NovaProof, Params};
 use serde_json::{json, Value};
 use std::io::{Read, Write};
 use std::{collections::HashMap, env::current_dir};
+#[cfg(target_family = "wasm")]
+use grapevine_common::{console_log, wasm::init_panic_hook};
 
 /**
  * Given an input hashmap vec and some inputs, build the inputs for a compute
