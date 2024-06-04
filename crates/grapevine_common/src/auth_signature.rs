@@ -131,22 +131,33 @@ mod test {
         println!("auth_secret_2 {:?}", decrypted_auth_secret.auth_signature);
     }
 
-    // #[test]
-    // fn serde_test() {
-    //     // setup
-    //     let auth_secret = random_fr();
-    //     let username = String::from("JP4G");
-    //     let recipient_sk = babyjubjub_rs::new_key();
-    //     let recipient_pk = recipient_sk.public();
-    //     // create encrypted auth secret
-    //     let encrypted_auth_secret =
-    //         AuthSignatureEncrypted::new(username, auth_secret, recipient_pk);
-    //     // serialize to json
-    //     let json = serde_json::to_string(&encrypted_auth_secret).unwrap();
-    //     // deserialize from json
-    //     let deserialized = serde_json::from_str::<AuthSignatureEncrypted>(&json).unwrap();
-    //     let decrypted_auth_secret = deserialized.decrypt(recipient_sk);
-    //     // check that the auth secret is the same
-    //     assert!(decrypted_auth_secret.auth_secret.eq(&auth_secret));
-    // }
+    #[test]
+    fn serde_test() {
+        // setup
+        let username = String::from("JP4G");
+        let sender_sk = babyjubjub_rs::new_key();
+        let recipient_sk = babyjubjub_rs::new_key();
+        let recipient_pk = recipient_sk.public();
+
+        // hash recipient pubkey
+        let poseidon = Poseidon::new();
+        let hash = poseidon.hash(vec![recipient_pk.x, recipient_pk.y]).unwrap();
+
+        // sign pubkey hash
+        let msg = BigInt::from_bytes_le(Sign::Plus, &ff_ce_to_le_bytes(&hash));
+        let auth_signature = sender_sk.sign(msg).unwrap();
+
+        // create encrypted auth signature
+        let encrypted_auth_signature =
+            AuthSignatureEncrypted::new(username, auth_signature.clone(), recipient_pk);
+        // serialize to json
+        let json = serde_json::to_string(&encrypted_auth_signature).unwrap();
+        // deserialize from json
+        let deserialized = serde_json::from_str::<AuthSignatureEncrypted>(&json).unwrap();
+        let decrypted_auth_signature = deserialized.decrypt(recipient_sk);
+        // check that the auth secret is the same
+        assert!(decrypted_auth_signature
+            .auth_signature
+            .eq(&auth_signature.compress()));
+    }
 }
