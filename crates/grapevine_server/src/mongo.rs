@@ -6,6 +6,8 @@ use mongodb::bson::{self, doc, oid::ObjectId, Binary, Bson};
 use mongodb::options::{ClientOptions, FindOneOptions, FindOptions, ServerApi, ServerApiVersion};
 use mongodb::{Client, Collection};
 
+use crate::MONGODB_URI;
+
 pub struct GrapevineDB {
     users: Collection<User>,
     relationships: Collection<Relationship>,
@@ -35,14 +37,14 @@ impl GrapevineDB {
     /**
      * Drops the entire database to start off with clean state for testing
      */
-    // pub async fn drop(database_name: &str) {
-    //     let mut client_options = ClientOptions::parse(&**MONGODB_URI).await.unwrap();
-    //     let server_api = ServerApi::builder().version(ServerApiVersion::V1).build();
-    //     client_options.server_api = Some(server_api);
-    //     let client = Client::with_options(client_options).unwrap();
+    pub async fn drop(database_name: &str) {
+        let mut client_options = ClientOptions::parse(&**MONGODB_URI).await.unwrap();
+        let server_api = ServerApi::builder().version(ServerApiVersion::V1).build();
+        client_options.server_api = Some(server_api);
+        let client = Client::with_options(client_options).unwrap();
 
-    //     client.database(database_name).drop(None).await.unwrap();
-    // }
+        client.database(database_name).drop(None).await.unwrap();
+    }
 
     /// USER FUNCTIONS ///
 
@@ -123,7 +125,6 @@ impl GrapevineDB {
      * @notice - assumes username and pubkey auth checks were already performed
      *
      * @param user - the user to insert into the database
-     * @param auth_secret - the encrypted auth secret used by this user
      * @returns - an error if the user already exists, or Ok otherwise
      */
     pub async fn create_user(&self, user: User) -> Result<ObjectId, GrapevineError> {

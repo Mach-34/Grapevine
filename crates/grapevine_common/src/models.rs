@@ -31,7 +31,7 @@ pub struct ProvingData {
     #[serde(with = "serde_bytes")]
     pub ephemeral_key: [u8; 32],
     #[serde(with = "serde_bytes")]
-    pub ciphertext: [u8; 48],
+    pub ciphertext: [u8; 80],
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -43,7 +43,7 @@ pub struct Relationship {
     #[serde(default, with = "serde_bytes")]
     pub ephemeral_key: Option<[u8; 32]>,
     #[serde(default, with = "serde_bytes")]
-    pub ciphertext: Option<[u8; 48]>,
+    pub ciphertext: Option<[u8; 80]>,
     pub active: Option<bool>, // true if both users have accepted, false if pending
 }
 
@@ -56,7 +56,7 @@ pub struct User {
     pub username: Option<String>,
     #[serde(with = "serde_bytes")]
     pub pubkey: Option<[u8; 32]>,
-    pub relationships: Option<Vec<ObjectId>>, // references to connections (includes reference to connected user + their auth secret)
+    pub relationships: Option<Vec<ObjectId>>, // references to connections (includes reference to connected user + their auth signature)
     pub degree_proofs: Option<Vec<ObjectId>>, // references to degree proofs by this user
 }
 
@@ -64,7 +64,7 @@ pub struct User {
 pub struct Phrase {
     #[serde(rename = "_id", skip_serializing_if = "Option::is_none")]
     pub id: Option<ObjectId>,
-    pub hash: Option<[u8; 32]>, // hash of phrase
-    pub index: Option<u32>, // separate uid shown to user
+    pub hash: Option<[u8; 32]>,      // hash of phrase
+    pub index: Option<u32>,          // separate uid shown to user
     pub description: Option<String>, // text to be shown with the phrase
 }

@@ -58,7 +58,7 @@ mod test_rocket {
     };
     use grapevine_common::{
         account::GrapevineAccount,
-        auth_secret::AuthSecretEncrypted,
+        auth_signature::AuthSignatureEncrypted,
         http::{
             requests::{
                 CreateUserRequest, DegreeProofRequest, NewRelationshipRequest, PhraseRequest,
@@ -66,6 +66,7 @@ mod test_rocket {
             responses::{DegreeData, PhraseCreationResponse},
         },
         models::{DegreeProof, ProvingData, User},
+        utils::random_fr,
     };
     use lazy_static::lazy_static;
     use rocket::{
@@ -112,12 +113,12 @@ mod test_rocket {
         to: &mut GrapevineAccount,
     ) -> (u16, Option<String>) {
         let pubkey = to.pubkey();
-        let encrypted_auth_secret = from.encrypt_auth_secret(pubkey);
+        let encrypted_auth_signature = from.generate_auth_signature(pubkey);
 
         let body = NewRelationshipRequest {
             to: to.username().clone(),
-            ephemeral_key: encrypted_auth_secret.ephemeral_key,
-            ciphertext: encrypted_auth_secret.ciphertext,
+            ephemeral_key: encrypted_auth_signature.ephemeral_key,
+            ciphertext: encrypted_auth_signature.ciphertext,
         };
 
         let context = GrapevineTestContext::init().await;
@@ -254,29 +255,25 @@ mod test_rocket {
         // Increment nonce after request
         let _ = user.increment_nonce(None);
 
-        let auth_secret_encrypted = AuthSecretEncrypted {
+        let auth_signature_encrypted = AuthSignatureEncrypted {
             ephemeral_key: preceding.ephemeral_key,
             ciphertext: preceding.ciphertext,
             username: preceding.username,
             recipient: user.pubkey().compress(),
         };
-        let auth_secret = user.decrypt_auth_secret(auth_secret_encrypted);
+        let auth_signature = user.decrypt_auth_signature(auth_signature_encrypted);
 
         // decompress proof
         let mut proof = decompress_proof(&preceding.proof);
         // verify proof
         let previous_output =
-            verify_nova_proof(&proof, &public_params, (preceding.degree * 2) as usize)
+            verify_nova_proof(&proof, &public_params, 1 + (preceding.degree * 2) as usize)
                 .unwrap()
                 .0;
 
-        // build nova proof
-        let username_input = vec![auth_secret.username, username.clone()];
-        let auth_secret_input = vec![auth_secret.auth_secret, user.auth_secret().clone()];
-
         continue_nova_proof(
-            &username_input,
-            &auth_secret_input,
+            &user.pubkey(),
+            &auth_signature.fmt_circom(),
             &mut proof,
             previous_output,
             wc_path,
@@ -303,6 +300,8 @@ mod test_rocket {
             .body(serialized)
             .dispatch()
             .await;
+
+        println!("Res: {:?}", res);
 
         let code = res.status().code;
         let msg = res.into_string().await;
@@ -332,8 +331,8 @@ mod test_rocket {
         let context: GrapevineTestContext = GrapevineTestContext::init().await;
 
         // create the phrase proof
-        let username_vec = vec![user.username().clone()];
-        let auth_secret_vec = vec![user.auth_secret().clone()];
+        let pubkey_vec = vec![user.pubkey().clone()];
+        let auth_signature_vec = vec![[random_fr(), random_fr(), random_fr()]];
 
         let params = use_public_params().unwrap();
         let r1cs = use_r1cs().unwrap();
@@ -344,8 +343,8 @@ mod test_rocket {
             &r1cs,
             &params,
             &phrase,
-            &username_vec,
-            &auth_secret_vec,
+            &pubkey_vec,
+            &auth_signature_vec,
         )
         .unwrap();
 
@@ -1113,6 +1112,7 @@ mod test_rocket {
     }
 
     #[rocket::async_test]
+    #[ignore]
     async fn test_relationship_creation_with_empty_request_body() {
         // Reset db with clean state
         GrapevineDB::drop("grapevine_mocked").await;

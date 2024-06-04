@@ -13,8 +13,14 @@ pub const DEFAULT_PUBLIC_PARAMS_PATH: &str =
 /**
  * Default start input is 0 first three elements and 1 for chaff step
  */
-pub fn start_input() -> [Fr; 4] {
-    [Fr::from(0), Fr::from(0), Fr::from(0), Fr::from(1)]
+pub fn start_input() -> [Fr; 5] {
+    [
+        Fr::from(0),
+        Fr::from(0),
+        Fr::from(0),
+        Fr::from(0),
+        Fr::from(1),
+    ]
 }
 
 /**

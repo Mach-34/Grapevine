@@ -1,11 +1,11 @@
+use babyjubjub_rs::Point;
 use criterion::{criterion_group, criterion_main, Criterion};
 use grapevine_circuits::nova::{
     continue_nova_proof, get_public_params, get_r1cs, nova_proof, verify_nova_proof,
 };
 use grapevine_circuits::utils::compress_proof;
-use grapevine_circuits::{DEFAULT_PUBLIC_PARAMS_PATH, DEFAULT_R1CS_PATH, DEFAULT_WC_PATH};
+use grapevine_common::account::GrapevineAccount;
 use grapevine_common::utils::random_fr;
-use grapevine_common::{Fr, NovaProof};
 use std::env::current_dir;
 
 fn benchmark(c: &mut Criterion) {
@@ -20,20 +20,28 @@ fn benchmark(c: &mut Criterion) {
     let r1cs = get_r1cs(Some(r1cs_path));
     let public_params = get_public_params(Some(params_path));
     // build inputs
-    let usernames: [String; 7] = [
+    let accounts = vec![
         "alpha", "bravo", "charlie", "delta", "echo", "foxtrot", "golf",
     ]
     .iter()
-    .map(|name| String::from(*name))
-    .collect::<Vec<_>>()
-    .try_into()
-    .unwrap(); // assume degrees of connection will never be mroe than 7
+    .map(|name| GrapevineAccount::new(String::from(*name)))
+    .collect::<Vec<GrapevineAccount>>(); // assume degrees of connection will never be mroe than 7
     let phrase = String::from("I heard it through the grapevine");
-    let auth_secrets: [Fr; 7] = std::array::from_fn(|_| random_fr());
+    let mut auth_signatures = vec![[random_fr(), random_fr(), random_fr()]];
+
+    for i in 1..accounts.len() {
+        let recipient_pubkey = accounts[i].pubkey();
+        let auth_signature = accounts[i - 1].generate_auth_signature(recipient_pubkey);
+        let decrypted = accounts[i].decrypt_auth_signature(auth_signature);
+        auth_signatures.push(decrypted.fmt_circom());
+    }
+
+    let pubkeys = accounts
+        .iter()
+        .map(|acc| acc.pubkey())
+        .collect::<Vec<Point>>();
 
     // benchmark degree 1 proof
-    let current_usernames = vec![usernames[0].clone()];
-    let current_auth_secrets = vec![auth_secrets[0].clone()];
     c.bench_function("degree 1 proof", |b| {
         b.iter(|| {
             nova_proof(
@@ -41,8 +49,8 @@ fn benchmark(c: &mut Criterion) {
                 &r1cs,
                 &public_params,
                 &phrase,
-                &current_usernames,
-                &current_auth_secrets,
+                &vec![pubkeys[0].clone()],
+                &vec![auth_signatures[0]],
             )
             .unwrap()
         })
@@ -54,8 +62,8 @@ fn benchmark(c: &mut Criterion) {
         &r1cs,
         &public_params,
         &phrase,
-        &current_usernames,
-        &current_auth_secrets,
+        &vec![pubkeys[0].clone()],
+        &vec![auth_signatures[0]],
     )
     .unwrap();
     let uncompressed_size = serde_json::to_string(&proof)
@@ -68,15 +76,15 @@ fn benchmark(c: &mut Criterion) {
     // benchmark degree 2 proof
     for i in 1..7 {
         // get inputs
-        let z0_last = verify_nova_proof(&proof, &public_params, i * 2).unwrap().0;
-        let current_usernames = usernames[i - 1..i + 1].to_vec();
-        let current_auth_secrets = auth_secrets[i - 1..i + 1].to_vec();
+        let z0_last = verify_nova_proof(&proof, &public_params, 1 + i * 2)
+            .unwrap()
+            .0;
         // benchmark the next iteration
         c.bench_function(format!("degree {} proof", i + 1).as_str(), |b| {
             b.iter(|| {
                 continue_nova_proof(
-                    &current_usernames,
-                    &current_auth_secrets,
+                    &pubkeys[i],
+                    &auth_signatures[i],
                     &mut proof.clone(),
                     z0_last.clone(),
                     wc_path.clone(),
@@ -88,8 +96,8 @@ fn benchmark(c: &mut Criterion) {
         });
         // prepare i degree proof and store sizing data
         continue_nova_proof(
-            &current_usernames,
-            &current_auth_secrets,
+            &pubkeys[i],
+            &auth_signatures[i],
             &mut proof,
             z0_last,
             wc_path.clone(),
@@ -133,7 +141,6 @@ fn benchmark(c: &mut Criterion) {
 /// Degree 5: uncompressed: 3816699 bytes, compressed: 1468022 bytes
 /// Degree 6: uncompressed: 3816407 bytes, compressed: 1595677 bytes
 /// Degree 7: uncompressed: 3820269 bytes, compressed: 1644215 bytes
-
 
 criterion_group! {
     name = benches;

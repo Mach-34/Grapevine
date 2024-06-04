@@ -58,9 +58,7 @@ pub async fn prove_phrase(
                 e
             );
             return Err(GrapevineResponse::BadRequest(ErrorMessage(
-                Some(GrapevineError::SerdeError(String::from(
-                    "NewPhraseRequest",
-                ))),
+                Some(GrapevineError::SerdeError(String::from("NewPhraseRequest"))),
                 None,
             )));
         }
@@ -68,9 +66,9 @@ pub async fn prove_phrase(
 
     // verify the proof
     let decompressed_proof = decompress_proof(&request.proof);
-    let verify_res = verify_nova_proof(&decompressed_proof, &*PUBLIC_PARAMS, 2);
+    let verify_res = verify_nova_proof(&decompressed_proof, &*PUBLIC_PARAMS, 3);
     let (phrase_hash, auth_hash) = match verify_res {
-        Ok(res) => (res.0[1].to_bytes(), res.0[2].to_bytes()),
+        Ok(res) => (res.0[3].to_bytes(), res.0[2].to_bytes()),
         Err(e) => {
             println!("Proof verification failed: {:?}", e);
             return Err(GrapevineResponse::BadRequest(ErrorMessage(
@@ -234,10 +232,10 @@ pub async fn degree_proof(
     let verify_res = verify_nova_proof(
         &decompressed_proof,
         &*PUBLIC_PARAMS,
-        (request.degree * 2) as usize,
+        1 + (request.degree * 2) as usize,
     );
     let (phrase_hash, auth_hash) = match verify_res {
-        Ok(res) => (res.0[1].to_bytes(), res.0[2].to_bytes()),
+        Ok(res) => (res.0[3].to_bytes(), res.0[2].to_bytes()),
         Err(e) => {
             println!("Proof verification failed: {:?}", e);
             return Err(GrapevineResponse::BadRequest(ErrorMessage(
@@ -336,14 +334,14 @@ pub async fn get_available_proofs(
  * Returns all the information needed to construct a proof of degree of separation from a given user
  *
  * @param oid - the ObjectID of the proof to retrieve
- * @param username - the username to retrieve encrypted auth secret for when proving relationship
+ * @param username - the username to retrieve encrypted auth signature for when proving relationship
  * @return - a ProvingData struct containing:
  *         * degree: the separation degree of the returned proof
  *         * proof: the gzip-compressed fold proof
  *         * username: the username of the proof creator
  *         * ephemeral_key: the ephemeral pubkey that can be combined with the requesting user's
- *           private key to derive returned proof creator's auth secret decryption key
- *         * ciphertext: the encrypted auth secret
+ *           private key to derive returned proof creator's auth signature decryption key
+ *         * ciphertext: the encrypted auth signature
  * @return status:
  *         - 200 if successful retrieval
  *         - 401 if signature mismatch or nonce mismatch

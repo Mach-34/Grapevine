@@ -2,13 +2,13 @@ use nova_scotia::{circom::circuit::CircomCircuit, C1, C2, F};
 use nova_snark::{provider, traits::circuit::TrivialTestCircuit, PublicParams, RecursiveSNARK};
 
 pub mod account;
-pub mod auth_secret;
+pub mod auth_signature;
 pub mod compat;
 pub mod crypto;
-pub mod http;
-pub mod utils;
-pub mod models;
 pub mod errors;
+pub mod http;
+pub mod models;
+pub mod utils;
 
 pub type G1 = provider::bn256_grumpkin::bn256::Point;
 pub type G2 = provider::bn256_grumpkin::grumpkin::Point;
