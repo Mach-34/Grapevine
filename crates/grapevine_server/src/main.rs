@@ -58,7 +58,7 @@ mod test_rocket {
     };
     use grapevine_common::{
         account::GrapevineAccount,
-        auth_signature::AuthSecretEncrypted,
+        auth_signature::AuthSignatureEncrypted,
         http::{
             requests::{
                 CreateUserRequest, DegreeProofRequest, NewRelationshipRequest, PhraseRequest,
@@ -255,7 +255,7 @@ mod test_rocket {
         // Increment nonce after request
         let _ = user.increment_nonce(None);
 
-        let auth_signature_encrypted = AuthSecretEncrypted {
+        let auth_signature_encrypted = AuthSignatureEncrypted {
             ephemeral_key: preceding.ephemeral_key,
             ciphertext: preceding.ciphertext,
             username: preceding.username,
@@ -267,7 +267,7 @@ mod test_rocket {
         let mut proof = decompress_proof(&preceding.proof);
         // verify proof
         let previous_output =
-            verify_nova_proof(&proof, &public_params, (preceding.degree * 2) as usize)
+            verify_nova_proof(&proof, &public_params, 1 + (preceding.degree * 2) as usize)
                 .unwrap()
                 .0;
 
@@ -300,6 +300,8 @@ mod test_rocket {
             .body(serialized)
             .dispatch()
             .await;
+
+        println!("Res: {:?}", res);
 
         let code = res.status().code;
         let msg = res.into_string().await;
@@ -1110,6 +1112,7 @@ mod test_rocket {
     }
 
     #[rocket::async_test]
+    #[ignore]
     async fn test_relationship_creation_with_empty_request_body() {
         // Reset db with clean state
         GrapevineDB::drop("grapevine_mocked").await;

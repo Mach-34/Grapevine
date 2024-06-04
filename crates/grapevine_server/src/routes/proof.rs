@@ -66,9 +66,9 @@ pub async fn prove_phrase(
 
     // verify the proof
     let decompressed_proof = decompress_proof(&request.proof);
-    let verify_res = verify_nova_proof(&decompressed_proof, &*PUBLIC_PARAMS, 2);
+    let verify_res = verify_nova_proof(&decompressed_proof, &*PUBLIC_PARAMS, 3);
     let (phrase_hash, auth_hash) = match verify_res {
-        Ok(res) => (res.0[1].to_bytes(), res.0[2].to_bytes()),
+        Ok(res) => (res.0[3].to_bytes(), res.0[2].to_bytes()),
         Err(e) => {
             println!("Proof verification failed: {:?}", e);
             return Err(GrapevineResponse::BadRequest(ErrorMessage(
@@ -77,6 +77,8 @@ pub async fn prove_phrase(
             )));
         }
     };
+
+    println!("Phrase hash: {:?}", phrase_hash);
 
     // check if phrase exists in db
     let mut phrase_oid: Option<ObjectId> = match db.get_phrase_by_hash(&phrase_hash).await {
@@ -232,10 +234,10 @@ pub async fn degree_proof(
     let verify_res = verify_nova_proof(
         &decompressed_proof,
         &*PUBLIC_PARAMS,
-        (request.degree * 2) as usize,
+        1 + (request.degree * 2) as usize,
     );
     let (phrase_hash, auth_hash) = match verify_res {
-        Ok(res) => (res.0[1].to_bytes(), res.0[2].to_bytes()),
+        Ok(res) => (res.0[3].to_bytes(), res.0[2].to_bytes()),
         Err(e) => {
             println!("Proof verification failed: {:?}", e);
             return Err(GrapevineResponse::BadRequest(ErrorMessage(
@@ -244,6 +246,8 @@ pub async fn degree_proof(
             )));
         }
     };
+
+    println!("Phrase hash: {:?}", phrase_hash);
 
     // get the phrase oid from the hash
     let phrase_oid = match db.get_phrase_by_hash(&phrase_hash).await {

@@ -31,7 +31,7 @@ pub struct ProvingData {
     #[serde(with = "serde_bytes")]
     pub ephemeral_key: [u8; 32],
     #[serde(with = "serde_bytes")]
-    pub ciphertext: [u8; 48],
+    pub ciphertext: [u8; 80],
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -43,7 +43,7 @@ pub struct Relationship {
     #[serde(default, with = "serde_bytes")]
     pub ephemeral_key: Option<[u8; 32]>,
     #[serde(default, with = "serde_bytes")]
-    pub ciphertext: Option<[u8; 48]>,
+    pub ciphertext: Option<[u8; 80]>,
     pub active: Option<bool>, // true if both users have accepted, false if pending
 }
 

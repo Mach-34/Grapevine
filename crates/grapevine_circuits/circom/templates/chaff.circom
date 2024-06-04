@@ -51,6 +51,6 @@ template ChaffMux() {
     out[0] <== mux.out[0];
     out[1] <== mux.out[2];
     out[2] <== mux.out[3];
-    out[3] <== mux.out[2];
+    out[3] <== mux.out[1];
     out[4] <== flipped_chaff_step.out;
 }
