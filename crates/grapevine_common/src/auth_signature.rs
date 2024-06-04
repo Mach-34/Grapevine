@@ -9,7 +9,7 @@ type Aes128CbcEnc = cbc::Encryptor<aes::Aes128>;
 type Aes128CbcDec = cbc::Decryptor<aes::Aes128>;
 
 /**
- * Encrypted version of an auth secret with the necessary info for the recipient to decrypt it
+ * Encrypted version of an auth signature with the necessary info for the recipient to decrypt it
  */
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct AuthSignatureEncrypted {
@@ -49,9 +49,9 @@ pub trait AuthSignatureEncryptedUser {
     /**
      * Create a new encrypted auth signature
      *
-     * @param username - the username associated with this auth secret
+     * @param username - the username associated with this auth signature
      * @param auth_signature - the auth signature over user's pubkey
-     * @param recipient- the bjj pubkey of the recipient of the auth secret
+     * @param recipient- the bjj pubkey of the recipient of the auth signature
      * @returns - encrypted auth signature
      */
     fn new(username: String, auth_signature: Signature, recipient: Point) -> Self;
@@ -59,7 +59,7 @@ pub trait AuthSignatureEncryptedUser {
     /**
      * Decrypts an encrypted AuthSignature
      *
-     * @param recipient - the private key of the recipient of the auth secret
+     * @param recipient - the private key of the recipient of the auth signature
      * @returns - the decrypted auth signature
      */
     fn decrypt(&self, recipient: PrivateKey) -> AuthSignature;
@@ -72,7 +72,7 @@ impl AuthSignatureEncryptedUser for AuthSignatureEncrypted {
         let ephm_pk = ephm_sk.public().compress();
         // compute the aes-cbc-128 key
         let (aes_key, aes_iv) = gen_aes_key(ephm_sk, recipient.clone());
-        // encrypt the auth secret
+        // encrypt the auth signature
         let plaintext = signature.compress();
         let mut buf = [0u8; 80];
         buf[..plaintext.len()].copy_from_slice(&plaintext);
@@ -81,7 +81,7 @@ impl AuthSignatureEncryptedUser for AuthSignatureEncrypted {
             .unwrap()
             .try_into()
             .unwrap();
-        // return the encrypted auth secret
+        // return the encrypted auth signature
         Self {
             username,
             recipient: recipient.compress(),
@@ -94,7 +94,7 @@ impl AuthSignatureEncryptedUser for AuthSignatureEncrypted {
         // compute the aes-cbc-128 key
         let ephm_pk = babyjubjub_rs::decompress_point(self.ephemeral_key).unwrap();
         let (aes_key, aes_iv) = gen_aes_key(recipient, ephm_pk);
-        // decrypt the auth secret
+        // decrypt the auth signature
         let mut buf = self.ciphertext;
         let auth_signature: [u8; 64] = Aes128CbcDec::new(aes_key[..].into(), aes_iv[..].into())
             .decrypt_padded_mut::<Pkcs7>(&mut buf)
@@ -134,14 +134,17 @@ mod test {
         // create encrypted auth signature
         let encrypted_auth_signature =
             AuthSignatureEncrypted::new(username, auth_signature.clone(), recipient_pk);
-        // decrypt the auth secret
-        let decrypted_auth_secret = encrypted_auth_signature.decrypt(recipient_sk);
-        // check that the auth secret is the same
-        assert!(decrypted_auth_secret
+        // decrypt the auth signature
+        let decrypted_auth_signature = encrypted_auth_signature.decrypt(recipient_sk);
+        // check that the auth signature is the same
+        assert!(decrypted_auth_signature
             .auth_signature
             .eq(&auth_signature.compress()));
-        println!("auth_secret_1 {:?}", auth_signature);
-        println!("auth_secret_2 {:?}", decrypted_auth_secret.auth_signature);
+        println!("auth_signature_1 {:?}", auth_signature);
+        println!(
+            "auth_signature_2 {:?}",
+            decrypted_auth_signature.auth_signature
+        );
     }
 
     #[test]
@@ -168,7 +171,7 @@ mod test {
         // deserialize from json
         let deserialized = serde_json::from_str::<AuthSignatureEncrypted>(&json).unwrap();
         let decrypted_auth_signature = deserialized.decrypt(recipient_sk);
-        // check that the auth secret is the same
+        // check that the auth signature is the same
         assert!(decrypted_auth_signature
             .auth_signature
             .eq(&auth_signature.compress()));

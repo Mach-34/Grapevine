@@ -9,9 +9,10 @@ use crate::utils::fs::{use_public_params, use_r1cs, use_wasm, ACCOUNT_PATH};
 use grapevine_circuits::nova::{continue_nova_proof, nova_proof, verify_nova_proof};
 use grapevine_circuits::utils::{compress_proof, decompress_proof};
 use grapevine_common::account::GrapevineAccount;
-use grapevine_common::auth_signature::AuthSecretEncrypted;
+use grapevine_common::auth_signature::{self, AuthSecretEncrypted};
 use grapevine_common::errors::GrapevineError;
 use grapevine_common::http::requests::{DegreeProofRequest, PhraseRequest};
+use grapevine_common::utils::random_fr;
 
 use std::path::Path;
 
@@ -92,7 +93,7 @@ pub async fn register(username: &String) -> Result<String, GrapevineError> {
 }
 
 /**
- * Add a connection to another user by providing them your auth secret
+ * Add a connection to another user by creating an auth signature by signing their pubkey
  *
  * @param username - the username of the user to add a connection to
  */
@@ -106,7 +107,7 @@ pub async fn add_relationship(username: &String) -> Result<String, GrapevineErro
         Ok(pubkey) => pubkey,
         Err(e) => return Err(e),
     };
-    // build relationship request body with encrypted auth secret payload
+    // build relationship request body with encrypted auth signature payload
     let body = account.new_relationship_request(&username, &pubkey);
     // send add relationship request
     let res = add_relationship_req(&mut account, body).await;
@@ -229,9 +230,9 @@ pub async fn prove_phrase(phrase: &String, description: &String) -> Result<Strin
     }
 
     // prove phrase
-    let username = vec![account.username().clone()];
-    let auth_secret = vec![account.auth_secret().clone()];
-    let proof = nova_proof(wc_path, &r1cs, &params, &phrase, &username, &auth_secret).unwrap();
+    let pubkeys = vec![account.pubkey().clone()];
+    let auth_signature = vec![[random_fr(), random_fr(), random_fr()]];
+    let proof = nova_proof(wc_path, &r1cs, &params, &phrase, &pubkeys, &auth_signature).unwrap();
 
     // compress proof
     let compressed = compress_proof(&proof);
@@ -300,7 +301,7 @@ pub async fn prove_all_available() -> Result<String, GrapevineError> {
     }
     for i in 0..proofs.len() {
         let oid = proofs[i].clone();
-        // get proof and encrypted auth secret
+        // get proof and encrypted auth signature
         let res = get_proof_with_params_req(&mut account, oid.clone()).await;
         let proving_data = match res {
             Ok(proving_data) => proving_data,
@@ -315,13 +316,13 @@ pub async fn prove_all_available() -> Result<String, GrapevineError> {
         println!("Degree being proved: {}", proving_data.degree + 1);
         println!("Proving...");
         // prepare inputs
-        let auth_secret_encrypted = AuthSecretEncrypted {
+        let auth_signature_encrypted = AuthSecretEncrypted {
             ephemeral_key: proving_data.ephemeral_key,
             ciphertext: proving_data.ciphertext,
             username: proving_data.username,
             recipient: account.pubkey().compress(),
         };
-        let auth_secret = account.decrypt_auth_secret(auth_secret_encrypted);
+        let auth_signature = account.decrypt_auth_signature(auth_signature_encrypted);
         let mut proof = decompress_proof(&proving_data.proof);
         let verified =
             verify_nova_proof(&proof, &public_params, (proving_data.degree * 2) as usize);
@@ -333,11 +334,9 @@ pub async fn prove_all_available() -> Result<String, GrapevineError> {
             }
         };
         // build nova proof
-        let username_input = vec![auth_secret.username, account.username().clone()];
-        let auth_secret_input = vec![auth_secret.auth_secret, account.auth_secret().clone()];
         match continue_nova_proof(
-            &username_input,
-            &auth_secret_input,
+            &account.pubkey(),
+            &auth_signature.fmt_circom(),
             &mut proof,
             previous_output,
             wc_path.clone(),

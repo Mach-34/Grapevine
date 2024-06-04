@@ -134,8 +134,8 @@ pub async fn create_user(
  *             * from: the username of the sender
  *             * to: the username of the recipient
  *             * ephemeral_key: the ephemeral pubkey that target can combine with their private
- *               key to derive AES key needed to decrypt auth secret
- *             * ciphertext: the encrypted auth secret
+ *               key to derive AES key needed to decrypt auth signature
+ *             * ciphertext: the encrypted auth signature
  * @return status:
  *            * 201 if success
  *            * 400 if from == to or issues deserializing request
