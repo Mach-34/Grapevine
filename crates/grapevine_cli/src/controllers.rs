@@ -9,7 +9,7 @@ use crate::utils::fs::{use_public_params, use_r1cs, use_wasm, ACCOUNT_PATH};
 use grapevine_circuits::nova::{continue_nova_proof, nova_proof, verify_nova_proof};
 use grapevine_circuits::utils::{compress_proof, decompress_proof};
 use grapevine_common::account::GrapevineAccount;
-use grapevine_common::auth_secret::AuthSecretEncrypted;
+use grapevine_common::auth_signature::AuthSecretEncrypted;
 use grapevine_common::errors::GrapevineError;
 use grapevine_common::http::requests::{DegreeProofRequest, PhraseRequest};
 

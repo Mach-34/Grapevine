@@ -58,7 +58,7 @@ mod test_rocket {
     };
     use grapevine_common::{
         account::GrapevineAccount,
-        auth_secret::AuthSecretEncrypted,
+        auth_signature::AuthSecretEncrypted,
         http::{
             requests::{
                 CreateUserRequest, DegreeProofRequest, NewRelationshipRequest, PhraseRequest,

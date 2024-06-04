@@ -35,7 +35,7 @@ pub struct NewRelationshipRequest {
     #[serde(with = "serde_bytes")]
     pub ephemeral_key: [u8; 32],
     #[serde(with = "serde_bytes")]
-    pub ciphertext: [u8; 48],
+    pub ciphertext: [u8; 80],
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
