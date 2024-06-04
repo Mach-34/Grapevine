@@ -112,12 +112,12 @@ mod test_rocket {
         to: &mut GrapevineAccount,
     ) -> (u16, Option<String>) {
         let pubkey = to.pubkey();
-        let encrypted_auth_secret = from.encrypt_auth_secret(pubkey);
+        let encrypted_auth_signature = from.generate_auth_signature(pubkey);
 
         let body = NewRelationshipRequest {
             to: to.username().clone(),
-            ephemeral_key: encrypted_auth_secret.ephemeral_key,
-            ciphertext: encrypted_auth_secret.ciphertext,
+            ephemeral_key: encrypted_auth_signature.ephemeral_key,
+            ciphertext: encrypted_auth_signature.ciphertext,
         };
 
         let context = GrapevineTestContext::init().await;

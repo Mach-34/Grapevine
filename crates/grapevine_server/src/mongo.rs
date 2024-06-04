@@ -123,7 +123,6 @@ impl GrapevineDB {
      * @notice - assumes username and pubkey auth checks were already performed
      *
      * @param user - the user to insert into the database
-     * @param auth_secret - the encrypted auth secret used by this user
      * @returns - an error if the user already exists, or Ok otherwise
      */
     pub async fn create_user(&self, user: User) -> Result<ObjectId, GrapevineError> {

@@ -114,9 +114,8 @@ pub fn verify_nova_proof(
 /**
  * Prove another degree of separation using an existing proof from a grapevine circuit
  *
- * @param usernames - the usernames to use in the chain of degrees of separation [prev username, current username]
- *   - todo: check size of usernames is 2
- * @param auth_secrets - the auth_secrets to use to obscure hash at each degree of separation
+ * @param pubkey - the pubkey of the user at the current degree
+ * @param auth_signature - the auth_signature to use to verify use of next user
  * @param proof - the proof of degrees of separation to incrementally prove
  * @param previous_output - the output of the previous proof (z_last)
  * @param wc_path - the relative path to the witness calculator file (if none use default)

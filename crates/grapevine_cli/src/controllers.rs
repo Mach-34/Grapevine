@@ -58,13 +58,10 @@ pub fn export_key() -> Result<String, GrapevineError> {
     };
     // Get private key
     let pk = hex::encode(account.private_key_raw());
-    // Get auth secret
-    let auth_secret = hex::encode(account.auth_secret().to_bytes());
     Ok(format!(
-        "Sensitive account details for {}:\nPrivate Key: 0x{}\nAuth Secret: 0x{}",
+        "Sensitive account details for {}:\nPrivate Key: 0x{}",
         account.username(),
         pk,
-        auth_secret
     ))
 }
 
