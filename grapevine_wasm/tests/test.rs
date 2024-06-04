@@ -72,9 +72,11 @@ async fn test_identity_proof_wasm() {
         Number::from(1)
     ).await;
 
-    let phrase_hash = verified_res.get(0).as_string().unwrap();
+    let degree = verified_res.get(0).as_string().unwrap();
+    console_log!("Degree: {}", degree);
+    let phrase_hash = verified_res.get(1).as_string().unwrap();
     console_log!("Phrase hash: {}", phrase_hash);
-    let auth_hash = verified_res.get(1).as_string().unwrap();
+    let auth_hash = verified_res.get(2).as_string().unwrap();
     console_log!("Auth hash: {}", auth_hash);
 }
 
@@ -94,8 +96,6 @@ async fn test_degree_4_wasm() {
         .iter()
         .map(|el| fr_to_bigint(*el))
         .collect();
-
-    console_log!("Auth secrets: {:#?}", auth_secrets);
 
     // define artifact urls & retrieve the chunked params 
     let params_url = format!("{}{}", ARTIFACT_BUCKET_URL, "chunks/");
@@ -124,15 +124,9 @@ async fn test_degree_4_wasm() {
         Number::from(1)
     ).await;
 
-    let phrase_hash = verified_res.get(0).as_string().unwrap();
-    let auth_hash = verified_res.get(1).as_string().unwrap();
-
-    // build next inputs
-    let prev_outputs = Array::new_with_length(4);
-    prev_outputs.set(0, JsValue::from_str("0x00"));
-    prev_outputs.set(1, JsValue::from_str(&phrase_hash));
-    prev_outputs.set(2, JsValue::from_str(&auth_hash));
-    prev_outputs.set(3, JsValue::from_str("0x00"));
+    let degree = verified_res.get(0).as_string().unwrap();
+    let phrase_hash = verified_res.get(1).as_string().unwrap();
+    let auth_hash = verified_res.get(2).as_string().unwrap();
 
     let usernames_arr = Array::new_with_length(2);
     usernames_arr.set(0, JsValue::from_str(&usernames[0]));
@@ -150,7 +144,7 @@ async fn test_degree_4_wasm() {
         params_str.clone(),
         usernames_arr,
         auth_secrets_arr,
-        prev_outputs,
+        verified_res,
         proof
     ).await;
 

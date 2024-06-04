@@ -1,8 +1,8 @@
 use ff::{FromUniformBytes, PrimeField};
 use flate2::read::GzDecoder;
 use grapevine_common::{
-    compat::ff_ce_from_le_bytes, console_log, utils::convert_phrase_to_fr, wasm::init_panic_hook,
-    Fr,
+    compat::ff_ce_from_le_bytes, console_log, errors::GrapevineError, utils::convert_phrase_to_fr,
+    wasm::init_panic_hook, Fr, MAX_SECRET_CHARS, MAX_USERNAME_CHARS,
 };
 use num::{BigInt, Num};
 use reqwest::header::CONTENT_TYPE;
@@ -47,28 +47,102 @@ pub async fn retrieve_chunked_params(url: String) -> String {
 }
 
 /**
+ * Checks the validity of a username
+ * @notice usernames must be ascii and <= 30 characters
+ *
+ * @param username - the username to check
+ * @return - Ok if no violations or error otherwise
+ */
+pub fn validate_username(username: &String) -> Result<(), GrapevineError> {
+    // check length
+    if username.len() > MAX_USERNAME_CHARS {
+        return Err(GrapevineError::UsernameTooLong(username.clone()));
+    }
+    // check ascii
+    if !username.is_ascii() {
+        return Err(GrapevineError::UsernameNotAscii(username.clone()));
+    }
+    Ok(())
+}
+
+/**
+ * Checks the validity of a phrase
+ * @notice phrases must be ascii and <= 180 characters
+ *
+ * @param phrase - the username to check
+ * @return - Ok if no violations or error otherwise
+ */
+pub fn validate_phrase(phrase: &String) -> Result<(), GrapevineError> {
+    // check phrase length
+    if phrase.len() > MAX_SECRET_CHARS {
+        return Err(GrapevineError::PhraseTooLong);
+    }
+    // check ascii
+    if !phrase.is_ascii() {
+        return Err(GrapevineError::PhraseNotAscii);
+    }
+    Ok(())
+}
+
+/**
+ * Checks the validity of an auth secret
+ * @notice auth secrets must be parsable as a bn254 field element
+ *
+ * @param auth_secret - the stringified hex of the field element
+ * @return - Ok if no violations or error otherwise
+ */
+pub fn validate_auth_secret(auth_secret: &String) -> Result<(), GrapevineError> {
+    // check if the auth secret is a valid field element
+    match bigint_to_fr(auth_secret.clone()) {
+        Ok(_) => Ok(()),
+        Err(e) => Err(GrapevineError::AuthSecret(format!(
+            "Invalid auth secret: {}",
+            e.to_string()
+        ))),
+    }
+}
+
+/**
  * Converts a stringified bigint to bn254 Fr
  * @notice assumes little endian order
  *
  * @param val - the bigint to parse
  * @return - the field element
  */
-pub fn bigint_to_fr(val: String) -> Fr {
+pub fn bigint_to_fr(val: String) -> Result<Fr, GrapevineError> {
     // if the string contains 0x, remove it
     let val = if val.starts_with("0x") {
         val[2..].to_string()
     } else {
         val
     };
-    // parse the string
-    let mut bytes = BigInt::from_str_radix(&val, 16).unwrap().to_bytes_be().1;
+    // attempt to parse the string
+    let mut bytes = match BigInt::from_str_radix(&val, 16) {
+        Ok(bigint) => bigint.to_bytes_be().1,
+        Err(e) => return Err(GrapevineError::AuthSecret(e.to_string())),
+    };
     // pad bytes to end if necessary (LE)
     if bytes.len() < 32 {
         let mut padded = vec![0; 32 - bytes.len()];
         bytes.append(&mut padded);
     }
-    let bytes: [u8; 32] = bytes.try_into().unwrap();
-    Fr::from_repr(bytes).unwrap()
+    let bytes: [u8; 32] = match bytes.try_into() {
+        Ok(bytes) => bytes,
+        Err(_) => {
+            return Err(GrapevineError::AuthSecret(String::from(
+                "Invalid bigint length",
+            )))
+        }
+    };
+
+    // convert to field element
+    let fr = Fr::from_repr(bytes);
+    match &fr.is_some().unwrap_u8() {
+        1 => Ok(fr.unwrap()),
+        _ => Err(GrapevineError::AuthSecret(String::from(
+            "Could not parse into bn254 field element",
+        ))),
+    }
 }
 
 /**
