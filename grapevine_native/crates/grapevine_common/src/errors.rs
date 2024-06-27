@@ -7,6 +7,7 @@ pub enum GrapevineError {
     UserNotFound(String),
     UsernameTooLong(String),
     UsernameNotAscii(String),
+    AuthSecret(String),
     PubkeyExists(String),
     UserExists(String),
     PhraseTooLong,
@@ -16,6 +17,7 @@ pub enum GrapevineError {
     RelationshipSenderIsTarget,
     PhraseExists,
     PhraseNotFound,
+    PhraseNotAscii,
     InvalidPhraseHash,
     NonceMismatch(u64, u64),
     MongoError(String),
@@ -24,7 +26,8 @@ pub enum GrapevineError {
     SerdeError(String),
     DegreeProofExists,
     DegreeProofVerificationFailed,
-    FsError(String)
+    FsError(String),
+    ArtifactError(String)
 }
 
 impl std::fmt::Display for GrapevineError {
@@ -41,6 +44,7 @@ impl std::fmt::Display for GrapevineError {
             GrapevineError::UsernameNotAscii(msg) => {
                 write!(f, "Username {} is not ascii", msg)
             }
+            GrapevineError::AuthSecret(msg) => write!(f, "Could not parse auth secret: {}", msg),
             GrapevineError::PubkeyExists(msg) => {
                 write!(f, "Pubkey {} already used by another account", msg)
             }
@@ -48,6 +52,7 @@ impl std::fmt::Display for GrapevineError {
                 write!(f, "User {} already exists with the supplied pubkey", msg)
             },
             GrapevineError::PhraseTooLong => write!(f, "Phrase is too long"),
+            GrapevineError::PhraseNotAscii => write!(f, "Phrase is not ascii"),
             GrapevineError::PendingRelationshipExists(sender, recipient) => {
                 write!(
                     f,
@@ -96,6 +101,7 @@ impl std::fmt::Display for GrapevineError {
                 write!(f, "Failed to verify degree proof")
             },
             GrapevineError::FsError(msg) => write!(f, "Filesystem error: {}", msg),
+            GrapevineError::ArtifactError(msg) => write!(f, "Error loading proof artifact: {}", msg),
         }
     }
 }

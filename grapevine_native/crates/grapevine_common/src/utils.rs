@@ -2,8 +2,6 @@ use crate::{Fr, MAX_SECRET_CHARS, MAX_USERNAME_CHARS, SECRET_FIELD_LENGTH};
 #[cfg(target_family = "wasm")]
 use ff::{PrimeField, FromUniformBytes};
 use std::error::Error;
-#[cfg(target_family = "wasm")]
-use crate::console_log;
 
 /**
  * Generates a new stringified random bn254 field element
@@ -20,7 +18,6 @@ pub fn random_fr() -> Fr {
     let mut buf = [0u8; 64];
     getrandom::getrandom(&mut buf).unwrap();
     let x = Fr::from_uniform_bytes(&buf);
-    console_log!("Fr: {:?}", x);
     x
 }
 
@@ -34,7 +31,8 @@ pub fn random_fr() -> Fr {
 pub fn convert_phrase_to_fr(
     phrase: &String,
 ) -> Result<[[u8; 32]; SECRET_FIELD_LENGTH], Box<dyn Error>> {
-    // check
+    // check phrase length (done elsewhere in wasm)
+    #[cfg(not(targt_family = "wasm"))]
     if phrase.len() > MAX_SECRET_CHARS {
         return Err("Phrase must be <= 180 characters".into());
     }
@@ -64,12 +62,13 @@ pub fn convert_phrase_to_fr(
  * @return - the username serialied into the field element
  */
 pub fn convert_username_to_fr(username: &String) -> Result<[u8; 32], Box<dyn Error>> {
+    // check username length (done elsewhere in wasm)
+    #[cfg(not(targt_family = "wasm"))]
     if username.len() > MAX_USERNAME_CHARS {
         return Err("Username must be <= 30 characters".into());
     }
     let mut bytes: [u8; 32] = [0; 32];
     bytes[1..(username.len() + 1)].copy_from_slice(&username.as_bytes()[..]);
     bytes.reverse();
-    //    Ok(format!("0x{}", hex::encode(bytes)))
     Ok(bytes)
 }
