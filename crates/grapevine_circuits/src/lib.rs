@@ -1,6 +1,7 @@
 use grapevine_common::{Fq, Fr, SECRET_FIELD_LENGTH};
 pub mod nova;
 pub mod utils;
+mod params_gen;
 
 pub const ZERO: &str = "0x0000000000000000000000000000000000000000000000000000000000000000";
 pub const EMPTY_SECRET: [&str; SECRET_FIELD_LENGTH] = [ZERO; SECRET_FIELD_LENGTH];
