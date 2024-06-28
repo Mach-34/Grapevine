@@ -8,6 +8,7 @@ cd ./crates/grapevine_circuits/circom
 yarn
 cd -
 
+
 circom ./crates/grapevine_circuits/circom/grapevine.circom \
   --r1cs --sym --wasm \
   --output ./crates/grapevine_circuits/circom/artifacts --prime bn128

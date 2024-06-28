@@ -1,8 +1,8 @@
 pragma circom 2.1.6;
 
-include "../node_modules/circomlib/circuits/mux1.circom";
+include "./node_modules/circomlib/circuits/mux1.circom";
 include "./templates/auth.circom";
-include "./tempaltes/step_utils.circom"
+include "./templates/step_utils.circom";
 
 template Grapevine() { 
 
@@ -34,7 +34,7 @@ template Grapevine() {
    // Multiplex between identity and degree steps to get scope
    // If chaff step, verifier will be disabled so incorrect assignment is ok
    component identity_scope_mux = Mux1();
-   identity_scope_mux.scope <== inputs.is_degree_step;
+   identity_scope_mux.s <== inputs.is_degree_step;
    identity_scope_mux.c[0] <== prover.address;
    identity_scope_mux.c[1] <== inputs.scope;
 
@@ -42,7 +42,7 @@ template Grapevine() {
    // Verify prover address controls the used pubkey with scope address
    component identity_verifier = ScopeSigVerifier();
    identity_verifier.pubkey <== prover_pubkey;
-   identity_verifier.address <== identity_scope_mux.out;
+   identity_verifier.scope <== identity_scope_mux.out;
    identity_verifier.signature <== scope_signature;
    identity_verifier.enabled <== 1 - inputs.obfuscate;
 
@@ -52,7 +52,7 @@ template Grapevine() {
    component auth_verifier = AuthSigVerifier();
    auth_verifier.pubkey <== relation_pubkey;
    auth_verifier.nullifier <== relation_nullifier;
-   auth_verifier.prover_address <== prover.address;
+   auth_verifier.prover <== prover.address;
    auth_verifier.signature <== auth_signature;
    auth_verifier.enabled <== inputs.is_degree_step;
 

@@ -18,7 +18,7 @@ template StepType() {
     scope_is_zero.in <== scope;
 
     component step_mux = MultiMux1(2);
-    step_mux.s <== scope_is_zero;
+    step_mux.s <== scope_is_zero.out;
     // @ NOTE NEVER CHAFF IF IDENTITY IS TRUE FIX
     // if scope is 0, then this is an identity step
     step_mux.c[0][0] <== 1 - obfuscate;
@@ -45,7 +45,6 @@ template ParseInputs() {
     // 3: previous proof creator address
     // 4-11: nullifiers
     signal input step_in[12];
-    signal input enabled; // whether or not to enforce 
     
     signal output obfuscate; // boolean flag to determine if this is an obfuscation step
     signal output degree; // the degree of separation from relation to scope
@@ -56,20 +55,20 @@ template ParseInputs() {
     signal output is_degree_step; // boolean denoting if step is degree (0 if obfuscated)
     
     // label inputs
-    obfuscation_step = step_in[0];
-    degree = step_in[1];
-    scope = step_in[2];
-    relation = step_in[3];
+    obfuscate <== step_in[0];
+    degree <== step_in[1];
+    scope <== step_in[2];
+    relation <== step_in[3];
     for (var i = 0; i < 8; i++) {
-        nullifiers[i] = step_in[4 + i];
+        nullifiers[i] <== step_in[4 + i];
     }
 
     // Check obfuscation flag is binary
-    obfuscation * (obfuscation - 1) === 0;
+    obfuscate * (obfuscate - 1) === 0;
 
     // Determine what type of step the proof is on
     component step_type = StepType();
-    step_type.obfuscate <== obfuscation;
+    step_type.obfuscate <== obfuscate;
     step_type.scope <== scope;
     is_identity_step <== step_type.identity;
     is_degree_step <== step_type.degree;
@@ -115,9 +114,10 @@ template NullifierAssignment() {
         index_eq[i].in[0] <== degree;
         index_eq[i].in[1] <== i;
 
+
         // mux through the previous nullifier if 0 or the new one if 1
         assign_mux[i] = Mux1();
-        assign_mux[i].s <== index_eq[i] * enabled;
+        assign_mux[i].s <== index_eq[i].out * enabled;
         assign_mux[i].c[0] <== in[i];
         assign_mux[i].c[1] <== relation_nullifier;
 
@@ -166,6 +166,9 @@ template MarshalOutputs() {
     // Otherwise pass through the nullifiers from the input
     component nullifier_assignment = NullifierAssignment();
     nullifier_assignment.in <== nullifiers;
+    nullifier_assignment.degree <== degree;
+    nullifier_assignment.relation_nullifier <== relation_nullifier;
+    nullifier_assignment.enabled <== degree_step;
 
     for (var i = 0; i < 8; i++) {
         step_out[4 + i] <== nullifier_assignment.out[i];
