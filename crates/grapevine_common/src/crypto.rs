@@ -1,6 +1,8 @@
 use crate::{compat::{ff_ce_from_le_bytes, ff_ce_to_le_bytes}, utils::{convert_phrase_to_fr, convert_username_to_fr}};
 use babyjubjub_rs::{Point, PrivateKey};
 use num_bigint::{RandBigInt, ToBigInt};
+use poseidon_rs::Fr;
+use ff_ce::PrimeField;
 use sha256::digest;
 use sha3::{Digest, Sha3_256};
 
@@ -77,4 +79,15 @@ pub fn phrase_hash(phrase: &String) -> [u8; 32] {
     let hasher = poseidon_rs::Poseidon::new();
     let hash = hasher.hash(bytes).unwrap();
     ff_ce_to_le_bytes(&hash)
+}
+
+/**
+ * Converts a pubkey to an address using Poseidon(pubkey.x, pubkey.y)
+ * 
+ * @param pubkey - the pubkey to convert into an address
+ * @return - the address
+ */
+pub fn pubkey_to_address(pubkey: &Point) -> Fr {
+    let hasher = poseidon_rs::Poseidon::new();
+    hasher.hash([pubkey.x, pubkey.y]).unwrap()
 }

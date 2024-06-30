@@ -1,99 +1,76 @@
 pragma circom 2.1.6;
 
+include "./node_modules/circomlib/circuits/mux1.circom";
+include "./templates/auth.circom";
+include "./templates/step_utils.circom";
 
-include "node_modules/circomlib/circuits/eddsaposeidon.circom";
-include "node_modules/circomlib/circuits/poseidon.circom";
-include "node_modules/circomlib/circuits/mux1.circom";
-include "node_modules/circomlib/circuits/comparators.circom";
-include "node_modules/circomlib/circuits/gates.circom";
-include "./templates/chaff.circom";
+template Grapevine() { 
 
+   signal input relation_pubkey[2]; // the pubkey of the previous prover
+   signal input prover_pubkey[2]; // the pubkey of current prover showing connection to relation
+   signal input relation_nullifier; // the nullifier issued by the previous prover
+   signal input auth_signature[3]; // the signature by relation over H|nullifier, prover address|
+   signal input scope_signature[3]; // the signature by prover over scope address
 
-template grapevine(num_felts) { 
+   // See ./templates/step_utils.circom:ParseInputs for deserialization schema
+   signal input step_in[12];
+   signal output step_out[12];
 
+   // Parse step inputs into labeled signals & validate them
+   component inputs = ParseInputs();
+   inputs.step_in <== step_in;
 
-   // in_out schema
-   // 0: degrees of separation
-   // 1: x value of pubkey from previous step
-   // 2: y value of pubkey from previous step
-   // 3: secret hash from previous step
-   // 4: chaff
+   // **Only constrained if DEGREE step**
+   // Check the relation pubkey hashes to the relation address
+   component validate_relation_pubkey = CheckBJJAddress();
+   validate_relation_pubkey.pubkey <== relation_pubkey;
+   validate_relation_pubkey.address <== inputs.relation;
+   validate_relation_pubkey.enabled <== inputs.is_degree_step;
 
+   // Compute the current prover's address
+   component prover = BJJAddress();
+   prover.pubkey <== prover_pubkey;
 
-   signal input step_in[5];
-   signal output step_out[5];
+   // Multiplex between identity and degree steps to get scope
+   // If chaff step, verifier will be disabled so incorrect assignment is ok
+   component identity_scope_mux = Mux1();
+   identity_scope_mux.s <== inputs.is_degree_step;
+   identity_scope_mux.c[0] <== prover.address;
+   identity_scope_mux.c[1] <== inputs.scope;
 
+   // **Only constrained if IDENTITY or DEGREE step**
+   // Verify prover address controls the used pubkey with scope address
+   component identity_verifier = ScopeSigVerifier();
+   identity_verifier.pubkey <== prover_pubkey;
+   identity_verifier.scope <== identity_scope_mux.out;
+   identity_verifier.signature <== scope_signature;
+   identity_verifier.enabled <== 1 - inputs.obfuscate;
 
-   // private inputs
-   signal input phrase[num_felts]; // secret phrase, if first iteration
-   signal input pubkey[2]; // pubkey of current user (x and y point)
-   signal input auth_signature[3]; // prev degree's user signature
+   // **Only constrained if DEGREE step**
+   // Verify the prover has a connection to relation by verifying the auth signature
+   // Also validates the authenticity of the issued nullifier
+   component auth_verifier = AuthSigVerifier();
+   auth_verifier.pubkey <== relation_pubkey;
+   auth_verifier.nullifier <== relation_nullifier;
+   auth_verifier.prover <== prover.address;
+   auth_verifier.signature <== auth_signature;
+   auth_verifier.enabled <== inputs.is_degree_step;
 
+   // Marshal outputs into step out conditional to step type
+   component marshal_outputs = MarshalOutputs();
+   marshal_outputs.obfuscate <== inputs.obfuscate;
+   marshal_outputs.degree <== inputs.degree;
+   marshal_outputs.scope <== inputs.scope;
+   marshal_outputs.relation <== inputs.relation;
+   marshal_outputs.nullifiers <== inputs.nullifiers;
+   marshal_outputs.prover <== prover.address;
+   marshal_outputs.relation_nullifier <== relation_nullifier;
+   marshal_outputs.identity_step <== inputs.is_identity_step;
+   marshal_outputs.degree_step <== inputs.is_degree_step;
 
-   // name inputs from step_in
-   signal degrees_of_separation <== step_in[0];
-   signal prev_pubkey_x <== step_in[1];
-   signal prev_pubkey_y <== step_in[2];
-   signal given_phrase_hash <== step_in[3];
-   signal is_chaff_step <== step_in[4];
-
-
-   // determine whether degrees of separation from secret is zero
-   component is_degree_zero = IsZero();
-   is_degree_zero.in <== degrees_of_separation;
-
-
-   // check that step is neither chaff step nor degree zero
-   component degree_zero_or_chaff = NOR();
-   degree_zero_or_chaff.a <== is_chaff_step;
-   degree_zero_or_chaff.b <== is_degree_zero.out;
-
-
-   // compute poseidon hash of secret
-   // same as the word essentially
-   component phrase_hasher = Poseidon(num_felts);
-   phrase_hasher.inputs <== phrase;
-
-
-   // produce signature message which is hash of current user's pubkey
-   component pubkey_hasher = Poseidon(2);
-   pubkey_hasher.inputs[0] <== pubkey[0];
-   pubkey_hasher.inputs[1] <== pubkey[1];
-
-
-   // verify auth signature
-   component poseidon_verifier = EdDSAPoseidonVerifier();
-   poseidon_verifier.Ax <== prev_pubkey_x;
-   poseidon_verifier.Ay <== prev_pubkey_y;
-   poseidon_verifier.enabled <== degree_zero_or_chaff.out;
-   poseidon_verifier.M <== pubkey_hasher.out;
-   poseidon_verifier.R8x <== auth_signature[0];
-   poseidon_verifier.R8y <== auth_signature[1];
-   poseidon_verifier.S <== auth_signature[2];
-  
-   // mux between computed hash and previous iteration's hash to get phrase hash to use
-   // if degrees of separation = 0 use computed hash, else use hash from previous step
-   component phrase_mux = Mux1();
-   phrase_mux.c[0] <== given_phrase_hash;
-   phrase_mux.c[1] <== phrase_hasher.out;
-   phrase_mux.s <== is_degree_zero.out;
-
-
-   // mux step_out signal according to whether or not this is a chaff step
-   component chaff_mux = ChaffMux();
-   chaff_mux.degrees_of_separation <== degrees_of_separation;
-   chaff_mux.given_phrase_hash <== given_phrase_hash;
-   chaff_mux.is_chaff_step <== is_chaff_step;
-   chaff_mux.computed_phrase_hash <== phrase_mux.out;
-   chaff_mux.prev_pubkey_x <== prev_pubkey_x;
-   chaff_mux.prev_pubkey_y <== prev_pubkey_y;
-   chaff_mux.pubkey_x <== pubkey[0];
-   chaff_mux.pubkey_y <== pubkey[1];
-
-
-   // wire output signals
-   step_out <== chaff_mux.out;
+   // Assign output signals
+   step_out <== marshal_outputs.step_out;
 }
 
 
-component main { public [step_in] } = grapevine(6);
+component main { public [step_in] } = Grapevine();

@@ -105,7 +105,7 @@ impl GrapevineAccount {
 
         // sign pubkey hash
         let message = BigInt::from_bytes_le(Sign::Plus, &ff_ce_to_le_bytes(&hash));
-        let signature = self.private_key().sign(message).unwrap();
+        let signature: Signature = self.private_key().sign(message).unwrap();
         AuthSignatureEncrypted::new(self.username.clone(), signature, recipient)
     }
 
