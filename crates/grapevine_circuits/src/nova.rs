@@ -55,7 +55,9 @@ pub fn degree_proof(
     inputs: &GrapevineInputs,
 ) -> Result<NovaProof, std::io::Error> {
     // get the formatted inputs to the circuit
+    println!("xq");
     let private_inputs = inputs.fmt_circom();
+    println!("FFFF: {:#?}", private_inputs);
     // create the degree proof
     create_recursive_circuit(
         FileLocation::PathBuf(artifacts.wasm_path.clone()),
@@ -101,7 +103,7 @@ pub fn identity_proof(
  *
  * @param proof - the proof to verify
  * @param public_params - the public params to use to verify the proof
- * @param iterations - the degree of separation proven (iterations should equal 2*degree)
+ * @param iterations - the degree of separation proven (iterations should equal 2*degree + 2)
  * @return - the output of the proof if verified
  */
 pub fn verify_grapevine_proof(
@@ -109,15 +111,32 @@ pub fn verify_grapevine_proof(
     public_params: &Params,
     degree: usize,
 ) -> Result<(Vec<Fr>, Vec<Fq>), NovaError> {
-    proof.verify(public_params, degree * 2, &Z0_PRIMARY, &Z0_SECONDARY)
+    proof.verify(public_params, degree * 2 + 2, &Z0_PRIMARY, &Z0_SECONDARY)
 }
 
 #[cfg(test)]
 mod test {
     use super::*;
+    use babyjubjub_rs::new_key;
+    use lazy_static::lazy_static;
     use crate::utils::{compress_proof, decompress_proof, read_proof, write_proof};
     use grapevine_common::{account::GrapevineAccount, utils::random_fr};
     use nova_scotia::create_public_params;
+
+    lazy_static! {
+        pub static ref ARTIFACTS: GrapevineArtifacts = {
+            // load params
+            let params_path = String::from("circom/artifacts/public_params.json");
+            let params = get_public_params(Some(params_path));
+            // load r1cs
+            let r1cs_path = String::from("circom/artifacts/grapevine.r1cs");
+            let r1cs = get_r1cs(Some(r1cs_path));
+            // set wasm path
+            let wasm_path = current_dir().unwrap().join("circom/artifacts/grapevine.wasm");
+            // return artifacts struct
+            GrapevineArtifacts { params, r1cs, wasm_path }
+        };
+    }
 
     #[test]
     #[ignore]
@@ -131,6 +150,21 @@ mod test {
         let params_json = serde_json::to_string(&public_params).unwrap();
         let full_params_path = root.clone().join("public_params.json");
         std::fs::write(&full_params_path, &params_json).unwrap();
+    }
+
+    #[test]
+    fn test_degree_0() {
+        // get a random key
+        let identity_key = new_key();
+        // create inputs
+        println!("FLAG 1");
+        let identity_inputs = GrapevineInputs::identity_step(&identity_key);
+        // create proof
+        let proof = degree_proof(&ARTIFACTS, &identity_inputs).unwrap();
+        // verify proof
+        println!("FLAG 3");
+        let verified = verify_grapevine_proof(&proof, &ARTIFACTS.params, 0).unwrap();
+        println!("Verified: {:?}", verified);
     }
 
     // #[test]

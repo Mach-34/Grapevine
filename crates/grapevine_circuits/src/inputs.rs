@@ -86,7 +86,7 @@ impl GrapevineInputs {
      *
      * @returns input map for the given step + chaff step
      */
-    pub fn fmt_circom(&self) -> [HashMap<String, Value>; 2] {
+    pub fn fmt_circom(&self) -> [HashMap<String, Value>; 1] {
         // convert required inputs
         let prover_pubkey_input = pubkey_to_input(&self.prover_pubkey);
         let scope_signature_input = sig_to_input(&self.scope_signature);
@@ -117,7 +117,8 @@ impl GrapevineInputs {
         compute_step.insert("scope_signature".to_string(), json!(scope_signature_input));
 
         // return with obfuscation step
-        [compute_step, chaff_step()]
+        // [compute_step, chaff_step()]
+        [compute_step]
     }
 }
 
@@ -128,8 +129,8 @@ impl GrapevineInputs {
  */
 fn chaff_step() -> HashMap<String, Value> {
     let mut samples: Vec<String> = vec![];
-    for i in 0..samples.len() {
-        samples[i] = format!("0x{}", hex::encode(random_fr().to_bytes()));
+    for _ in 0..11 {
+        samples.push(format!("0x{}", hex::encode(random_fr().to_bytes())));
     }
     let mut chaff_step = HashMap::new();
     chaff_step.insert(
