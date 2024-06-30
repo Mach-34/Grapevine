@@ -1,12 +1,13 @@
-use crate::{EMPTY_SECRET, SECRET_FIELD_LENGTH, ZERO};
-use babyjubjub_rs::Point;
+use crate::ZERO;
+use babyjubjub_rs::{new_key, Point, Signature};
 use ff_ce::PrimeField;
 use flate2::read::GzDecoder;
 use flate2::write::GzEncoder;
 use flate2::Compression;
-use grapevine_common::compat::{convert_ff_ce_to_ff, convert_ff_to_ff_ce};
-use grapevine_common::utils::{convert_phrase_to_fr, convert_username_to_fr};
+use grapevine_common::compat::{convert_ff_ce_to_ff, convert_ff_to_ff_ce, ff_ce_from_le_bytes};
+use grapevine_common::utils::{convert_phrase_to_fr, convert_username_to_fr, random_fr};
 use grapevine_common::{auth_signature, Fr, NovaProof, Params};
+use num_bigint::{BigInt, Sign};
 use serde_json::{json, Value};
 use std::io::{Read, Write};
 use std::{collections::HashMap, env::current_dir};
@@ -23,60 +24,41 @@ use std::{collections::HashMap, env::current_dir};
  */
 pub fn build_step_inputs(
     input: &mut Vec<HashMap<String, Value>>,
-    secret: Option<String>,
-    pubkey: &Point,
-    auth_signature: [Option<Fr>; 3],
+    prover_pubkey: &Point,
+    scope_signature: &Signature,
+    relation_nullifier: Option<&Fr>,
+    relation_pubkey: Option<&Point>,
+    auth_signature: Option<&Signature>,
 ) {
-    // @TODO: FIX convert_phrase_to_fr and convert_username_to_fr inputs
+    // convert required inputs
+    let prover_pubkey_input = pubkey_to_input(prover_pubkey);
+    let scope_signature_input = sig_to_input(scope_signature);
 
-    // convert the compute step input to strings, or get the default value
-    let secret_input: [String; SECRET_FIELD_LENGTH] = match secret {
-        Some(phrase) => convert_phrase_to_fr(&phrase)
-            .unwrap()
-            .iter()
-            .map(|chunk| format!("0x{}", hex::encode(chunk)))
-            .collect::<Vec<String>>()
-            .try_into()
-            .unwrap(),
-
-        None => EMPTY_SECRET
-            .iter()
-            .map(|limb| String::from(*limb))
-            .collect::<Vec<String>>()
-            .try_into()
-            .unwrap(),
+    // convert optional inputs or assign random values
+    let relation_pubkey_input = match relation_pubkey {
+        Some(pubkey) => pubkey_to_input(pubkey),
+        None => pubkey_to_input(&new_key().public()),
     };
-    let pubkey_input: [String; 2] = [
-        pubkey.x.into_repr().to_string(),
-        pubkey.y.into_repr().to_string(),
-    ];
-    let auth_signature_input: [String; 3] = auth_signature
-        .iter()
-        .map(|sig_val| match sig_val {
-            Some(sig_val) => convert_ff_to_ff_ce(sig_val).into_repr().to_string(), // TODO: Fix hacky solution
-            None => String::from(ZERO),
-        })
-        .collect::<Vec<String>>()
-        .try_into()
-        .unwrap();
+    let auth_signature_input = match auth_signature {
+        Some(signature) => sig_to_input(signature),
+        None => sig_to_input(&random_signature()),
+    };
+    let relation_nullifier_input = match relation_nullifier {
+        Some(nullifier) => convert_ff_to_ff_ce(nullifier).to_string(),
+        None => format!("0x{}", hex::encode(random_fr().to_bytes()))
+    };
 
     // build the input hashmaps
     let mut compute_step = HashMap::new();
-    compute_step.insert("phrase".to_string(), json!(secret_input));
-    compute_step.insert("pubkey".to_string(), json!(pubkey_input));
+    compute_step.insert("relation_pubkey".to_string(), json!(relation_pubkey_input));
+    compute_step.insert("prover_pubkey".to_string(), json!(prover_pubkey_input));
+    compute_step.insert("relation_nullifier".to_string(), json!(relation_nullifier_input));
     compute_step.insert("auth_signature".to_string(), json!(auth_signature_input));
+    compute_step.insert("scope_signature".to_string(), json!(scope_signature_input));
 
-    let mut chaff_step = HashMap::new();
-    chaff_step.insert("phrase".to_string(), json!(EMPTY_SECRET));
-    chaff_step.insert("pubkey".to_string(), json!([ZERO, ZERO]));
-    chaff_step.insert("auth_signature".to_string(), json!([ZERO, ZERO, ZERO]));
-
-    // push the compute and chaff step inputs to the input vector
-    if auth_signature[0].is_none() {
-        input.push(chaff_step.clone()); // Add initial chaff step for degree 0
-    }
+    // assign random values for chaff step
     input.push(compute_step);
-    input.push(chaff_step);
+    input.push(chaff_step());
 }
 
 /**
