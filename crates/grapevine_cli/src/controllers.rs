@@ -6,7 +6,7 @@ use crate::http::{
 };
 use crate::utils::artifacts_guard;
 use crate::utils::fs::{use_public_params, use_r1cs, use_wasm, ACCOUNT_PATH};
-use grapevine_circuits::nova::{continue_nova_proof, nova_proof, verify_nova_proof};
+// use grapevine_circuits::nova::{continue_nova_proof, nova_proof, verify_nova_proof};
 use grapevine_circuits::utils::{compress_proof, decompress_proof};
 use grapevine_common::account::GrapevineAccount;
 use grapevine_common::auth_signature::AuthSignatureEncrypted;
@@ -232,34 +232,37 @@ pub async fn prove_phrase(phrase: &String, description: &String) -> Result<Strin
     // prove phrase
     let pubkeys = vec![account.pubkey().clone()];
     let auth_signature = vec![[random_fr(), random_fr(), random_fr()]];
-    let proof = nova_proof(wc_path, &r1cs, &params, &phrase, &pubkeys, &auth_signature).unwrap();
 
-    // compress proof
-    let compressed = compress_proof(&proof);
-    // encrypt phrase
-    let ciphertext = account.encrypt_phrase(&phrase);
+    // TODO: FIX ONCE PROVING IS TESTED //
+    // let proof = nova_proof(wc_path, &r1cs, &params, &phrase, &pubkeys, &auth_signature).unwrap();
 
-    // build request body
-    let body = PhraseRequest {
-        proof: compressed,
-        ciphertext,
-        description: description.clone(),
-    };
-    // send request
-    let res = phrase_req(&mut account, body).await;
-    match res {
-        Ok(data) => match data.new_phrase {
-            true => Ok(format!(
-                "Success: Created and proved knowledge of new phrase #{}: \"{}\"",
-                data.phrase_index, phrase
-            )),
-            false => Ok(format!(
-                "Success: Proved knowledge of existing phrase #{}: \"{}\"",
-                data.phrase_index, phrase
-            )),
-        },
-        Err(e) => Err(e),
-    }
+    // // compress proof
+    // let compressed = compress_proof(&proof);
+    // // encrypt phrase
+    // let ciphertext = account.encrypt_phrase(&phrase);
+
+    // // build request body
+    // let body = PhraseRequest {
+    //     proof: compressed,
+    //     ciphertext,
+    //     description: description.clone(),
+    // };
+    // // send request
+    // let res = phrase_req(&mut account, body).await;
+    // match res {
+    //     Ok(data) => match data.new_phrase {
+    //         true => Ok(format!(
+    //             "Success: Created and proved knowledge of new phrase #{}: \"{}\"",
+    //             data.phrase_index, phrase
+    //         )),
+    //         false => Ok(format!(
+    //             "Success: Proved knowledge of existing phrase #{}: \"{}\"",
+    //             data.phrase_index, phrase
+    //         )),
+    //     },
+    //     Err(e) => Err(e),
+    // }
+    Ok(String::from(""))
 }
 
 pub async fn prove_all_available() -> Result<String, GrapevineError> {
@@ -299,80 +302,83 @@ pub async fn prove_all_available() -> Result<String, GrapevineError> {
     } else {
         println!("Proving {} new degrees...", proofs.len());
     }
-    for i in 0..proofs.len() {
-        let oid = proofs[i].clone();
-        // get proof and encrypted auth signature
-        let res = get_proof_with_params_req(&mut account, oid.clone()).await;
-        let proving_data = match res {
-            Ok(proving_data) => proving_data,
-            Err(e) => return Err(e),
-        };
-        println!(
-            "=-=-=-=-=-=-=[Phrase #{}]=-=-=-=-=-=-=",
-            proving_data.phrase_index
-        );
-        println!("Description: \"{}\"", proving_data.description);
-        println!("Phrase hash: 0x{}", hex::encode(proving_data.phrase_hash));
-        println!("Degree being proved: {}", proving_data.degree + 1);
-        println!("Proving...");
-        // prepare inputs
-        let auth_signature_encrypted = AuthSignatureEncrypted {
-            ephemeral_key: proving_data.ephemeral_key,
-            ciphertext: proving_data.ciphertext,
-            username: proving_data.username,
-            recipient: account.pubkey().compress(),
-        };
-        let auth_signature = account.decrypt_auth_signature(auth_signature_encrypted);
-        let mut proof = decompress_proof(&proving_data.proof);
-        let verified =
-            verify_nova_proof(&proof, &public_params, (proving_data.degree * 2) as usize);
-        let previous_output = match verified {
-            Ok(data) => data.0,
-            Err(_) => {
-                println!("Verification Failed");
-                return Err(GrapevineError::DegreeProofVerificationFailed);
-            }
-        };
-        // build nova proof
-        match continue_nova_proof(
-            &account.pubkey(),
-            &auth_signature.fmt_circom(),
-            &mut proof,
-            previous_output,
-            wc_path.clone(),
-            &r1cs,
-            &public_params,
-        ) {
-            Ok(_) => (),
-            Err(_) => {
-                println!("Proof continuation failed");
-                return Err(GrapevineError::DegreeProofVerificationFailed);
-            }
-        }
-        let compressed = compress_proof(&proof);
-        // build request body
-        let body = DegreeProofRequest {
-            proof: compressed,
-            // username: account.username().clone(),
-            previous: oid,
-            degree: proving_data.degree + 1,
-        };
-        // handle response from server
-        let res: Result<(), GrapevineError> = degree_proof_req(&mut account, body).await;
-        match res {
-            Ok(_) => (),
-            Err(e) => return Err(e),
-        }
-        println!(
-            "Proved degree {} for phrase #{}",
-            proving_data.degree + 1,
-            proving_data.phrase_index
-        );
-    }
-    Ok(format!(
-        "Success: proved {} new degree proofs",
-        proofs.len()
-    ))
+    // TODO: FIX ONCE PROVING IS TESTED //
+
+    // for i in 0..proofs.len() {
+    //     let oid = proofs[i].clone();
+    //     // get proof and encrypted auth signature
+    //     let res = get_proof_with_params_req(&mut account, oid.clone()).await;
+    //     let proving_data = match res {
+    //         Ok(proving_data) => proving_data,
+    //         Err(e) => return Err(e),
+    //     };
+    //     println!(
+    //         "=-=-=-=-=-=-=[Phrase #{}]=-=-=-=-=-=-=",
+    //         proving_data.phrase_index
+    //     );
+    //     println!("Description: \"{}\"", proving_data.description);
+    //     println!("Phrase hash: 0x{}", hex::encode(proving_data.phrase_hash));
+    //     println!("Degree being proved: {}", proving_data.degree + 1);
+    //     println!("Proving...");
+    //     // prepare inputs
+    //     let auth_signature_encrypted = AuthSignatureEncrypted {
+    //         ephemeral_key: proving_data.ephemeral_key,
+    //         ciphertext: proving_data.ciphertext,
+    //         username: proving_data.username,
+    //         recipient: account.pubkey().compress(),
+    //     };
+    //     let auth_signature = account.decrypt_auth_signature(auth_signature_encrypted);
+    //     let mut proof = decompress_proof(&proving_data.proof);
+    //     let verified =
+    //         verify_nova_proof(&proof, &public_params, (proving_data.degree * 2) as usize);
+    //     let previous_output = match verified {
+    //         Ok(data) => data.0,
+    //         Err(_) => {
+    //             println!("Verification Failed");
+    //             return Err(GrapevineError::DegreeProofVerificationFailed);
+    //         }
+    //     };
+    //     // build nova proof
+    //     match continue_nova_proof(
+    //         &account.pubkey(),
+    //         &auth_signature.fmt_circom(),
+    //         &mut proof,
+    //         previous_output,
+    //         wc_path.clone(),
+    //         &r1cs,
+    //         &public_params,
+    //     ) {
+    //         Ok(_) => (),
+    //         Err(_) => {
+    //             println!("Proof continuation failed");
+    //             return Err(GrapevineError::DegreeProofVerificationFailed);
+    //         }
+    //     }
+    //     let compressed = compress_proof(&proof);
+    //     // build request body
+    //     let body = DegreeProofRequest {
+    //         proof: compressed,
+    //         // username: account.username().clone(),
+    //         previous: oid,
+    //         degree: proving_data.degree + 1,
+    //     };
+    //     // handle response from server
+    //     let res: Result<(), GrapevineError> = degree_proof_req(&mut account, body).await;
+    //     match res {
+    //         Ok(_) => (),
+    //         Err(e) => return Err(e),
+    //     }
+    //     println!(
+    //         "Proved degree {} for phrase #{}",
+    //         proving_data.degree + 1,
+    //         proving_data.phrase_index
+    //     );
+    // }
+    // Ok(format!(
+    //     "Success: proved {} new degree proofs",
+    //     proofs.len()
+    // ))
+    Ok(String::from("Unimplemented"))
 }
 
 pub async fn get_my_proofs() -> Result<String, GrapevineError> {
