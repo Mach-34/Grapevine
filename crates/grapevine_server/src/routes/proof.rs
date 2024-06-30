@@ -2,7 +2,7 @@ use crate::catchers::ErrorMessage;
 use crate::mongo::GrapevineDB;
 use crate::utils::PUBLIC_PARAMS;
 use crate::{catchers::GrapevineResponse, guards::AuthenticatedUser};
-use grapevine_circuits::{nova::verify_nova_proof, utils::decompress_proof};
+use grapevine_circuits::{nova::verify_grapevine_proof, utils::decompress_proof};
 use grapevine_common::errors::GrapevineError;
 use grapevine_common::{
     http::{
@@ -66,7 +66,7 @@ pub async fn prove_phrase(
 
     // verify the proof
     let decompressed_proof = decompress_proof(&request.proof);
-    let verify_res = verify_nova_proof(&decompressed_proof, &*PUBLIC_PARAMS, 3);
+    let verify_res = verify_grapevine_proof(&decompressed_proof, &*PUBLIC_PARAMS, 3);
     let (phrase_hash, auth_hash) = match verify_res {
         Ok(res) => (res.0[3].to_bytes(), res.0[2].to_bytes()),
         Err(e) => {
@@ -229,7 +229,7 @@ pub async fn degree_proof(
 
     // verify the proof
     let decompressed_proof = decompress_proof(&request.proof);
-    let verify_res = verify_nova_proof(
+    let verify_res = verify_grapevine_proof(
         &decompressed_proof,
         &*PUBLIC_PARAMS,
         1 + (request.degree * 2) as usize,

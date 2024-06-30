@@ -13,55 +13,6 @@ use std::io::{Read, Write};
 use std::{collections::HashMap, env::current_dir};
 
 /**
- * Given an input hashmap vec and some inputs, build the inputs for a compute
- * and chaff step and add them into the input hashmap vector
- *
- * @param input - reference to a vector of hashmaps containing inputs for each step of the circuit
- * @param secret - optionally provide the secret to prove knowledge of if degree is 0
- * @param username - optionally provide one or both usernames to hash against
- *   - note: usernames[1] will never be 0 in practice
- * @return - the inputs for one computation step and chaff step
- */
-pub fn build_step_inputs(
-    input: &mut Vec<HashMap<String, Value>>,
-    prover_pubkey: &Point,
-    scope_signature: &Signature,
-    relation_nullifier: Option<&Fr>,
-    relation_pubkey: Option<&Point>,
-    auth_signature: Option<&Signature>,
-) {
-    // convert required inputs
-    let prover_pubkey_input = pubkey_to_input(prover_pubkey);
-    let scope_signature_input = sig_to_input(scope_signature);
-
-    // convert optional inputs or assign random values
-    let relation_pubkey_input = match relation_pubkey {
-        Some(pubkey) => pubkey_to_input(pubkey),
-        None => pubkey_to_input(&new_key().public()),
-    };
-    let auth_signature_input = match auth_signature {
-        Some(signature) => sig_to_input(signature),
-        None => sig_to_input(&random_signature()),
-    };
-    let relation_nullifier_input = match relation_nullifier {
-        Some(nullifier) => convert_ff_to_ff_ce(nullifier).to_string(),
-        None => format!("0x{}", hex::encode(random_fr().to_bytes()))
-    };
-
-    // build the input hashmaps
-    let mut compute_step = HashMap::new();
-    compute_step.insert("relation_pubkey".to_string(), json!(relation_pubkey_input));
-    compute_step.insert("prover_pubkey".to_string(), json!(prover_pubkey_input));
-    compute_step.insert("relation_nullifier".to_string(), json!(relation_nullifier_input));
-    compute_step.insert("auth_signature".to_string(), json!(auth_signature_input));
-    compute_step.insert("scope_signature".to_string(), json!(scope_signature_input));
-
-    // assign random values for chaff step
-    input.push(compute_step);
-    input.push(chaff_step());
-}
-
-/**
  * Read in a previously computed public params file
  * https://github.com/dmpierre/zkconnect4/blob/86a129400647edc75a06f032bfb466186874c489/zkconnect4-nova-lib/src/lib.rs#L229C1-L238C2\
  *
