@@ -1,6 +1,6 @@
 use crate::auth_signature::{AuthSignature, AuthSignatureEncrypted, AuthSignatureEncryptedUser};
-use crate::compat::ff_ce_to_le_bytes;
-use crate::crypto::{gen_aes_key, new_private_key, nonce_hash};
+use crate::compat::{convert_ff_ce_to_ff, ff_ce_to_le_bytes};
+use crate::crypto::{gen_aes_key, new_private_key, nonce_hash, pubkey_to_address};
 use crate::http::requests::{CreateUserRequest, GetNonceRequest, NewRelationshipRequest};
 use crate::utils::{convert_username_to_fr, random_fr};
 use crate::Fr;
@@ -99,12 +99,11 @@ impl GrapevineAccount {
      * @returns - the decrypted auth signature
      */
     pub fn generate_auth_signature(&self, recipient: Point) -> AuthSignatureEncrypted {
-        // hash recipient pubkey
-        let poseidon = Poseidon::new();
-        let hash = poseidon.hash(vec![recipient.x, recipient.y]).unwrap();
+        // generate recipient address from recipient pubkey
+        let address = pubkey_to_address(&recipient);
 
         // sign pubkey hash
-        let message = BigInt::from_bytes_le(Sign::Plus, &ff_ce_to_le_bytes(&hash));
+        let message = BigInt::from_bytes_le(Sign::Plus, &ff_ce_to_le_bytes(&address));
         let signature: Signature = self.private_key().sign(message).unwrap();
         AuthSignatureEncrypted::new(self.username.clone(), signature, recipient)
     }
@@ -147,6 +146,20 @@ impl GrapevineAccount {
         let end = ptr.iter().position(|&r| r == 0).unwrap_or(ptr.len());
         String::from_utf8(ptr[..end].to_vec()).unwrap()
     }
+
+    /**
+     * Generates a nullifier for use in a relationship
+     */
+    // pub fn generate_nullifier(&self) -> Fr {
+    //     let nullifier_secret = random_fr();
+
+    //     let address = pubkey_to_address(&self.pubkey()); // TODO: Make address helper function
+
+    //     let hasher = Poseidon::new();
+    //     hasher
+    //         .hash(vec![convert_ff_ce_to_ff(nullifier_secret), convert_ff_ce_to_ff(&address)])
+    //         .unwrap();
+    // }
 
     /// SIGNING METHODS ///
 
