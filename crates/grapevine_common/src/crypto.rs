@@ -89,5 +89,5 @@ pub fn phrase_hash(phrase: &String) -> [u8; 32] {
  */
 pub fn pubkey_to_address(pubkey: &Point) -> Fr {
     let hasher = poseidon_rs::Poseidon::new();
-    hasher.hash([pubkey.x, pubkey.y]).unwrap()
+    hasher.hash(vec![pubkey.x, pubkey.y]).unwrap()
 }
