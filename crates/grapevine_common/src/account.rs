@@ -1,13 +1,12 @@
 use crate::auth_signature::{AuthSignature, AuthSignatureEncrypted, AuthSignatureEncryptedUser};
-use crate::compat::{convert_ff_ce_to_ff, ff_ce_to_le_bytes};
+use crate::compat::{convert_ff_ce_to_ff, convert_ff_to_ff_ce, ff_ce_to_le_bytes};
 use crate::crypto::{gen_aes_key, new_private_key, nonce_hash, pubkey_to_address};
 use crate::http::requests::{CreateUserRequest, GetNonceRequest, NewRelationshipRequest};
 use crate::utils::{convert_username_to_fr, random_fr};
-use crate::Fr;
 use aes::cipher::{block_padding::Pkcs7, BlockDecryptMut, BlockEncryptMut, KeyIvInit};
 use babyjubjub_rs::{Point, PrivateKey, Signature};
 use num_bigint::{BigInt, Sign};
-use poseidon_rs::Poseidon;
+use poseidon_rs::{Fr, Poseidon};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
@@ -98,12 +97,18 @@ impl GrapevineAccount {
      * @param message - the encrypted auth signature
      * @returns - the decrypted auth signature
      */
-    pub fn generate_auth_signature(&self, recipient: Point) -> AuthSignatureEncrypted {
+    pub fn generate_auth_signature(
+        &self,
+        recipient: Point,
+        nullifier: Fr,
+    ) -> AuthSignatureEncrypted {
         // generate recipient address from recipient pubkey
         let address = pubkey_to_address(&recipient);
+        let hasher = Poseidon::new();
+        let hash = hasher.hash(vec![nullifier, address]).unwrap();
 
         // sign pubkey hash
-        let message = BigInt::from_bytes_le(Sign::Plus, &ff_ce_to_le_bytes(&address));
+        let message = BigInt::from_bytes_le(Sign::Plus, &ff_ce_to_le_bytes(&hash));
         let signature: Signature = self.private_key().sign(message).unwrap();
         AuthSignatureEncrypted::new(self.username.clone(), signature, recipient)
     }
@@ -150,16 +155,27 @@ impl GrapevineAccount {
     /**
      * Generates a nullifier for use in a relationship
      */
-    // pub fn generate_nullifier(&self) -> Fr {
-    //     let nullifier_secret = random_fr();
+    pub fn generate_nullifier(&self) -> (Fr, [u8; 48]) {
+        let nullifier_secret = convert_ff_to_ff_ce(&random_fr());
 
-    //     let address = pubkey_to_address(&self.pubkey()); // TODO: Make address helper function
+        let address = pubkey_to_address(&self.pubkey()); // TODO: Make address helper function
 
-    //     let hasher = Poseidon::new();
-    //     hasher
-    //         .hash(vec![convert_ff_ce_to_ff(nullifier_secret), convert_ff_ce_to_ff(&address)])
-    //         .unwrap();
-    // }
+        let hasher = Poseidon::new();
+        let nullifier = hasher.hash(vec![nullifier_secret, address]).unwrap();
+
+        let secret_bytes = ff_ce_to_le_bytes(&nullifier_secret);
+        // encrypt the nullifier secret
+        let (aes_key, aes_iv) = gen_aes_key(self.private_key(), self.pubkey());
+        let mut buf = [0u8; 48];
+        buf[..secret_bytes.len()].copy_from_slice(&secret_bytes);
+        let encrypted_nullifier_secret: [u8; 48] =
+            Aes128CbcEnc::new(aes_key[..].into(), aes_iv[..].into())
+                .encrypt_padded_mut::<Pkcs7>(&mut buf, secret_bytes.len())
+                .unwrap()
+                .try_into()
+                .unwrap();
+        (nullifier, encrypted_nullifier_secret)
+    }
 
     /// SIGNING METHODS ///
 
@@ -215,10 +231,13 @@ impl GrapevineAccount {
         username: &String,
         pubkey: &Point,
     ) -> NewRelationshipRequest {
+        // generate a nullifier for relationship
+        let (nullifier, encrypted_nullifier_secret) = self.generate_nullifier();
         // encrypt the auth signature with the target pubkey
-        let encrypted_auth_signature = self.generate_auth_signature(pubkey.clone());
+        let encrypted_auth_signature = self.generate_auth_signature(pubkey.clone(), nullifier);
         // return the New Relationship http request struct
         NewRelationshipRequest {
+            nullifier_secret: encrypted_nullifier_secret,
             to: username.clone(),
             ephemeral_key: encrypted_auth_signature.ephemeral_key,
             ciphertext: encrypted_auth_signature.ciphertext,

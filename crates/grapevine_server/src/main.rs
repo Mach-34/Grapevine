@@ -53,7 +53,7 @@ mod test_rocket {
 
     use super::*;
     use grapevine_circuits::{
-        nova::{continue_nova_proof, nova_proof, verify_nova_proof},
+        nova::{degree_proof, identity_proof, verify_grapevine_proof},
         utils::{compress_proof, decompress_proof},
     };
     use grapevine_common::{
@@ -65,7 +65,7 @@ mod test_rocket {
             },
             responses::{DegreeData, PhraseCreationResponse},
         },
-        models::{DegreeProof, ProvingData, User},
+        models::{ProvingData, User},
         utils::random_fr,
     };
     use lazy_static::lazy_static;
@@ -113,9 +113,13 @@ mod test_rocket {
         to: &mut GrapevineAccount,
     ) -> (u16, Option<String>) {
         let pubkey = to.pubkey();
-        let encrypted_auth_signature = from.generate_auth_signature(pubkey);
+
+        let (nullifier, encrypted_nullifier_secret) = from.generate_nullifier();
+
+        let encrypted_auth_signature = from.generate_auth_signature(pubkey, nullifier);
 
         let body = NewRelationshipRequest {
+            nullifier_secret: encrypted_nullifier_secret,
             to: to.username().clone(),
             ephemeral_key: encrypted_auth_signature.ephemeral_key,
             ciphertext: encrypted_auth_signature.ciphertext,

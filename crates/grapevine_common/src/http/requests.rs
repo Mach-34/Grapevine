@@ -31,9 +31,12 @@ pub struct TestProofCompressionRequest {
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct NewRelationshipRequest {
+    #[serde(with = "serde_bytes")]
+    pub nullifier_secret: [u8; 48],
     pub to: String,
     #[serde(with = "serde_bytes")]
     pub ephemeral_key: [u8; 32],
+    // TODO: Rename to encrypted auth secret
     #[serde(with = "serde_bytes")]
     pub ciphertext: [u8; 80],
 }

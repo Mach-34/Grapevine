@@ -41,6 +41,8 @@ pub struct Relationship {
     pub recipient: Option<ObjectId>, // use this privkey to decrypt
     pub sender: Option<ObjectId>,
     #[serde(default, with = "serde_bytes")]
+    pub nullifier_secret: Option<[u8; 48]>,
+    #[serde(default, with = "serde_bytes")]
     pub ephemeral_key: Option<[u8; 32]>,
     #[serde(default, with = "serde_bytes")]
     pub ciphertext: Option<[u8; 80]>,

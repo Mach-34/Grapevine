@@ -211,6 +211,7 @@ pub async fn add_relationship(
         sender: Some(sender.id.unwrap()),
         recipient: Some(recipient.id.unwrap()),
         ephemeral_key: Some(request.ephemeral_key.clone()),
+        nullifier_secret: Some(request.nullifier_secret),
         ciphertext: Some(request.ciphertext.clone()),
         active: Some(activate),
     };
