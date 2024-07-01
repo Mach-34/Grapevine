@@ -2,8 +2,8 @@ use babyjubjub_rs::{new_key, Point, PrivateKey, Signature};
 use ff_ce::PrimeField;
 use grapevine_common::compat::{convert_ff_to_ff_ce, ff_ce_from_le_bytes, ff_ce_to_le_bytes};
 use grapevine_common::crypto::pubkey_to_address;
-use grapevine_common::utils::random_fr;
-use grapevine_common::{Fr, Params};
+use grapevine_common::utils::random_fr_ce;
+use grapevine_common::{auth_signature, Fr, Params};
 use nova_scotia::circom::circuit::R1CS;
 use num_bigint::{BigInt, Sign};
 use serde_json::{json, Value};
@@ -86,7 +86,7 @@ impl GrapevineInputs {
      *
      * @returns input map for the given step + chaff step
      */
-    pub fn fmt_circom(&self) -> [HashMap<String, Value>; 1] {
+    pub fn fmt_circom(&self) -> [HashMap<String, Value>; 2] {
         // convert required inputs
         let prover_pubkey_input = pubkey_to_input(&self.prover_pubkey);
         let scope_signature_input = sig_to_input(&self.scope_signature);
@@ -102,7 +102,7 @@ impl GrapevineInputs {
         };
         let relation_nullifier_input = match self.nullifier {
             Some(nullifier) => convert_ff_to_ff_ce(&nullifier).to_string(),
-            None => format!("0x{}", hex::encode(random_fr().to_bytes())),
+            None => random_fr_ce().into_repr().to_string(),
         };
 
         // build the input hashmaps
@@ -117,8 +117,7 @@ impl GrapevineInputs {
         compute_step.insert("scope_signature".to_string(), json!(scope_signature_input));
 
         // return with obfuscation step
-        // [compute_step, chaff_step()]
-        [compute_step]
+        [compute_step, chaff_step()]
     }
 }
 
@@ -128,27 +127,30 @@ impl GrapevineInputs {
  * @return - a hashmap containing the inputs for a chaff step
  */
 fn chaff_step() -> HashMap<String, Value> {
-    let mut samples: Vec<String> = vec![];
-    for _ in 0..11 {
-        samples.push(format!("0x{}", hex::encode(random_fr().to_bytes())));
-    }
-    let mut chaff_step = HashMap::new();
-    chaff_step.insert(
+    // generate random values
+    let nullifier = random_fr_ce().into_repr().to_string();
+    let relation_pubkey = pubkey_to_input(&new_key().public());
+    let prover_pubkey = pubkey_to_input(&new_key().public());
+    let scope_signature = sig_to_input(&random_signature());
+    let auth_signature = sig_to_input(&random_signature());
+    // marshal inputs
+    let mut inputs = HashMap::new();
+    inputs.insert(
         "relation_pubkey".to_string(),
-        json!([samples[0], samples[1]]),
+        json!(relation_pubkey),
     );
-    chaff_step.insert("prover_pubkey".to_string(), json!([samples[2], samples[3]]));
-    chaff_step.insert("relation_nullifier".to_string(), json!(samples[4]));
-    chaff_step.insert(
+    inputs.insert("prover_pubkey".to_string(), json!(prover_pubkey));
+    inputs.insert("relation_nullifier".to_string(), json!(nullifier));
+    inputs.insert(
         "auth_signature".to_string(),
-        json!([samples[5], samples[6], samples[7]]),
+        json!(auth_signature),
     );
-    chaff_step.insert(
+    inputs.insert(
         "scope_signature".to_string(),
-        json!([samples[8], samples[9], samples[10]]),
+        json!(scope_signature),
     );
 
-    chaff_step
+    inputs
 }
 
 /**
@@ -192,6 +194,6 @@ fn pubkey_to_input(pubkey: &Point) -> [String; 2] {
  */
 fn random_signature() -> Signature {
     let key = new_key();
-    let random_message = BigInt::from_bytes_le(Sign::Plus, &random_fr().to_bytes()[..]);
+    let random_message = BigInt::from_bytes_le(Sign::Plus, &ff_ce_to_le_bytes(&random_fr_ce())[..]);
     key.sign(random_message).unwrap()
 }

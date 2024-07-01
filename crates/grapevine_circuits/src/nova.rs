@@ -55,9 +55,7 @@ pub fn degree_proof(
     inputs: &GrapevineInputs,
 ) -> Result<NovaProof, std::io::Error> {
     // get the formatted inputs to the circuit
-    println!("xq");
     let private_inputs = inputs.fmt_circom();
-    println!("FFFF: {:#?}", private_inputs);
     // create the degree proof
     create_recursive_circuit(
         FileLocation::PathBuf(artifacts.wasm_path.clone()),
@@ -118,10 +116,39 @@ pub fn verify_grapevine_proof(
 mod test {
     use super::*;
     use babyjubjub_rs::new_key;
+    use grapevine_common::compat::ff_ce_to_le_bytes;
     use lazy_static::lazy_static;
     use crate::utils::{compress_proof, decompress_proof, read_proof, write_proof};
-    use grapevine_common::{account::GrapevineAccount, utils::random_fr};
+    use grapevine_common::{account::GrapevineAccount, crypto::pubkey_to_address, utils::random_fr};
     use nova_scotia::create_public_params;
+    use num_bigint::{BigInt, Sign};
+
+    /**
+     * Dummy auth signature
+     * 
+     * @param from - the issuer of the auth signature
+     * @param to - the receipient of the auth signature
+     * 
+     * @return (auth signature, nullifier)
+     */
+    fn test_auth_signature(from: &PrivateKey, to: &Point) -> (Signature, [u8; 32]) {
+        // get the address of to
+        let to_address = pubkey_to_address(pubkey);
+        // get the address of from
+        let from_address = pubkey_to_address(&from.public());
+        // get a random element for the nullifier secret
+        let nullifier_secret = random_fr_ce();
+        // derive the nullifier
+        let hasher = poseidon_rs::Poseidon::new();
+        let nullifier = hasher.hash(vec![nullifier_secret, from_address]).unwrap();
+        // hash the auth message
+        let auth_message = hasher.hash(vec![nullifier, to_address]);
+        // sign the auth message
+        let auth_message = BigInt::from_bytes_le(Sign::Plus, &ff_ce_to_le_bytes(auth_message)[..]);
+        let auth_signature = from.sign(auth_message).unwrap();
+        // return the auth signature and nullifier
+        (auth_signature, nullifier)
+    }
 
     lazy_static! {
         pub static ref ARTIFACTS: GrapevineArtifacts = {
@@ -153,18 +180,36 @@ mod test {
     }
 
     #[test]
-    fn test_degree_0() {
+    fn test_identity_proof() {
         // get a random key
         let identity_key = new_key();
         // create inputs
-        println!("FLAG 1");
         let identity_inputs = GrapevineInputs::identity_step(&identity_key);
         // create proof
         let proof = degree_proof(&ARTIFACTS, &identity_inputs).unwrap();
         // verify proof
-        println!("FLAG 3");
         let verified = verify_grapevine_proof(&proof, &ARTIFACTS.params, 0).unwrap();
-        println!("Verified: {:?}", verified);
+        // check the hashes
+        let expected_address = ff_ce_to_le_bytes(&pubkey_to_address(&identity_key.public()));
+        let given_scope = verified.0[2].to_bytes();
+        let given_relation = verified.0[3].to_bytes();
+
+        assert_eq!(expected_address, given_scope);
+        assert_eq!(expected_address, given_relation);
+    }
+
+    #[test]
+    fn test_degree_1() {
+        // setup
+        let identity_key = new_key();
+        let identity_inputs = GrapevineInputs::identity_step(&identity_key);
+        let mut proof = degree_proof(&ARTIFACTS, &identity_inputs).unwrap();
+        // get previous inputs for proof
+        let previous_output = verify_grapevine_proof(&proof, &ARTIFACTS.params, 0).unwrap().0;
+        // create degree 1 key
+        let degree_key = new_key();
+        // generate auth signature and nullifier
+        let (auth_signature, nullifier) = test_auth_signature(&identity_key, &degree_key.public());
     }
 
     // #[test]
