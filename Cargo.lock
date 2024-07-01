@@ -1300,6 +1300,7 @@ dependencies = [
  "nova-scotia",
  "nova-snark",
  "num-bigint 0.4.4",
+ "poseidon-rs 0.0.8",
  "rand 0.8.5",
  "serde",
  "serde_json",

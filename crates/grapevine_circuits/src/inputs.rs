@@ -9,6 +9,7 @@ use num_bigint::{BigInt, Sign};
 use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::path::PathBuf;
+use std::convert::{TryFrom, TryInto};
 
 pub struct GrapevineArtifacts {
     pub params: Params,
@@ -63,13 +64,13 @@ impl GrapevineInputs {
         prover_key: &PrivateKey,
         relation_pubkey: &Point,
         relation_nullifier: &Fr,
-        scope_address: &[u8; 32],
+        scope_address: &Fr,
         auth_signature: &Signature,
     ) -> Self {
         // get the pubkey used by the prover
         let prover_pubkey = prover_key.public();
         // sign the scope address
-        let message = BigInt::from_bytes_le(Sign::Plus, scope_address);
+        let message = BigInt::from_bytes_le(Sign::Plus, &scope_address.to_bytes());
         let scope_signature = prover_key.sign(message).unwrap();
         // return the struct
         Self {
@@ -101,7 +102,7 @@ impl GrapevineInputs {
             None => sig_to_input(&random_signature()),
         };
         let relation_nullifier_input = match self.nullifier {
-            Some(nullifier) => convert_ff_to_ff_ce(&nullifier).to_string(),
+            Some(nullifier) => convert_ff_to_ff_ce(&nullifier).into_repr().to_string(),
             None => random_fr_ce().into_repr().to_string(),
         };
 
@@ -121,6 +122,48 @@ impl GrapevineInputs {
     }
 }
 
+#[derive(Clone, Debug)]
+pub struct ConversionError;
+
+#[derive(Clone, Debug)]
+pub struct GrapevineOutputs {
+    pub obfuscate: Fr,
+    pub degree: Fr,
+    pub scope: Fr,
+    pub relation: Fr,
+    pub nullifiers: [Fr; 8]
+}
+
+impl TryFrom<Vec<Fr>> for GrapevineOutputs {
+    type Error = ConversionError;
+    fn try_from(outputs: Vec<Fr>) -> Result<Self, Self::Error> {
+        if outputs.len() != 12 {
+            return Err(ConversionError);
+        };
+        Ok(Self {
+            obfuscate: outputs[0],
+            degree: outputs[1],
+            scope: outputs[2],
+            relation: outputs[3],
+            nullifiers: outputs[4..12].try_into().unwrap(),
+        })
+    }
+}
+
+impl TryInto<Vec<Fr>> for GrapevineOutputs {
+    type Error = ConversionError;
+    fn try_into(self) -> Result<Vec<Fr>, Self::Error> {
+        let mut arr = vec![
+            self.obfuscate,
+            self.degree,
+            self.scope,
+            self.relation,
+        ];
+        arr.extend(&self.nullifiers);
+        Ok(arr)
+    }
+
+}
 /**
  * Build a chaff step input map with random values assigned to the input advice
  *

@@ -11,7 +11,7 @@ use nova_scotia::{
 };
 use nova_snark::errors::NovaError;
 use std::{env::current_dir, path::PathBuf};
- 
+
 /**
  * Get public params for the grapevine circuit
  *
@@ -50,7 +50,7 @@ pub fn get_r1cs(path: Option<String>) -> R1CS<Fr> {
  * @param inputs - the necessary inputs for a grapevine proof
  * @return - a proof of degree 0 (identity) of grapevine identity
  */
-pub fn degree_proof(
+pub fn identity_proof(
     artifacts: &GrapevineArtifacts,
     inputs: &GrapevineInputs,
 ) -> Result<NovaProof, std::io::Error> {
@@ -76,7 +76,7 @@ pub fn degree_proof(
  * @param previous output - the previous output of the proof
  * @return - a proof of degree N from a grapevine identity
  */
-pub fn identity_proof(
+pub fn degree_proof(
     artifacts: &GrapevineArtifacts,
     inputs: &GrapevineInputs,
     proof: &mut NovaProof,
@@ -115,40 +115,18 @@ pub fn verify_grapevine_proof(
 #[cfg(test)]
 mod test {
     use super::*;
-    use babyjubjub_rs::new_key;
-    use grapevine_common::compat::ff_ce_to_le_bytes;
-    use lazy_static::lazy_static;
+    use crate::inputs::GrapevineOutputs;
     use crate::utils::{compress_proof, decompress_proof, read_proof, write_proof};
-    use grapevine_common::{account::GrapevineAccount, crypto::pubkey_to_address, utils::random_fr};
+    use babyjubjub_rs::{new_key, Point, PrivateKey, Signature};
+    use grapevine_common::compat::{convert_ff_ce_to_ff, ff_ce_to_le_bytes};
+    use grapevine_common::utils::random_fr_ce;
+    use grapevine_common::{
+        account::GrapevineAccount,
+        crypto::{sign_auth, sign_scope, pubkey_to_address},
+        utils::random_fr,
+    };
+    use lazy_static::lazy_static;
     use nova_scotia::create_public_params;
-    use num_bigint::{BigInt, Sign};
-
-    /**
-     * Dummy auth signature
-     * 
-     * @param from - the issuer of the auth signature
-     * @param to - the receipient of the auth signature
-     * 
-     * @return (auth signature, nullifier)
-     */
-    fn test_auth_signature(from: &PrivateKey, to: &Point) -> (Signature, [u8; 32]) {
-        // get the address of to
-        let to_address = pubkey_to_address(pubkey);
-        // get the address of from
-        let from_address = pubkey_to_address(&from.public());
-        // get a random element for the nullifier secret
-        let nullifier_secret = random_fr_ce();
-        // derive the nullifier
-        let hasher = poseidon_rs::Poseidon::new();
-        let nullifier = hasher.hash(vec![nullifier_secret, from_address]).unwrap();
-        // hash the auth message
-        let auth_message = hasher.hash(vec![nullifier, to_address]);
-        // sign the auth message
-        let auth_message = BigInt::from_bytes_le(Sign::Plus, &ff_ce_to_le_bytes(auth_message)[..]);
-        let auth_signature = from.sign(auth_message).unwrap();
-        // return the auth signature and nullifier
-        (auth_signature, nullifier)
-    }
 
     lazy_static! {
         pub static ref ARTIFACTS: GrapevineArtifacts = {
@@ -162,6 +140,14 @@ mod test {
             let wasm_path = current_dir().unwrap().join("circom/artifacts/grapevine.wasm");
             // return artifacts struct
             GrapevineArtifacts { params, r1cs, wasm_path }
+        };
+        pub static ref ZERO: Fr = Fr::from(0);
+        pub static ref KEYS: Vec<PrivateKey> = {
+            let mut keys: Vec<PrivateKey> = vec![];
+            for i in 0..10 {
+                keys.push(new_key());
+            }
+            keys
         };
     }
 
@@ -181,35 +167,78 @@ mod test {
 
     #[test]
     fn test_identity_proof() {
-        // get a random key
-        let identity_key = new_key();
         // create inputs
-        let identity_inputs = GrapevineInputs::identity_step(&identity_key);
+        let identity_inputs = GrapevineInputs::identity_step(&KEYS[0]);
         // create proof
-        let proof = degree_proof(&ARTIFACTS, &identity_inputs).unwrap();
+        let proof = identity_proof(&ARTIFACTS, &identity_inputs).unwrap();
         // verify proof
         let verified = verify_grapevine_proof(&proof, &ARTIFACTS.params, 0).unwrap();
-        // check the hashes
-        let expected_address = ff_ce_to_le_bytes(&pubkey_to_address(&identity_key.public()));
-        let given_scope = verified.0[2].to_bytes();
-        let given_relation = verified.0[3].to_bytes();
 
-        assert_eq!(expected_address, given_scope);
-        assert_eq!(expected_address, given_relation);
+        /// OUTPUT CHECK ///
+        let outputs = GrapevineOutputs::try_from(verified.0).unwrap();
+        // check obfuscate flag = 0
+        assert_eq!(&*ZERO, &outputs.obfuscate);
+        // check degree = 0
+        assert_eq!(&*ZERO, &outputs.degree);
+        // check scope and relation output (should be same)
+        let expected_address = convert_ff_ce_to_ff(&pubkey_to_address(&KEYS[0].public()));
+        assert_eq!(&expected_address, &outputs.scope);
+        assert_eq!(&expected_address, &outputs.relation);
+        // check all nullifiers = 0
+        for i in 0..outputs.nullifiers.len() {
+            assert_eq!(&*ZERO, &outputs.nullifiers[i]);
+        }
     }
 
     #[test]
     fn test_degree_1() {
         // setup
-        let identity_key = new_key();
-        let identity_inputs = GrapevineInputs::identity_step(&identity_key);
-        let mut proof = degree_proof(&ARTIFACTS, &identity_inputs).unwrap();
+        let identity_inputs = GrapevineInputs::identity_step(&KEYS[0]);
+        let mut proof = identity_proof(&ARTIFACTS, &identity_inputs).unwrap();
         // get previous inputs for proof
-        let previous_output = verify_grapevine_proof(&proof, &ARTIFACTS.params, 0).unwrap().0;
-        // create degree 1 key
-        let degree_key = new_key();
+        let verified = verify_grapevine_proof(&proof, &ARTIFACTS.params, 0).unwrap();
+        let outputs = GrapevineOutputs::try_from(verified.0).unwrap();
         // generate auth signature and nullifier
-        let (auth_signature, nullifier) = test_auth_signature(&identity_key, &degree_key.public());
+        let (auth_signature, _, nullifier) = sign_auth(&KEYS[0], &KEYS[1].public());
+        // generate the scope signature
+        let scope_signature = sign_scope(&KEYS[1], &outputs.scope);
+        // generate degree inputs
+        let degree_inputs = GrapevineInputs::degree_step(
+            &KEYS[1],
+            &KEYS[0].public(),
+            &nullifier,
+            &outputs.scope,
+            &auth_signature,
+        );
+        // prove degree 1 separation from identity
+        degree_proof(
+            &ARTIFACTS,
+            &degree_inputs,
+            &mut proof,
+            &outputs.try_into().unwrap(),
+        )
+        .unwrap();
+
+        // verify degree 1 prof
+        let verified = verify_grapevine_proof(&proof, &ARTIFACTS.params, 1).unwrap();
+        // check outputs
+        let outputs = GrapevineOutputs::try_from(verified.0).unwrap();
+        // check obfuscate flag = 0
+        assert_eq!(&*ZERO, &outputs.obfuscate);
+        // check degree = 1
+        assert_eq!(&Fr::from(1), &outputs.degree);
+        // check scope = key[0] address
+        let expected_scope = convert_ff_ce_to_ff(&pubkey_to_address(&KEYS[0].public()));
+        assert_eq!(&expected_scope, &outputs.scope);
+        // check relation = key[1] address
+        let expected_relation = convert_ff_ce_to_ff(&pubkey_to_address(&KEYS[1].public()));
+        assert_eq!(&expected_relation, &outputs.relation);
+        // check 1st nullifier = given nullifier
+        assert_eq!(&nullifier, &outputs.nullifiers[0]);
+        // check all other nullifiers are 0
+        for i in 1..outputs.nullifiers.len() {
+            assert_eq!(&*ZERO, &outputs.nullifiers[i]);
+        }
     }
 
     // #[test]
