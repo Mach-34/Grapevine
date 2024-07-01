@@ -122,7 +122,7 @@ mod test {
     use grapevine_common::utils::random_fr_ce;
     use grapevine_common::{
         account::GrapevineAccount,
-        crypto::{sign_auth, sign_scope, pubkey_to_address},
+        crypto::{pubkey_to_address, sign_auth, sign_scope},
         utils::random_fr,
     };
     use lazy_static::lazy_static;
@@ -241,197 +241,105 @@ mod test {
         }
     }
 
-    // #[test]
-    // fn test_degree_0() {
-    //     // Test proving knowledge of a secret (1 degree of separation)
-    //     let phrase: String = String::from("There's no place like home");
-    //     let account = GrapevineAccount::new(String::from("mach34"));
-    //     let auth_signatures = vec![[random_fr(), random_fr(), random_fr()]];
-    //     let params_path = String::from("circom/artifacts/public_params.json");
-    //     let r1cs_path = String::from("circom/artifacts/grapevine.r1cs");
-    //     let wc_path = current_dir()
-    //         .unwrap()
-    //         .join("circom/artifacts/grapevine_js/grapevine.wasm");
-    //     let r1cs = get_r1cs(Some(r1cs_path));
-    //     let public_params = get_public_params(Some(params_path));
+    #[test]
+    fn test_degree_8() {
+        // identity proof
+        println!("Proving Identity (Degree 0)");
+        let identity_inputs = GrapevineInputs::identity_step(&KEYS[0]);
+        let mut proof = identity_proof(&ARTIFACTS, &identity_inputs).unwrap();
+        let verified = verify_grapevine_proof(&proof, &ARTIFACTS.params, 0).unwrap();
+        let mut outputs = GrapevineOutputs::try_from(verified.0).unwrap();
+        // iterate through degree proofs
+        let expected_scope = convert_ff_ce_to_ff(&pubkey_to_address(&KEYS[0].public()));
+        let mut nullifiers: Vec<Fr> = vec![];
+        for i in 0..8 {
+            println!("Proving {} degree(s) of separation from identity", i + 1);
+            let relation = &KEYS[i];
+            let prover = &KEYS[i + 1];
+            // generate inputs
+            let (auth_signature, _, nullifier) = sign_auth(relation, &prover.public());
+            let scope_signature = sign_scope(prover, &outputs.scope);
+            let degree_inputs = GrapevineInputs::degree_step(
+                prover,
+                &relation.public(),
+                &nullifier,
+                &outputs.scope,
+                &auth_signature,
+            );
+            nullifiers.push(nullifier.clone());
+            // prove degree + chaff IVC steps from previous proof
+            degree_proof(
+                &ARTIFACTS,
+                &degree_inputs,
+                &mut proof,
+                &outputs.try_into().unwrap(),
+            )
+            .unwrap();
+            // verify degree 1 prof
+            let verified = verify_grapevine_proof(&proof, &ARTIFACTS.params, i + 1).unwrap();
+            // check outputs
+            outputs = GrapevineOutputs::try_from(verified.0).unwrap();
+            // check obfuscate flag = 0
+            assert_eq!(&*ZERO, &outputs.obfuscate);
+            // check degree
+            assert_eq!(&Fr::from(i as u64 + 1), &outputs.degree);
+            // check scope = key[0] address
+            assert_eq!(&expected_scope, &outputs.scope);
+            // check relation = key[1] address
+            let expected_relation = convert_ff_ce_to_ff(&pubkey_to_address(&KEYS[i + 1].public()));
+            assert_eq!(&expected_relation, &outputs.relation);
+            // check all other nullifiers are 0
+            for j in 0..8 {
+                if (j < i + 1) {
+                    assert_eq!(&nullifiers[j], &outputs.nullifiers[j]);
+                } else {
+                    assert_eq!(&*ZERO, &outputs.nullifiers[j]);
+                }
+            }
+        }
+    }
 
-    //     let proof = nova_proof(
-    //         wc_path,
-    //         &r1cs,
-    //         &public_params,
-    //         &phrase,
-    //         &vec![account.pubkey()],
-    //         &auth_signatures,
-    //     )
-    //     .unwrap();
+    #[ignore]
+    #[test]
+    fn test_nonzero_starting_inputs() {
+        unimplemented!()
+    }
 
-    //     let iterations = 1 + auth_signatures.len() * 2;
-    //     let verified = verify_nova_proof(&proof, &public_params, iterations).unwrap();
-    //     println!("Verified: {:?}", verified);
-    // }
+    #[ignore]
+    #[test]
+    fn test_bad_auth_signature_from() {
+        
+    }
 
-    // #[test]
-    // fn test_degree_1() {
-    //     // Test proving knowledge of a secret (1 degree of separation) and the second degree of separation
-    //     let phrase = String::from("hunter2");
-    //     let accounts = vec!["mach34", "jp4g"]
-    //         .iter()
-    //         .map(|s| GrapevineAccount::new(String::from(*s)))
-    //         .collect::<Vec<GrapevineAccount>>();
-    //     let mut auth_signatures = vec![[random_fr(), random_fr(), random_fr()]];
-    //     for i in 1..accounts.len() {
-    //         let recipient_pubkey = accounts[i].pubkey();
-    //         let auth_signature = accounts[i - 1].generate_auth_signature(recipient_pubkey);
-    //         let decrypted = accounts[i].decrypt_auth_signature(auth_signature);
-    //         auth_signatures.push(decrypted.fmt_circom());
-    //     }
+    #[ignore]
+    #[test]
+    fn test_bad_auth_signature_to() {
+        
+    }
 
-    //     let pubkeys = accounts
-    //         .iter()
-    //         .map(|acc| acc.pubkey())
-    //         .collect::<Vec<Point>>();
+    #[ignore]
+    #[test]
+    fn test_bad_auth_signature_nullifier() {
+        
+    }
 
-    //     let params_path = String::from("circom/artifacts/public_params.json");
-    //     let r1cs_path = String::from("circom/artifacts/grapevine.r1cs");
-    //     let wc_path = current_dir()
-    //         .unwrap()
-    //         .join("circom/artifacts/grapevine_js/grapevine.wasm");
-    //     let r1cs = get_r1cs(Some(r1cs_path));
-    //     let public_params = get_public_params(Some(params_path));
+    #[ignore]
+    #[test]
+    fn test_bad_scope_signature_pubkey() {
 
-    //     let proof = nova_proof(
-    //         wc_path,
-    //         &r1cs,
-    //         &public_params,
-    //         &phrase,
-    //         &pubkeys,
-    //         &auth_signatures,
-    //     )
-    //     .unwrap();
+    }
 
-    //     let iterations = 1 + accounts.len() * 2;
-    //     let verified = verify_nova_proof(&proof, &public_params, iterations).unwrap();
-    //     println!("Verified: {:?}", verified);
-    // }
+    #[ignore]
+    #[test]
+    fn test_bad_scope_signature_scope() {
 
-    // #[test]
-    // fn test_degree_3() {
-    //     // Test proving knowledge of a secret (1 degree of separation) and the second, third, and fourth degree of separation
-    //     let phrase = String::from(
-    //         "Easier than folding a chair. like one of the folding ones at outdoor events.",
-    //     );
-    //     let accounts = vec!["mach34", "jp4g", "ianb", "ct"]
-    //         .iter()
-    //         .map(|s| GrapevineAccount::new(String::from(*s)))
-    //         .collect::<Vec<GrapevineAccount>>();
-    //     let mut auth_signatures = vec![[random_fr(), random_fr(), random_fr()]];
+    }
 
-    //     for i in 1..accounts.len() {
-    //         let recipient_pubkey = accounts[i].pubkey();
-    //         let auth_signature = accounts[i - 1].generate_auth_signature(recipient_pubkey);
-    //         let decrypted = accounts[i].decrypt_auth_signature(auth_signature);
-    //         auth_signatures.push(decrypted.fmt_circom());
-    //     }
+    #[ignore]
+    #[test]
+    fn test_no_degree_9() {
 
-    //     let pubkeys = accounts
-    //         .iter()
-    //         .map(|acc| acc.pubkey())
-    //         .collect::<Vec<Point>>();
-
-    //     let params_path = String::from("circom/artifacts/public_params.json");
-    //     let r1cs_path = String::from("circom/artifacts/grapevine.r1cs");
-    //     let wc_path = current_dir()
-    //         .unwrap()
-    //         .join("circom/artifacts/grapevine_js/grapevine.wasm");
-    //     let r1cs = get_r1cs(Some(r1cs_path));
-    //     let public_params = get_public_params(Some(params_path));
-
-    //     let proof = nova_proof(
-    //         wc_path,
-    //         &r1cs,
-    //         &public_params,
-    //         &phrase,
-    //         &pubkeys,
-    //         &auth_signatures,
-    //     )
-    //     .unwrap();
-
-    //     let iterations = 1 + accounts.len() * 2;
-    //     let verified = verify_nova_proof(&proof, &public_params, iterations).unwrap();
-
-    //     // todo: compute expected output
-    //     println!("Verified: {:?}", verified);
-    // }
-
-    // #[test]
-    // fn test_sequential_proving() {
-    //     // define inputs
-    //     let phrase = String::from(
-    //         "Easier than folding a chair. like one of the folding ones at outdoor events.",
-    //     );
-    //     let accounts = vec!["mach34", "jp4g", "ianb", "ct"]
-    //         .iter()
-    //         .map(|s| GrapevineAccount::new(String::from(*s)))
-    //         .collect::<Vec<GrapevineAccount>>();
-    //     let mut auth_signatures = vec![[random_fr(), random_fr(), random_fr()]];
-
-    //     for i in 1..accounts.len() {
-    //         let recipient_pubkey = accounts[i].pubkey();
-    //         let auth_signature = accounts[i - 1].generate_auth_signature(recipient_pubkey);
-    //         let decrypted = accounts[i].decrypt_auth_signature(auth_signature);
-    //         auth_signatures.push(decrypted.fmt_circom());
-    //     }
-
-    //     let pubkeys = accounts
-    //         .iter()
-    //         .map(|acc| acc.pubkey())
-    //         .collect::<Vec<Point>>();
-
-    //     // define paths
-    //     let params_path = String::from("circom/artifacts/public_params.json");
-    //     let r1cs_path = String::from("circom/artifacts/grapevine.r1cs");
-    //     let wc_path = current_dir()
-    //         .unwrap()
-    //         .join("circom/artifacts/grapevine_js/grapevine.wasm");
-
-    //     // load public params and r1cs
-    //     let r1cs = get_r1cs(Some(r1cs_path));
-    //     let public_params = get_public_params(Some(params_path));
-
-    //     // PROVE DEGREE 1 //
-    //     let degree = 1;
-    //     let mut proof = nova_proof(
-    //         wc_path.clone(),
-    //         &r1cs,
-    //         &public_params,
-    //         &phrase,
-    //         &vec![pubkeys[0].clone()],
-    //         &vec![auth_signatures[0]],
-    //     )
-    //     .unwrap();
-
-    //     let res = verify_nova_proof(&proof, &public_params, 1 + degree * 2).unwrap();
-    //     let mut z0_last = res.0; // step_out for the circuit execution
-    //     assert!(z0_last[0].eq(&Fr::from(degree as u64)));
-
-    //     // PROVE DEGREE 2 - 4 //
-    //     for i in 1..accounts.len() {
-    //         let degree = i + 1;
-    //         continue_nova_proof(
-    //             &pubkeys[i],
-    //             &auth_signatures[i],
-    //             &mut proof,
-    //             z0_last,
-    //             wc_path.clone(),
-    //             &r1cs,
-    //             &public_params,
-    //         )
-    //         .unwrap();
-    //         let res = verify_nova_proof(&proof, &public_params, 1 + degree * 2).unwrap();
-    //         z0_last = res.0;
-    //         assert!(z0_last[0].eq(&Fr::from(degree as u64)));
-    //     }
-    // }
+    }
 
     // #[test]
     // fn test_continued_fs() {
