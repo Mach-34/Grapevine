@@ -95,7 +95,7 @@ impl GrapevineDB {
                 { "pubkey": pubkey_binary }
             ]
         };
-        let projection = doc! { "username": 1, "pubkey": 1 };
+        let projection = doc! { "username": 1, "pubkey": 1, "address": 1 };
         let find_options = FindOptions::builder().projection(projection).build();
         let mut cursor = self.users.find(query, Some(find_options)).await.unwrap();
         let mut found = [false; 2];
@@ -130,11 +130,6 @@ impl GrapevineDB {
         let options = FindOneOptions::builder()
             .projection(doc! {"_id": 1})
             .build();
-        match self.users.find_one(query, options).await.unwrap() {
-            Some(_) => return Err(GrapevineError::UserExists(user.username.clone().unwrap())),
-            None => (),
-        };
-
         // insert the user into the collection
         match self.users.insert_one(&user, None).await {
             Ok(result) => Ok(result.inserted_id.as_object_id().unwrap()),

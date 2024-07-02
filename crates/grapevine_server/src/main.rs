@@ -53,7 +53,7 @@ mod test_rocket {
 
     use super::*;
     use grapevine_circuits::{
-        nova::{continue_nova_proof, nova_proof, verify_nova_proof},
+        inputs::GrapevineArtifacts,
         utils::{compress_proof, decompress_proof},
     };
     use grapevine_common::{
@@ -65,7 +65,7 @@ mod test_rocket {
             },
             responses::{DegreeData, PhraseCreationResponse},
         },
-        models::{DegreeProof, ProvingData, User},
+        models::User,
         utils::random_fr,
     };
     use lazy_static::lazy_static;
@@ -80,9 +80,9 @@ mod test_rocket {
     lazy_static! {
         static ref USERS: Mutex<Vec<GrapevineAccount>> = Mutex::new(vec![]);
         static ref ARTIFACTS: GrapevineArtifacts = GrapevineArtifacts {
-            params: use_public_params(),
-            r1cs: use_r1cs(),
-            wasm_path: use_wasm()
+            params: use_public_params().unwrap(),
+            r1cs: use_r1cs().unwrap(),
+            wasm_path: use_wasm().unwrap()
         };
     }
 
@@ -114,9 +114,11 @@ mod test_rocket {
     }
 
     mod test_helper {
-        use super::ARTIFACTS;
-        use grapevine_circuits::utils::compress_proof;
-        use grapevine_common::{http::requests::CreateUserRequest, NovaProof};
+        use super::*;
+        use grapevine_circuits::{inputs::GrapevineInputs, utils::compress_proof};
+        use grapevine_common::{
+            account::GrapevineAccount, http::requests::CreateUserRequest, NovaProof,
+        };
 
         /**
          * Build a grapevine identity proof (degree 0) given a grapevine account
@@ -127,8 +129,7 @@ mod test_rocket {
             // get inputs
             let private_key = &from.private_key();
             let identity_inputs = GrapevineInputs::identity_step(private_key);
-            let proof =
-                grapevine_circuits::nova::identity_proof(&ARTIFACTS, &identity_inputs).unwrap();
+            grapevine_circuits::nova::identity_proof(&ARTIFACTS, &identity_inputs).unwrap()
         }
 
         /**
@@ -151,12 +152,13 @@ mod test_rocket {
          */
         pub async fn http_create_user(
             context: &GrapevineTestContext,
-            payload: CreateUserRequest,
+            payload: &CreateUserRequest,
         ) -> (u16, String) {
             // serialze the payload
             let serialized = bincode::serialize(&payload).unwrap();
             // mock transmit the request
             let res = context
+                .client
                 .post("/proof/identity")
                 .body(serialized)
                 .dispatch()
@@ -167,19 +169,90 @@ mod test_rocket {
         }
     }
 
-    #[rocket::async_test]
-    pub async fn test_add_user() {
-        // Setup
-        let context = GrapevineTestContext::init().await;
-        GrapevineDB::drop("grapevine_mocked").await;
-        // Create a new Grapevine Account
-        let user = GrapevineAccount::new("User_A".into());
-        // Build body for create_user_request, including constructing grapevine proof of identity
-        let payload = build_create_user_request(&user);
-        // transmit request to the server
-        let (code, message) = http_create_user(&context, payload).await;
-        println!("Status code: {}", code);
-        println!("Response message: {}", message);
+    #[cfg(test)]
+    mod user_creation_tests {
+        use grapevine_common::compat::convert_ff_ce_to_ff;
+        use grapevine_common::crypto::pubkey_to_address;
+
+        use super::*;
+
+        #[rocket::async_test]
+        pub async fn test_add_user() {
+            // Setup
+            let context = GrapevineTestContext::init().await;
+            GrapevineDB::drop("grapevine_mocked").await;
+            // Create a new Grapevine Account
+            let username = "User_A";
+            let user = GrapevineAccount::new(username.into());
+            // Build body for create_user_request, including constructing grapevine proof of identity
+            let payload = build_create_user_request(&user);
+            // transmit request to the server
+            let (code, message) = http_create_user(&context, &payload).await;
+            // check the outcome of the request
+            assert_eq!(code, Status::Created.code);
+            let expected_message = format!("Created user {}", username);
+            assert_eq!(message, expected_message);
+
+            // todo: additional verification of user existence with other routes
+        }
+
+        #[rocket::async_test]
+        pub async fn test_add_user_no_duplicate() {
+            // Setup
+            let context = GrapevineTestContext::init().await;
+            GrapevineDB::drop("grapevine_mocked").await;
+            // Create and enroll a grapevine account
+            let username = "User_A";
+            let user = GrapevineAccount::new(username.into());
+            let payload = build_create_user_request(&user);
+            _ = http_create_user(&context, &payload).await;
+
+            // try with duplicate user
+            let (code, message) = http_create_user(&context, &payload).await;
+            assert_eq!(code, Status::Conflict.code);
+            assert_eq!(message, String::from("{\"UserExists\":\"User_A\"}"));
+
+            // try with duplicate username
+            let user_duplicate_name = GrapevineAccount::new(username.into());
+            let payload = build_create_user_request(&user_duplicate_name);
+            let (code, message) = http_create_user(&context, &payload).await;
+            assert_eq!(code, Status::Conflict.code);
+            assert_eq!(message, String::from("{\"UsernameExists\":\"User_A\"}"));
+
+            // try with duplicate pubkey
+            let user_duplicate_pubkey =
+                GrapevineAccount::from_repr("User_B".into(), *user.private_key_raw(), 0);
+            let payload = build_create_user_request(&user_duplicate_pubkey);
+            let (code, message) = http_create_user(&context, &payload).await;
+            assert_eq!(code, Status::Conflict.code);
+            let pubkey = format!("0x{}", hex::encode(user.pubkey().compress()));
+            let expected_message = format!("{{\"PubkeyExists\":\"{}\"}}", pubkey);
+            assert_eq!(message, expected_message);
+        }
+
+        #[rocket::async_test]
+        pub async fn test_add_user_bad_proof_output() {
+            // Setup
+            let context = GrapevineTestContext::init().await;
+            GrapevineDB::drop("grapevine_mocked").await;
+            // Create a request where proof creator is different from asserted pubkey
+            let username = "User_A";
+            let user = GrapevineAccount::new(username.into());
+            let mut payload = build_create_user_request(&user);
+            let user_2 = GrapevineAccount::new(username.into());
+            payload.pubkey = user_2.pubkey().compress();
+            let (code, message) = http_create_user(&context, &payload).await;
+            let expected_scope =
+                hex::encode(convert_ff_ce_to_ff(&pubkey_to_address(&user_2.pubkey())).to_bytes());
+            let expected_message = format!(
+                "{{\"ProofFailed\":\"Expected identity scope to equal 0x{}\"}}",
+                expected_scope
+            );
+            assert_eq!(code, Status::BadRequest.code);
+            assert_eq!(message, expected_message);
+        }
+
+        // todo: check malformed inputs
     }
 
     //     // @TODO: Change eventually because to doesn't need to be mutable?

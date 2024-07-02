@@ -142,7 +142,7 @@ pub async fn prove_identity(
         Ok(oid) => oid,
         Err(e) => return Err(GrapevineResponse::InternalError(ErrorMessage(Some(e), None)))
     };
-
+    
     // add the proof
     let proof_doc = GrapevineProof {
         id: None,
