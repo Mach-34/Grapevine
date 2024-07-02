@@ -178,15 +178,16 @@ impl GrapevineAccount {
 
     /**
      * Create the http request body for creating a new user in the Grapevine service
-     *
+     * 
+     * @param proof - the compressed proof of identity (degree 0) for this user
+     * 
      * @returns - the CreateUserRequest authorizing a new user to be added to Grapevine service
      */
-    pub fn create_user_request(&self) -> CreateUserRequest {
-        // return the Create User http request struct
+    pub fn create_user_request(&self, proof: Vec<u8>) -> CreateUserRequest {
         CreateUserRequest {
             username: self.username.clone(),
             pubkey: self.pubkey().compress(),
-            signature: self.sign_username().compress(),
+            proof
         }
     }
 
