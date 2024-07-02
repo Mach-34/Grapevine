@@ -36,6 +36,13 @@ impl GrapevineAccount {
         }
     }
 
+    /**
+     * Test function to allow manual specification of account
+     */
+    pub fn from_repr(username: String, private_key: [u8; 32], nonce: u64) -> Self {
+        Self { username, private_key, nonce }
+    }
+
     /// PERSISTENCE METHODS ///
 
     /**
